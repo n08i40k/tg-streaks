@@ -958,8 +958,8 @@ class UsersDatabase:
     def __init__(
         self,
         jvm_plugin: JvmPluginBridge,
+        logger: Callable[[str], None],
         storage_path: Optional[str] = None,
-        logger: Optional[Callable[[str], None]] = None,
     ):
         self._map: dict[int, UserRecord] = dict()
         self._lock = threading.RLock()
@@ -971,12 +971,6 @@ class UsersDatabase:
         os.makedirs(self._backups_dir, exist_ok=True)
         self._load()
         self.ensure_daily_backup()
-
-    def _log(self, message: str):
-        if self._logger is not None:
-            self._logger(message)
-        else:
-            log(message)
 
     def _build_storage_path(self) -> str:
         files_dir = ApplicationLoader.applicationContext.getFilesDir().getAbsolutePath()
@@ -1049,7 +1043,7 @@ class UsersDatabase:
             with self._lock:
                 self._ensure_daily_backup_locked()
         except Exception as e:
-            self._log(f"UsersDatabase daily backup failed: {e}")
+            self._logger(f"UsersDatabase daily backup failed: {e}")
 
     def export_backup_now(self) -> Optional[str]:
         with self._lock:
@@ -1095,7 +1089,7 @@ class UsersDatabase:
         if changed:
             reset_drawable_cache(self._jvm_plugin)
 
-        self._log(
+        self._logger(
             f"UsersDatabase backup imported: {backup_path}, records={len(loaded_map)}"
         )
         return (True, backup_path)
@@ -1120,9 +1114,9 @@ class UsersDatabase:
             with self._lock:
                 self._map = loaded_map
 
-            self._log(f"UsersDatabase loaded: {len(loaded_map)} records")
+            self._logger(f"UsersDatabase loaded: {len(loaded_map)} records")
         except Exception as e:
-            self._log(f"UsersDatabase load failed: {e}")
+            self._logger(f"UsersDatabase load failed: {e}")
 
     def save(self):
         try:
@@ -1130,7 +1124,7 @@ class UsersDatabase:
                 self._persist_locked()
             reset_drawable_cache(self._jvm_plugin)
         except Exception as e:
-            self._log(f"UsersDatabase save failed: {e}")
+            self._logger(f"UsersDatabase save failed: {e}")
 
     def get_user(
         self, user_id: int, include_authorized: bool = False
@@ -1196,16 +1190,10 @@ class StreaksController:
     def __init__(
         self,
         users_db: UsersDatabase,
-        logger: Optional[Callable[[str], None]] = None,
+        logger: Callable[[str], None],
     ):
         self._users_db = users_db
         self._logger = logger
-
-    def _log(self, message: str):
-        if self._logger is not None:
-            self._logger(message)
-        else:
-            log(message)
 
     def _copy_record(self, record: UserRecord) -> Optional[UserRecord]:
         return UserRecord.from_dict(record.to_dict())
@@ -1350,7 +1338,7 @@ class StreaksController:
                     user_id, record.freezes_at
                 )
             except Exception as e:
-                self._log(f"reconcile failed for {user_id}: {e}")
+                self._logger(f"reconcile failed for {user_id}: {e}")
                 continue
 
             if death_date in (None, 0):
@@ -1438,7 +1426,7 @@ class StreaksController:
                     ),
                 )
             except Exception as e:
-                self._log(f"force check failed for {user_id}: {e}")
+                self._logger(f"force check failed for {user_id}: {e}")
                 if on_progress is not None:
                     on_progress(checked, total, updated, removed, unchanged)
                 continue
