@@ -148,6 +148,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 field.set(this, child)
             }
         }
+
+        this.invalidateSelf()
     }
 
     fun resetCache() {
