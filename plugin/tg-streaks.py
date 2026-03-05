@@ -3197,7 +3197,7 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         try:
-            self.jvm_plugin.klass.getDeclaredMethod(String("eject")).invoke(None)
+            self.jvm_plugin.klass.getDeclaredMethod(String("eject")).invoke(None)  # ty:ignore[invalid-argument-type]
             self.log("JVM plugin ejected successfully")
         except Exception as e:
             self.log(f"Failed to eject JVM plugin: {e}")
