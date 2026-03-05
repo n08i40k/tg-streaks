@@ -78,6 +78,12 @@ class Plugin {
         logger.onReceiveValue(message)
     }
 
+    fun logException(message: String, exception: Exception) {
+        logger.onReceiveValue(message)
+        logger.onReceiveValue(exception.toString())
+        logger.onReceiveValue(exception.stackTrace.joinToString("\n"))
+    }
+
     fun resolveStreakData(userId: Long): StreakData? =
         this.userResolver.apply(userId)
             ?.let { StreakData(it[0] as Int, it[1] as Long, it[2] as Color) }
@@ -90,8 +96,7 @@ class Plugin {
         try {
             hookMethods()
         } catch (e: Exception) {
-            log("Failed to hook methods!")
-            log(e.toString())
+            logException("Failed to hook methods!", e)
             onEject()
         }
 
@@ -103,16 +108,14 @@ class Plugin {
             hooks.forEach { it.unhook() }
             hooks.clear()
         } catch (e: Exception) {
-            log("Failed to unhook methods!")
-            log(e.toString())
+            logException("Failed to unhook methods!", e)
         }
 
         try {
             streakDrawableEjectData.forEach { it.restore() }
             streakDrawableEjectData.clear()
         } catch (e: Exception) {
-            log("Failed to restore original SwapAnimatedEmojiDrawable!")
-            log(e.toString())
+            logException("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
 
         log("Ejected!")
@@ -142,10 +145,10 @@ class Plugin {
                             0
                         )
                     } catch (e: Exception) {
-                        log("An unknown exception occurred in DialogCell::constructor hook!")
-                        log(e.toString())
-                        log(e.stackTrace.toString())
-                        log("xd")
+                        logException(
+                            "An unknown exception occurred in DialogCell::constructor hook!",
+                            e
+                        )
                         onEject()
                     }
                 }
@@ -173,8 +176,10 @@ class Plugin {
                             "emojiStatus"
                         )?.setUserId(currentDialogId)
                     } catch (e: Exception) {
-                        log("An unknown exception occurred in DialogCell::onLayout hook!")
-                        log(e.toString())
+                        logException(
+                            "An unknown exception occurred in DialogCell::onLayout hook!",
+                            e
+                        )
                         onEject()
                     }
                 }
@@ -204,8 +209,10 @@ class Plugin {
                         val height = AndroidUtilities.dp(22f)
                         emojiStatusView.layout(0, 0, height * 3, height)
                     } catch (e: Exception) {
-                        log("An unknown exception occurred in DialogCell::onLayout hook!")
-                        log(e.toString())
+                        logException(
+                            "An unknown exception occurred in DialogCell::onLayout hook!",
+                            e
+                        )
                         onEject()
                     }
                 }
@@ -236,8 +243,10 @@ class Plugin {
                             currentUser.id
                         )
                     } catch (e: Exception) {
-                        log("An unknown exception occurred in ChatMessageCell::setMessageObjectInternal hook!")
-                        log(e.toString())
+                        logException(
+                            "An unknown exception occurred in ChatMessageCell::setMessageObjectInternal hook!",
+                            e
+                        )
                         onEject()
                     }
                 }
@@ -269,8 +278,7 @@ class Plugin {
                             dialogId
                         )
                     } catch (e: Exception) {
-                        log("An unknown exception occurred in UserCell::update hook!")
-                        log(e.toString())
+                        logException("An unknown exception occurred in UserCell::update hook!", e)
                         onEject()
                     }
                 }
@@ -305,8 +313,10 @@ class Plugin {
                             userId
                         )
                     } catch (e: Exception) {
-                        log("An unknown exception occurred in ProfileCell::getEmojiStatusDrawable hook!")
-                        log(e.toString())
+                        logException(
+                            "An unknown exception occurred in ProfileCell::getEmojiStatusDrawable hook!",
+                            e
+                        )
                         onEject()
                     }
                 }
@@ -342,8 +352,10 @@ class Plugin {
                             dialogId
                         )
                     } catch (e: Exception) {
-                        log("An unknown exception occurred in ChatAvatarActivity::setTitle hook!")
-                        log(e.toString())
+                        logException(
+                            "An unknown exception occurred in ChatAvatarActivity::setTitle hook!",
+                            e
+                        )
                         onEject()
                     }
                 }
