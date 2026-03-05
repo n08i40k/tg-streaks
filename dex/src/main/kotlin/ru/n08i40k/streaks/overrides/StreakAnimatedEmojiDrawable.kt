@@ -143,7 +143,13 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
             getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
                 val parent = field.get(this) as? StarsReactionsSheet.Particles
-                val child = parent?.let { base -> StreakParticles(base, userId) }
+                val child =
+                    parent?.let { base ->
+                        StreakParticles(
+                            base,
+                            cachedStreakData!!.textColor.toArgb()
+                        )
+                    }
 
                 field.set(this, child)
             }
@@ -168,7 +174,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
             getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
                 val parent = field.get(this) as? StarsReactionsSheet.Particles
-                val child = parent?.let { base -> StreakParticles(base, userId) }
+                val child = parent?.let { base -> StreakParticles(base, it.textColor.toArgb()) }
 
                 field.set(this, child)
 

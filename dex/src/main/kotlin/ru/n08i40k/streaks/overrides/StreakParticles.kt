@@ -4,26 +4,22 @@ package ru.n08i40k.streaks.overrides
 
 import android.graphics.Canvas
 import org.telegram.ui.Stars.StarsReactionsSheet.Particles
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.cloneFields
-import ru.n08i40k.streaks.data.StreakData
 
 class StreakParticles : Particles {
-    private val userId: Long
-    private val cachedStreakData: StreakData?
+    private val color: Int
 
-    constructor(base: Particles, userId: Long) : super(0, 0) {
+    constructor(base: Particles, color: Int) : super(0, 0) {
         cloneFields(
             base as Object,
             this as Object,
             Particles::class.java
         )
 
-        this.userId = userId
-        this.cachedStreakData = Plugin.getInstance()!!.resolveStreakData(userId)
+        this.color = color
     }
 
     override fun draw(canvas: Canvas, color: Int, p2: Float) {
-        super.draw(canvas, this.cachedStreakData?.textColor?.toArgb() ?: color, p2)
+        super.draw(canvas, this.color, p2)
     }
 }
