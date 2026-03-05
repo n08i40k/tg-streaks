@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import threading
@@ -86,6 +87,7 @@ DAY_CHECK_REQUEST_DELAY_SECONDS = 0.35
 DAY_CHECK_RETRY_DELAY_SECONDS = 0.8
 DAY_CHECK_MESSAGE_TABLE_CANDIDATES = ("messages_v2", "messages")
 DEX_URL = f"https://github.com/{__author__.replace('@', '')}/{__id__}/releases/download/{__version__}/classes.dex"
+DEX_SHA256 = ""
 SERVER_TIMEZONE_ID = "UTC"
 DEBUG_MODE = False
 
@@ -439,26 +441,92 @@ class JvmPluginBridge:
         self.dex_path = os.path.join(self.cache_dir, f"{__id__}.dex")
 
     def load(self):
-        # if not os.path.exists(self.dex_path):
-        self._download()
+        if DEBUG_MODE:
+            self._download()
+            self._load_cached_file()
+            return
 
+        expected_sha256 = str(DEX_SHA256).strip().lower()
+
+        cached_sha256 = self._compute_file_sha256(self.dex_path)
+        if cached_sha256 is not None and cached_sha256 == expected_sha256:
+            self.plugin.log("Using cached DEX (SHA256 matched)")
+            self._load_cached_file()
+            return
+
+        if cached_sha256 is None:
+            self.plugin.log("Cached DEX not found. Downloading new file...")
+        else:
+            self.plugin.log(
+                f"Cached DEX SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Downloading new file..."
+            )
+
+        dex_data = self._download_bytes()
+        if dex_data is None:
+            return
+
+        downloaded_sha256 = self._compute_sha256(dex_data)
+        if downloaded_sha256 != expected_sha256:
+            self._force_disable_plugin(
+                "Downloaded DEX SHA256 mismatch. Plugin was disabled for safety."
+            )
+            return
+
+        self._write_dex_file(dex_data)
+        self._load(dex_data)
+
+    def _load_cached_file(self):
         try:
             with open(self.dex_path, "rb") as f:
                 self._load(f.read())
         except Exception as e:
             self.plugin.log(str(e))
 
-    def _download(self):
+    def _compute_sha256(self, data: bytes) -> str:
+        return hashlib.sha256(data).hexdigest().lower()
+
+    def _compute_file_sha256(self, path: str) -> Optional[str]:
+        if not os.path.exists(path):
+            return None
+
+        try:
+            with open(path, "rb") as f:
+                return self._compute_sha256(f.read())
+        except Exception as e:
+            self.plugin.log(f"Failed to read cached DEX for SHA256: {e}")
+            return None
+
+    def _write_dex_file(self, dex_data: bytes):
+        with open(self.dex_path, "wb") as f:
+            f.write(dex_data)
+
+    def _download_bytes(self) -> Optional[bytes]:
         try:
             self.plugin.log("Downloading DEX...")
             r = requests.get(DEX_URL, timeout=10)
             if r.status_code == 200:
-                with open(self.dex_path, "wb") as f:
-                    f.write(r.content)
-            else:
-                self.plugin.log(f"Failed to download DEX: {r.status_code}")
+                return cast("bytes", r.content)
+            self.plugin.log(f"Failed to download DEX: {r.status_code}")
+            return None
         except Exception as e:
             self.plugin.log(f"Failed to download DEX: {e}")
+            return None
+
+    def _force_disable_plugin(self, reason: str):
+        self.plugin.log(reason)
+
+        try:
+            setattr(self.plugin, "enabled", False)
+        except Exception:
+            pass
+
+        raise RuntimeError(reason)
+
+    def _download(self):
+        dex_data = self._download_bytes()
+        if dex_data is None:
+            return
+        self._write_dex_file(dex_data)
 
     def _load(self, dex_data):
         class_path = "ru.n08i40k.streaks.Plugin"
