@@ -20,11 +20,14 @@ import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.Cells.UserCell
 import org.telegram.ui.ChatActivity
+import org.telegram.ui.Components.AnimatedEmojiDrawable
 import org.telegram.ui.Components.ChatAvatarContainer
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.ProfileActivity
+import org.telegram.ui.Stars.StarsReactionsSheet
 import ru.n08i40k.streaks.data.StreakData
 import ru.n08i40k.streaks.overrides.StreakAnimatedEmojiDrawable
+import ru.n08i40k.streaks.overrides.StreakParticles
 
 class Plugin {
     @Suppress("unused")
@@ -64,6 +67,20 @@ class Plugin {
                 return
 
             INSTANCE!!.streakDrawableEjectData.forEach { it.drawable.get()?.resetCache() }
+        }
+
+        @JvmStatic
+        fun enableParticles(
+            drawable: AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable,
+            color: Int
+        ) {
+            drawable.setParticles(true, true)
+
+            val field =
+                getField(AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable::class.java, "particles")
+            val particles = field.get(drawable)!! as StarsReactionsSheet.Particles
+
+            field.set(drawable, StreakParticles(particles, color))
         }
     }
 

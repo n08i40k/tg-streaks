@@ -1,4 +1,3 @@
-from org.telegram.ui.ActionBar import BaseFragment
 import json
 import os
 import threading
@@ -18,9 +17,8 @@ from typing import (
 import requests
 from android.app import Dialog
 from android.content import DialogInterface
-from android.graphics import Color
+from android.graphics import Color, Typeface
 from android.graphics.drawable import ColorDrawable, GradientDrawable
-from android.util import Pair
 from android.view import Gravity, WindowManager
 from android.webkit import ValueCallback
 from android.widget import ImageView, LinearLayout, TextView
@@ -42,8 +40,8 @@ from dalvik.system import InMemoryDexClassLoader
 from hook_utils import get_private_field
 from java import (
     dynamic_proxy,
-    jlong,
     jarray,
+    jlong,
 )
 from java.lang import (
     Boolean,
@@ -215,7 +213,7 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     },
     "popup_streak_ended_title": {"en": "Streak Ended", "ru": "Стрик завершён"},
     "popup_streak_started_title": {"en": "Streak Started", "ru": "Стрик начат"},
-    "popup_streak_upgraded_title": {"en": "Streak Upgraded", "ru": "Стрик улучшен"},
+    "popup_streak_upgraded_title": {"en": "{days} DAYS!!!", "ru": "{days} ДНЕЙ!!!"},
     "popup_streak_ended_subtitle": {
         "en": "Your streak with {name} ended after {days} days!",
         "ru": "Ваш стрик с {name} завершился после {days} дней!",
@@ -1646,7 +1644,11 @@ class TgStreaksPlugin(BasePlugin):
         return context
 
     def _create_popup_emoji_drawable(
-        self, parent_view: Any, emoji_size_dp: int, emoji_document_id: Optional[int]
+        self,
+        parent_view: Any,
+        emoji_size_dp: int,
+        emoji_document_id: Optional[int],
+        color: int,
     ):
         if emoji_document_id is None or int(emoji_document_id) <= 0:
             return None
@@ -1662,6 +1664,13 @@ class TgStreaksPlugin(BasePlugin):
                 AndroidUtilities.dp(float(emoji_size_dp)),
                 AndroidUtilities.dp(float(emoji_size_dp)),
             )
+
+            if self.jvm_plugin.klass is not None:
+                self.jvm_plugin.klass.getDeclaredMethod(
+                    String("enableParticles"),
+                    AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable.getClass(),
+                    Integer.TYPE,
+                ).invoke(None, drawable, color)  # ty:ignore[no-matching-overload]
 
             try:
                 drawable.center = True
@@ -1710,8 +1719,8 @@ class TgStreaksPlugin(BasePlugin):
 
                 bg = GradientDrawable()
                 bg.setShape(0)
-                bg.setColor(Color.argb(242, 20, 20, 24))
-                bg.setCornerRadius(float(AndroidUtilities.dp(18)))
+                bg.setColor(Color.argb(200, 20, 20, 24))
+                bg.setCornerRadius(float(AndroidUtilities.dp(24)))
                 bg.setStroke(AndroidUtilities.dp(1), accent_color)
                 container.setBackground(bg)
 
@@ -1721,10 +1730,13 @@ class TgStreaksPlugin(BasePlugin):
                 if emoji_document_id is not None and int(emoji_document_id) > 0:
                     emoji_view = ImageView(context)
                     emoji_view.setScaleType(ImageView.ScaleType.CENTER_INSIDE)  # ty:ignore[unresolved-attribute]
-                    emoji_size_dp = 88
+                    emoji_size_dp = 88 * 2
                     emoji_size = AndroidUtilities.dp(float(emoji_size_dp))
                     emoji_drawable = self._create_popup_emoji_drawable(
-                        emoji_view, emoji_size_dp, emoji_document_id
+                        emoji_view,
+                        emoji_size_dp,
+                        emoji_document_id,
+                        Integer(accent_color),
                     )
 
                 if emoji_drawable is not None and emoji_view is not None:
@@ -1738,9 +1750,12 @@ class TgStreaksPlugin(BasePlugin):
                 title_view = TextView(context)
                 title_view.setText(String(title))
                 title_view.setTextColor(accent_color)
-                title_view.setTextSize(16.0)
+                title_view.setTextSize(24.0)
                 title_view.setTypeface(AndroidUtilities.bold())
                 title_view.setGravity(Gravity.CENTER_HORIZONTAL)
+                title_view.setTypeface(
+                    Typeface.create(Typeface.DEFAULT_BOLD, 900, False)
+                )
                 container.addView(title_view, LinearLayout.LayoutParams(-2, -2))
 
                 subtitle_view = TextView(context)
@@ -1926,7 +1941,9 @@ class TgStreaksPlugin(BasePlugin):
             "level_id": level_id,
         }
 
-    def _enqueue_streak_ended_popup(self, peer_id: int, days: int, name: Optional[str] = None):
+    def _enqueue_streak_ended_popup(
+        self, peer_id: int, days: int, name: Optional[str] = None
+    ):
         days = int(days)
         if days < 3:
             return
@@ -1939,11 +1956,13 @@ class TgStreaksPlugin(BasePlugin):
             f"die:{peer_id}:{days}",
             self._t("popup_streak_ended_title"),
             self._t("popup_streak_ended_subtitle", name=name, days=days),
-            Color.rgb(255, 87, 87),
+            StreakLevels.COLD.value.text_color_int,
             emoji_document_id=int(StreakLevels.COLD.value.document_id),
         )
 
-    def _force_check_day_labels(self, include_today: bool, is_active: bool) -> tuple[str, str]:
+    def _force_check_day_labels(
+        self, include_today: bool, is_active: bool
+    ) -> tuple[str, str]:
         mode = (
             self._t("force_check_day_mode_today")
             if include_today
@@ -1991,7 +2010,7 @@ class TgStreaksPlugin(BasePlugin):
                 key,
                 self._t("popup_streak_started_title"),
                 self._t("popup_streak_started_subtitle", name=name),
-                Color.rgb(77, 216, 122),
+                StreakLevels.DAYS_3.value.text_color_int,
                 emoji_document_id=int(after["level_id"]),
             )
             return
@@ -2007,7 +2026,7 @@ class TgStreaksPlugin(BasePlugin):
             self._enqueue_streak_popup_for_open_chat(
                 int(peer_id),
                 key,
-                self._t("popup_streak_upgraded_title"),
+                self._t("popup_streak_upgraded_title", days=after_length),
                 self._t("popup_streak_upgraded_subtitle", name=name),
                 upgraded_level_color,
                 emoji_document_id=int(after["level_id"]),
@@ -2049,9 +2068,7 @@ class TgStreaksPlugin(BasePlugin):
             was_dead = bool(self._streak_dead_state.get(user_id, is_dead_now))
 
             if not was_dead and is_dead_now:
-                self._enqueue_streak_ended_popup(
-                    user_id, int(record.get_length())
-                )
+                self._enqueue_streak_ended_popup(user_id, int(record.get_length()))
 
             self._streak_dead_state[user_id] = is_dead_now
 
