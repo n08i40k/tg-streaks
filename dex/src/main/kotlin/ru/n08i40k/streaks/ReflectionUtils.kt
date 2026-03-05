@@ -5,20 +5,12 @@ package ru.n08i40k.streaks
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 
-enum class CloneFieldDirection {
-    FROM_SOURCE,
-    FROM_DESTINATION
-}
-
 fun cloneFields(
     src: Object,
     dest: Object,
-    direction: CloneFieldDirection = CloneFieldDirection.FROM_SOURCE
+    klass: Class<*>
 ) {
-    var c: Class<*>? = when (direction) {
-        CloneFieldDirection.FROM_SOURCE -> src.`class`
-        CloneFieldDirection.FROM_DESTINATION -> dest.`class`
-    }
+    var c: Class<*>? = klass
 
     while (c != null && c != Object::class.java) {
         for (f in c.declaredFields) {

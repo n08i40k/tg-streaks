@@ -23,6 +23,7 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.ChatAvatarContainer
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.ProfileActivity
+import ru.n08i40k.streaks.data.StreakData
 import ru.n08i40k.streaks.overrides.StreakAnimatedEmojiDrawable
 
 class Plugin {
@@ -33,7 +34,7 @@ class Plugin {
         @JvmStatic
         fun inject(
             logger: ValueCallback<String>,
-            userResolver: java.util.function.Function<Long, android.util.Pair<Int, Color>?>
+            userResolver: java.util.function.Function<Long, Array<Any>?>
         ) {
             if (INSTANCE == null)
                 INSTANCE = Plugin()
@@ -56,10 +57,18 @@ class Plugin {
 
         @JvmStatic
         fun getInstance(): Plugin? = INSTANCE
+
+        @JvmStatic
+        fun clearCaches() {
+            if (INSTANCE == null)
+                return
+
+            INSTANCE!!.streakDrawableEjectData.forEach { it.drawable.get()?.resetCache() }
+        }
     }
 
     private lateinit var logger: ValueCallback<String>
-    private lateinit var userResolver: java.util.function.Function<Long, android.util.Pair<Int, Color>?>
+    private lateinit var userResolver: java.util.function.Function<Long, Array<Any>?>
 
     private var hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     private var streakDrawableEjectData: ArrayList<StreakAnimatedEmojiDrawable.EjectData> =
@@ -69,8 +78,9 @@ class Plugin {
         logger.onReceiveValue(message)
     }
 
-    fun resolveStreakData(userId: Long): android.util.Pair<Int, Color>? =
+    fun resolveStreakData(userId: Long): StreakData? =
         this.userResolver.apply(userId)
+            ?.let { StreakData(it[0] as Int, it[1] as Long, it[2] as Color) }
 
     fun addStreakDrawableEjectData(ejectData: StreakAnimatedEmojiDrawable.EjectData) {
         streakDrawableEjectData.add(ejectData)
@@ -161,7 +171,7 @@ class Plugin {
                             thisClass,
                             thisObject,
                             "emojiStatus"
-                        )?.userId = currentDialogId
+                        )?.setUserId(currentDialogId)
                     } catch (e: Exception) {
                         log("An unknown exception occurred in DialogCell::onLayout hook!")
                         log(e.toString())

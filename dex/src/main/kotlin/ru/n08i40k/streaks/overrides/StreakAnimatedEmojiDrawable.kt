@@ -7,16 +7,16 @@
 package ru.n08i40k.streaks.overrides
 
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.drawable.Drawable
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.tgnet.TLRPC
 import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
 import org.telegram.ui.Stars.StarsReactionsSheet
-import ru.n08i40k.streaks.CloneFieldDirection
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.cloneFields
+import ru.n08i40k.streaks.data.StreakData
 import ru.n08i40k.streaks.getField
-import ru.n08i40k.streaks.getFieldValue
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 
@@ -30,14 +30,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         fun restore() {
             val drawable = this.drawable.get() ?: return
 
-            StreakParticles.restore(
-                getFieldValue<StreakParticles>(
-                    SwapAnimatedEmojiDrawable::class.java,
-                    drawable,
-                    "particles"
-                )!!,
-                drawable
-            )
+            drawable.setUserId(0)
+            drawable.setParticles(false, false)
 
             val targetObject = this.targetObject.get() ?: return
 
@@ -46,7 +40,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             cloneFields(
                 drawable as Object,
                 pseudoOriginal as Object,
-                CloneFieldDirection.FROM_DESTINATION
+                SwapAnimatedEmojiDrawable::class.java
             )
 
             if (arrayIndex == null) {
@@ -73,7 +67,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                     ?: throw TypeCastException("Field value type isn't SwapAnimatedEmojiDrawable")
 
                 if (drawable as? StreakAnimatedEmojiDrawable != null) {
-                    drawable.userId = userId
+                    drawable.setUserId(userId)
                     return
                 }
 
@@ -110,7 +104,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             val drawable = array[arrayIndex]
 
             if (drawable as? StreakAnimatedEmojiDrawable != null) {
-                drawable.userId = userId
+                drawable.setUserId(userId)
                 return
             }
 
@@ -134,49 +128,60 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         }
     }
 
-    private var _userId: Long
-    private var _cachedStreakData: Pair<Int, Color>?
+    private var userId: Long
+    private var cachedStreakData: StreakData?
 
-    private var _particles: StreakParticles
+    fun setUserId(userId: Long) {
+        this.userId = userId
+        this.cachedStreakData = Plugin.getInstance()!!.resolveStreakData(userId)
 
-    var userId: Long
-        get() = _userId
-        set(value) {
-            _userId = value
-            _cachedStreakData =
-                Plugin.getInstance()!!.resolveStreakData(value)?.let { Pair(it.first, it.second) }
+        val isExists = cachedStreakData != null
+        super.setParticles(isExists, isExists)
 
-            val isExists = _cachedStreakData != null
-            super.setParticles(isExists, isExists)
+        if (isExists) {
+            super.set(cachedStreakData!!.documentId, 7, true)
 
-            _particles.userId = value
+            getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
+                val parent = field.get(this) as? StarsReactionsSheet.Particles
+                val child = parent?.let { base -> StreakParticles(base, userId) }
+
+                field.set(this, child)
+            }
         }
+    }
 
+    fun resetCache() {
+        setUserId(userId)
+    }
 
     constructor(base: SwapAnimatedEmojiDrawable, userId: Long) : super(null, 0) {
-        cloneFields(base as Object, this as Object)
-        super.setParticles(true, true)
+        cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
 
-        val particlesField = getField(SwapAnimatedEmojiDrawable::class.java, "particles")
+        this.userId = userId
+        this.cachedStreakData = Plugin.getInstance()!!.resolveStreakData(userId)
 
-        this._userId = userId
-        this._particles =
-            StreakParticles(particlesField.get(this)!! as StarsReactionsSheet.Particles, userId)
+        this.cachedStreakData?.let {
+            super.setParticles(true, true)
+            super.set(it.documentId, 7, true)
 
-        this._cachedStreakData =
-            Plugin.getInstance()!!.resolveStreakData(userId)?.let { Pair(it.first, it.second) }
+            getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
+                val parent = field.get(this) as? StarsReactionsSheet.Particles
+                val child = parent?.let { base -> StreakParticles(base, userId) }
 
-        particlesField.set(this, this._particles)
+                field.set(this, child)
+
+            }
+        }
     }
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        _cachedStreakData?.let {
-            paint.setColor(it.second.toArgb())
+        cachedStreakData?.let {
+            paint.setColor(it.textColor.toArgb())
 
             canvas.drawText(
-                it.first.toString(),
+                it.length.toString(),
                 bounds.right.toFloat(),
                 bounds.bottom.toFloat() - AndroidUtilities.dp(5f),
                 paint
@@ -191,5 +196,45 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             super.setBounds(left, top, right, bottom)
     }
 
-    override fun setParticles(p0: Boolean, p1: Boolean) {}
+    override fun setParticles(p0: Boolean, p1: Boolean) {
+        if (cachedStreakData != null)
+            return
+
+        super.setParticles(p0, p1)
+    }
+
+    override fun set(p0: Drawable?, p1: Boolean) {
+        if (cachedStreakData != null)
+            return
+
+        super.set(p0, p1)
+    }
+
+    override fun set(p0: Long, p1: Boolean): Boolean {
+        if (cachedStreakData != null)
+            return true
+
+        return super.set(p0, p1)
+    }
+
+    override fun set(p0: Long, p1: Int, p2: Boolean): Boolean {
+        if (cachedStreakData != null)
+            return true
+
+        return super.set(p0, p1, p2)
+    }
+
+    override fun set(p0: TLRPC.Document?, p1: Boolean) {
+        if (cachedStreakData != null)
+            return
+
+        super.set(p0, p1)
+    }
+
+    override fun set(p0: TLRPC.Document?, p1: Int, p2: Boolean) {
+        if (cachedStreakData != null)
+            return
+
+        super.set(p0, p1, p2)
+    }
 }

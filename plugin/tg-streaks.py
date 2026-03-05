@@ -1,3 +1,4 @@
+from org.telegram.ui.ActionBar import BaseFragment
 import json
 import os
 import threading
@@ -42,6 +43,7 @@ from hook_utils import get_private_field
 from java import (
     dynamic_proxy,
     jlong,
+    jarray,
 )
 from java.lang import (
     Boolean,
@@ -417,6 +419,62 @@ class TimeUtils:
         local_today = TimeUtils.get_stripped_timestamp()
         timestamp_day = TimeUtils.strip_timestamp(timestamp)
         return int((timestamp_day - local_today) // SECONDS_IN_DAY)
+
+
+class JvmPluginBridge:
+    klass: Optional[Class]
+
+    def __init__(self, plugin: BasePlugin):
+        self.plugin = plugin
+        self.klass = None
+
+        self.cache_dir = os.path.join(
+            ApplicationLoader.applicationContext.getExternalFilesDir(
+                None  # ty:ignore[invalid-argument-type]
+            ).getAbsolutePath(),
+            "plugins_dex_cache",
+        )
+
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+
+        self.dex_path = os.path.join(self.cache_dir, f"{__id__}.dex")
+
+    def load(self):
+        # if not os.path.exists(self.dex_path):
+        self._download()
+
+        try:
+            with open(self.dex_path, "rb") as f:
+                self._load(f.read())
+        except Exception as e:
+            self.plugin.log(str(e))
+
+    def _download(self):
+        try:
+            self.plugin.log("Downloading DEX...")
+            r = requests.get(DEX_URL, timeout=10)
+            if r.status_code == 200:
+                with open(self.dex_path, "wb") as f:
+                    f.write(r.content)
+            else:
+                self.plugin.log(f"Failed to download DEX: {r.status_code}")
+        except Exception as e:
+            self.plugin.log(f"Failed to download DEX: {e}")
+
+    def _load(self, dex_data):
+        class_path = "ru.n08i40k.streaks.Plugin"
+
+        try:
+            loader = InMemoryDexClassLoader(
+                jclass("java.nio.ByteBuffer").wrap(dex_data),  # ty:ignore[unresolved-attribute]
+                ApplicationLoader.applicationContext.getClassLoader(),
+            )
+
+            self.klass = loader.loadClass(String(class_path))
+
+        except Exception as e:
+            self.plugin.log(f"Failed to load DEX: {e}")
 
 
 def _resolve_day_check_messages_table_name(db: Any) -> Optional[str]:
@@ -845,26 +903,46 @@ class UserRecord:
             1
         )  # will be freezed from tomorrow
 
-    def update_from(self, sender_type: SenderType, event_day: Optional[int] = None):
+    def update_from(
+        self, sender_type: SenderType, event_day: Optional[int] = None
+    ) -> bool:
         day = (
             TimeUtils.get_stripped_timestamp()
             if event_day is None
             else TimeUtils.strip_timestamp(event_day)
         )
 
+        changed = False
+
         if sender_type == SenderType.SELF:
             if self.last_sended_at is None or day > self.last_sended_at:
                 self.last_sended_at = day
+                changed = True
         else:
             if self.last_received_at is None or day > self.last_received_at:
                 self.last_received_at = day
+                changed = True
 
         if self.last_sended_at is None or self.last_received_at is None:
-            return
+            return changed
 
         if self.last_sended_at == self.last_received_at:
             # Move freeze date to the next day of the latest day with both-side activity.
-            self.freezes_at = max(self.freezes_at, self.last_sended_at + SECONDS_IN_DAY)
+            next_freeze = max(self.freezes_at, self.last_sended_at + SECONDS_IN_DAY)
+            if next_freeze != self.freezes_at:
+                self.freezes_at = next_freeze
+                changed = True
+
+        return changed
+
+
+def reset_drawable_cache(jvm_plugin: JvmPluginBridge):
+    klass = jvm_plugin.klass
+
+    if klass is None:
+        return
+
+    klass.getDeclaredMethod(String("clearCaches")).invoke(None)  # ty:ignore[invalid-argument-type]
 
 
 def get_authorized_user_ids() -> list[int]:
@@ -879,11 +957,13 @@ def get_authorized_user_ids() -> list[int]:
 class UsersDatabase:
     def __init__(
         self,
+        jvm_plugin: JvmPluginBridge,
         storage_path: Optional[str] = None,
         logger: Optional[Callable[[str], None]] = None,
     ):
         self._map: dict[int, UserRecord] = dict()
         self._lock = threading.RLock()
+        self._jvm_plugin = jvm_plugin
         self._logger = logger
         self._storage_path = storage_path or self._build_storage_path()
         self._storage_dir = os.path.dirname(self._storage_path)
@@ -1002,12 +1082,18 @@ class UsersDatabase:
         except Exception as e:
             return (False, f"Failed to read backup: {e}")
 
+        changed = False
         try:
             with self._lock:
-                self._map = loaded_map
-                self._persist_locked()
+                if self._map != loaded_map:
+                    self._map = loaded_map
+                    self._persist_locked()
+                    changed = True
         except Exception as e:
             return (False, f"Failed to apply backup: {e}")
+
+        if changed:
+            reset_drawable_cache(self._jvm_plugin)
 
         self._log(
             f"UsersDatabase backup imported: {backup_path}, records={len(loaded_map)}"
@@ -1042,6 +1128,7 @@ class UsersDatabase:
         try:
             with self._lock:
                 self._persist_locked()
+            reset_drawable_cache(self._jvm_plugin)
         except Exception as e:
             self._log(f"UsersDatabase save failed: {e}")
 
@@ -1068,10 +1155,20 @@ class UsersDatabase:
             if event_day is None
             else TimeUtils.strip_timestamp(event_day)
         )
-        record = self._get_or_create(peer_id, sender_type, day)
+        changed = False
         with self._lock:
-            record.update_from(sender_type, day)
-            self._persist_locked()
+            record = self._map.get(peer_id)
+            if record is None:
+                record = UserRecord.new(peer_id, sender_type, day)
+                self._map[peer_id] = record
+                changed = True
+
+            changed = record.update_from(sender_type, day) or changed
+            if changed:
+                self._persist_locked()
+
+        if changed:
+            reset_drawable_cache(self._jvm_plugin)
 
     def get_user(self, user_id: int) -> Optional[UserRecord]:
         if user_id <= 0:
@@ -1088,9 +1185,17 @@ class UsersDatabase:
             return list(self._map.values())
 
     def set_user_record(self, record: UserRecord):
+        changed = False
         with self._lock:
-            self._map[int(record.user_id)] = record
-            self._persist_locked()
+            user_id = int(record.user_id)
+            current = self._map.get(user_id)
+            if current is None or current.to_dict() != record.to_dict():
+                self._map[user_id] = record
+                self._persist_locked()
+                changed = True
+
+        if changed:
+            reset_drawable_cache(self._jvm_plugin)
 
     def _build_recent_record(
         self,
@@ -1350,62 +1455,6 @@ class UsersDatabase:
             self.save()
 
         return checked, updated, removed, unchanged
-
-
-class JvmPluginBridge:
-    klass: Optional[Class]
-
-    def __init__(self, plugin: BasePlugin):
-        self.plugin = plugin
-        self.klass = None
-
-        self.cache_dir = os.path.join(
-            ApplicationLoader.applicationContext.getExternalFilesDir(
-                None  # ty:ignore[invalid-argument-type]
-            ).getAbsolutePath(),
-            "plugins_dex_cache",
-        )
-
-        if not os.path.exists(self.cache_dir):
-            os.makedirs(self.cache_dir)
-
-        self.dex_path = os.path.join(self.cache_dir, f"{__id__}.dex")
-
-    def load(self):
-        # if not os.path.exists(self.dex_path):
-        self._download()
-
-        try:
-            with open(self.dex_path, "rb") as f:
-                self._load(f.read())
-        except Exception as e:
-            self.plugin.log(str(e))
-
-    def _download(self):
-        try:
-            self.plugin.log("Downloading DEX...")
-            r = requests.get(DEX_URL, timeout=10)
-            if r.status_code == 200:
-                with open(self.dex_path, "wb") as f:
-                    f.write(r.content)
-            else:
-                self.plugin.log(f"Failed to download DEX: {r.status_code}")
-        except Exception as e:
-            self.plugin.log(f"Failed to download DEX: {e}")
-
-    def _load(self, dex_data):
-        class_path = "ru.n08i40k.streaks.Plugin"
-
-        try:
-            loader = InMemoryDexClassLoader(
-                jclass("java.nio.ByteBuffer").wrap(dex_data),  # ty:ignore[unresolved-attribute]
-                ApplicationLoader.applicationContext.getClassLoader(),
-            )
-
-            self.klass = loader.loadClass(String(class_path))
-
-        except Exception as e:
-            self.plugin.log(f"Failed to load DEX: {e}")
 
 
 class TgStreaksPlugin(BasePlugin):
@@ -3018,10 +3067,7 @@ class TgStreaksPlugin(BasePlugin):
         if length < 3:
             return
 
-        streak_level = StreakLevels.pick_by_length(length, user_record.is_freezed())
-
-        user.emoji_status = TLRPC.TL_emojiStatus()
-        user.emoji_status.document_id = streak_level.document_id
+        user.emoji_status = TLRPC.TL_emojiStatusEmpty()
         user.premium = True
 
     def hook_user_emoji_status_assign(self, patch_existing: bool):
@@ -3123,7 +3169,13 @@ class TgStreaksPlugin(BasePlugin):
                             length, record.is_freezed()
                         )
 
-                        return Pair(length, streak_level.text_color)
+                        return jarray(Object)(
+                            [
+                                Integer(length),
+                                Long(streak_level.document_id),
+                                streak_level.text_color,
+                            ],
+                        )
 
                     return None
 
@@ -3152,7 +3204,7 @@ class TgStreaksPlugin(BasePlugin):
         self._streak_dead_state: dict[int, bool] = {}
         self._streak_dead_monitor_stop = threading.Event()
 
-        threading.Thread(target=self._load_jvm_plugin).start()
+        self._load_jvm_plugin()
 
         self.add_on_send_message_hook()
         self.add_hook("TL_updateNewMessage")
@@ -3163,7 +3215,7 @@ class TgStreaksPlugin(BasePlugin):
         self.add_hook("TL_updatesCombined")
 
         try:
-            self.users_db = UsersDatabase(logger=self.log)
+            self.users_db = UsersDatabase(jvm_plugin=self.jvm_plugin, logger=self.log)
             self._self_user_ids = {}
 
             checked, updated, removed = self.users_db.reconcile_on_plugin_load()
