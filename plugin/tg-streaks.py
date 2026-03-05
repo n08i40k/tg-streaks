@@ -1132,17 +1132,83 @@ class UsersDatabase:
         except Exception as e:
             self._log(f"UsersDatabase save failed: {e}")
 
-    def _get_or_create(
-        self, user_id: int, sender_type: SenderType, event_day: Optional[int] = None
-    ) -> UserRecord:
-        record = self.get_user(user_id)
+    def get_user(
+        self, user_id: int, include_authorized: bool = False
+    ) -> Optional[UserRecord]:
+        if user_id <= 0:
+            return None
 
-        if record is None:
-            record = UserRecord.new(user_id, sender_type, event_day)
-            with self._lock:
+        if not include_authorized and user_id in get_authorized_user_ids():
+            return None
+
+        with self._lock:
+            return self._map.get(user_id)
+
+    def list_user_ids(self) -> list[int]:
+        with self._lock:
+            return list(self._map.keys())
+
+    def list_users(self) -> list[UserRecord]:
+        with self._lock:
+            return list(self._map.values())
+
+    def set_user_record(
+        self,
+        record: UserRecord,
+        persist: bool = True,
+        reset_cache: bool = True,
+    ) -> bool:
+        changed = False
+        with self._lock:
+            user_id = int(record.user_id)
+            current = self._map.get(user_id)
+            if current is None or current.to_dict() != record.to_dict():
                 self._map[user_id] = record
+                if persist:
+                    self._persist_locked()
+                changed = True
 
-        return record
+        if changed and reset_cache:
+            reset_drawable_cache(self._jvm_plugin)
+
+        return changed
+
+    def remove_user_record(
+        self,
+        user_id: int,
+        persist: bool = True,
+        reset_cache: bool = True,
+    ) -> bool:
+        changed = False
+        with self._lock:
+            if self._map.pop(int(user_id), None) is not None:
+                if persist:
+                    self._persist_locked()
+                changed = True
+
+        if changed and reset_cache:
+            reset_drawable_cache(self._jvm_plugin)
+
+        return changed
+
+
+class StreaksController:
+    def __init__(
+        self,
+        users_db: UsersDatabase,
+        logger: Optional[Callable[[str], None]] = None,
+    ):
+        self._users_db = users_db
+        self._logger = logger
+
+    def _log(self, message: str):
+        if self._logger is not None:
+            self._logger(message)
+        else:
+            log(message)
+
+    def _copy_record(self, record: UserRecord) -> Optional[UserRecord]:
+        return UserRecord.from_dict(record.to_dict())
 
     def on_dialog_event(
         self, peer_id: int, sender_type: SenderType, event_day: Optional[int] = None
@@ -1155,47 +1221,21 @@ class UsersDatabase:
             if event_day is None
             else TimeUtils.strip_timestamp(event_day)
         )
+        current = self._users_db.get_user(peer_id, include_authorized=True)
         changed = False
-        with self._lock:
-            record = self._map.get(peer_id)
+
+        if current is None:
+            record = UserRecord.new(peer_id, sender_type, day)
+            changed = True
+        else:
+            record = UserRecord.from_dict(current.to_dict())
             if record is None:
                 record = UserRecord.new(peer_id, sender_type, day)
-                self._map[peer_id] = record
                 changed = True
 
-            changed = record.update_from(sender_type, day) or changed
-            if changed:
-                self._persist_locked()
-
+        changed = record.update_from(sender_type, day) or changed
         if changed:
-            reset_drawable_cache(self._jvm_plugin)
-
-    def get_user(self, user_id: int) -> Optional[UserRecord]:
-        if user_id <= 0:
-            return None
-
-        if user_id in get_authorized_user_ids():
-            return None
-
-        with self._lock:
-            return self._map.get(user_id)
-
-    def list_users(self) -> list[UserRecord]:
-        with self._lock:
-            return list(self._map.values())
-
-    def set_user_record(self, record: UserRecord):
-        changed = False
-        with self._lock:
-            user_id = int(record.user_id)
-            current = self._map.get(user_id)
-            if current is None or current.to_dict() != record.to_dict():
-                self._map[user_id] = record
-                self._persist_locked()
-                changed = True
-
-        if changed:
-            reset_drawable_cache(self._jvm_plugin)
+            self._users_db.set_user_record(record)
 
     def _build_recent_record(
         self,
@@ -1219,38 +1259,7 @@ class UsersDatabase:
             first_day_check = False
             return was_chat_active(peer, day_offset, fail_on_error=fail_on_error)
 
-        if include_today:
-            day_offset = 0
-            is_active = check_day(day_offset)
-            if on_day_progress is not None:
-                on_day_progress(day_offset, is_active, include_today)
-
-            if not is_active:
-                return None
-            streak_days = 1
-
-            while True:
-                day_offset = -streak_days
-                is_active = check_day(day_offset)
-                if on_day_progress is not None:
-                    on_day_progress(day_offset, is_active, include_today)
-
-                if not is_active:
-                    break
-                streak_days += 1
-
-            today = TimeUtils.get_stripped_timestamp()
-            started_at = today - ((streak_days - 1) * SECONDS_IN_DAY)
-
-            return UserRecord(
-                user_id=user_id,
-                started_at=started_at,
-                freezes_at=today + SECONDS_IN_DAY,
-                last_sended_at=today,
-                last_received_at=today,
-            )
-
-        day_offset = -1
+        day_offset = 0 if include_today else -1
         is_active = check_day(day_offset)
         if on_day_progress is not None:
             on_day_progress(day_offset, is_active, include_today)
@@ -1261,7 +1270,7 @@ class UsersDatabase:
         streak_days = 1
 
         while True:
-            day_offset = -(streak_days + 1)
+            day_offset = -streak_days if include_today else -(streak_days + 1)
             is_active = check_day(day_offset)
             if on_day_progress is not None:
                 on_day_progress(day_offset, is_active, include_today)
@@ -1271,15 +1280,20 @@ class UsersDatabase:
             streak_days += 1
 
         today = TimeUtils.get_stripped_timestamp()
-        yesterday = today - SECONDS_IN_DAY
-        started_at = today - (streak_days * SECONDS_IN_DAY)
+        started_at = today - (
+            (streak_days - 1) * SECONDS_IN_DAY
+            if include_today
+            else streak_days * SECONDS_IN_DAY
+        )
+        active_day = today if include_today else today - SECONDS_IN_DAY
+        freeze_day = today + SECONDS_IN_DAY if include_today else today
 
         return UserRecord(
             user_id=user_id,
             started_at=started_at,
-            freezes_at=today,
-            last_sended_at=yesterday,
-            last_received_at=yesterday,
+            freezes_at=freeze_day,
+            last_sended_at=active_day,
+            last_received_at=active_day,
         )
 
     def _build_recent_record_any(
@@ -1315,17 +1329,14 @@ class UsersDatabase:
         )
 
     def reconcile_on_plugin_load(self) -> tuple[int, int, int]:
-        with self._lock:
-            user_ids = list(self._map.keys())
-
+        user_ids = self._users_db.list_user_ids()
         checked = 0
         updated = 0
         removed = 0
+        changed = False
 
         for user_id in user_ids:
-            with self._lock:
-                record = self._map.get(user_id)
-
+            record = self._users_db.get_user(user_id, include_authorized=True)
             if record is None:
                 continue
 
@@ -1342,38 +1353,42 @@ class UsersDatabase:
                 self._log(f"reconcile failed for {user_id}: {e}")
                 continue
 
-            if death_date is None:
-                with self._lock:
-                    current = self._map.get(user_id)
-                    if current is None:
-                        continue
-                    current.update_freeze_date()
-                updated += 1
-                continue
+            if death_date in (None, 0):
+                updated_record = self._copy_record(record)
+                if updated_record is None:
+                    continue
 
-            if death_date == 0:
-                with self._lock:
-                    current = self._map.get(user_id)
-                    if current is None:
-                        continue
-                    current.freezes_at = TimeUtils.get_stripped_timestamp()
-                updated += 1
+                if death_date is None:
+                    updated_record.update_freeze_date()
+                else:
+                    updated_record.freezes_at = TimeUtils.get_stripped_timestamp()
+
+                if self._users_db.set_user_record(
+                    updated_record, persist=False, reset_cache=False
+                ):
+                    updated += 1
+                    changed = True
                 continue
 
             rebuilt = self._build_recent_record(user_id, include_today=True)
             if rebuilt is None:
                 rebuilt = self._build_recent_record(user_id, include_today=False)
 
-            with self._lock:
-                if rebuilt is not None:
-                    self._map[user_id] = rebuilt
+            if rebuilt is not None:
+                if self._users_db.set_user_record(
+                    rebuilt, persist=False, reset_cache=False
+                ):
                     updated += 1
-                else:
-                    if self._map.pop(user_id, None) is not None:
-                        removed += 1
+                    changed = True
+            else:
+                if self._users_db.remove_user_record(
+                    user_id, persist=False, reset_cache=False
+                ):
+                    removed += 1
+                    changed = True
 
-        if updated > 0 or removed > 0:
-            self.save()
+        if changed:
+            self._users_db.save()
 
         return checked, updated, removed
 
@@ -1428,31 +1443,34 @@ class UsersDatabase:
                     on_progress(checked, total, updated, removed, unchanged)
                 continue
 
-            with self._lock:
-                current = self._map.get(user_id)
-
-                if rebuilt is None:
-                    if self._map.pop(user_id, None) is not None:
-                        removed += 1
-                        changed = True
-                    else:
-                        unchanged += 1
-                    if on_progress is not None:
-                        on_progress(checked, total, updated, removed, unchanged)
-                    continue
-
-                if current is None or current.to_dict() != rebuilt.to_dict():
-                    self._map[user_id] = rebuilt
-                    updated += 1
+            current = self._users_db.get_user(user_id, include_authorized=True)
+            if rebuilt is None:
+                if self._users_db.remove_user_record(
+                    user_id, persist=False, reset_cache=False
+                ):
+                    removed += 1
                     changed = True
                 else:
                     unchanged += 1
+
+                if on_progress is not None:
+                    on_progress(checked, total, updated, removed, unchanged)
+                continue
+
+            if current is None or current.to_dict() != rebuilt.to_dict():
+                self._users_db.set_user_record(
+                    rebuilt, persist=False, reset_cache=False
+                )
+                updated += 1
+                changed = True
+            else:
+                unchanged += 1
 
             if on_progress is not None:
                 on_progress(checked, total, updated, removed, unchanged)
 
         if changed:
-            self.save()
+            self._users_db.save()
 
         return checked, updated, removed, unchanged
 
@@ -1920,6 +1938,36 @@ class TgStreaksPlugin(BasePlugin):
             "level_id": level_id,
         }
 
+    def _enqueue_streak_ended_popup(self, peer_id: int, days: int, name: Optional[str] = None):
+        days = int(days)
+        if days < 3:
+            return
+
+        if name is None:
+            name = self._resolve_peer_name(peer_id)
+
+        self._enqueue_streak_popup_for_open_chat(
+            int(peer_id),
+            f"die:{peer_id}:{days}",
+            self._t("popup_streak_ended_title"),
+            self._t("popup_streak_ended_subtitle", name=name, days=days),
+            Color.rgb(255, 87, 87),
+            emoji_document_id=int(StreakLevels.COLD.value.document_id),
+        )
+
+    def _force_check_day_labels(self, include_today: bool, is_active: bool) -> tuple[str, str]:
+        mode = (
+            self._t("force_check_day_mode_today")
+            if include_today
+            else self._t("force_check_day_mode_yesterday")
+        )
+        state = (
+            self._t("force_check_day_state_active")
+            if is_active
+            else self._t("force_check_day_state_stop")
+        )
+        return mode, state
+
     def _maybe_notify_streak_transition(
         self,
         peer_id: int,
@@ -1939,18 +1987,8 @@ class TgStreaksPlugin(BasePlugin):
                 and not bool(before["dead"])
                 and int(before["length"]) >= 3
             ):
-                key = f"die:{peer_id}:{before['length']}"
-                self._enqueue_streak_popup_for_open_chat(
-                    int(peer_id),
-                    key,
-                    self._t("popup_streak_ended_title"),
-                    self._t(
-                        "popup_streak_ended_subtitle",
-                        name=name,
-                        days=int(before["length"]),
-                    ),
-                    Color.rgb(255, 87, 87),
-                    emoji_document_id=int(StreakLevels.COLD.value.document_id),
+                self._enqueue_streak_ended_popup(
+                    int(peer_id), int(before["length"]), name=name
                 )
             return
 
@@ -1991,7 +2029,7 @@ class TgStreaksPlugin(BasePlugin):
         self, peer_id: int, sender_type: SenderType, event_day: Optional[int] = None
     ):
         before = self._record_state(self.users_db.get_user(peer_id))
-        self.users_db.on_dialog_event(peer_id, sender_type, event_day)
+        self.streaks.on_dialog_event(peer_id, sender_type, event_day)
         after = self._record_state(self.users_db.get_user(peer_id))
         self._maybe_notify_streak_transition(peer_id, before, after)
 
@@ -2023,18 +2061,9 @@ class TgStreaksPlugin(BasePlugin):
             was_dead = bool(self._streak_dead_state.get(user_id, is_dead_now))
 
             if not was_dead and is_dead_now:
-                length = int(record.get_length())
-                if length >= 3:
-                    key = f"die:{user_id}:{length}"
-                    name = self._resolve_peer_name(user_id)
-                    self._enqueue_streak_popup_for_open_chat(
-                        int(user_id),
-                        key,
-                        self._t("popup_streak_ended_title"),
-                        self._t("popup_streak_ended_subtitle", name=name, days=length),
-                        Color.rgb(255, 87, 87),
-                        emoji_document_id=int(StreakLevels.COLD.value.document_id),
-                    )
+                self._enqueue_streak_ended_popup(
+                    user_id, int(record.get_length())
+                )
 
             self._streak_dead_state[user_id] = is_dead_now
 
@@ -2430,13 +2459,8 @@ class TgStreaksPlugin(BasePlugin):
             self._show_info(self._t("info_private_user_only"))
             return
 
-        with self._force_check_lock:
-            if self._force_check_running:
-                self._show_info(self._t("info_force_check_already_running"))
-                return
-            self._force_check_running = True
-
-        self._show_info(self._t("info_force_check_started_chat"))
+        if not self._try_start_force_check("info_force_check_started_chat"):
+            return
 
         def worker():
             try:
@@ -2458,16 +2482,7 @@ class TgStreaksPlugin(BasePlugin):
                         return
 
                     day_progress_state["last_reported"] = day_checked
-                    mode = (
-                        self._t("force_check_day_mode_today")
-                        if include_today
-                        else self._t("force_check_day_mode_yesterday")
-                    )
-                    state = (
-                        self._t("force_check_day_state_active")
-                        if is_active
-                        else self._t("force_check_day_state_stop")
-                    )
+                    mode, state = self._force_check_day_labels(include_today, is_active)
                     message = self._t(
                         "force_check_day_progress_chat",
                         days_checked=day_checked,
@@ -2479,7 +2494,7 @@ class TgStreaksPlugin(BasePlugin):
                     self._show_info(message)
 
                 checked, updated, removed, unchanged = (
-                    self.users_db.force_check_user_ids(
+                    self.streaks.force_check_user_ids(
                         [dialog_id],
                         on_day_progress=on_day_progress,
                     )
@@ -2498,8 +2513,7 @@ class TgStreaksPlugin(BasePlugin):
                 self.log(f"Force check failed for chat {dialog_id}: {e}")
                 self._show_error(self._t("err_force_check_failed_logs"))
             finally:
-                with self._force_check_lock:
-                    self._force_check_running = False
+                self._finish_force_check()
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2770,13 +2784,8 @@ class TgStreaksPlugin(BasePlugin):
             self._show_error(self._t("err_users_db_not_ready"))
             return
 
-        with self._force_check_lock:
-            if self._force_check_running:
-                self._show_info(self._t("info_force_check_already_running"))
-                return
-            self._force_check_running = True
-
-        self._show_info(self._t("info_force_check_started_all"))
+        if not self._try_start_force_check("info_force_check_started_all"):
+            return
 
         def worker():
             try:
@@ -2850,16 +2859,7 @@ class TgStreaksPlugin(BasePlugin):
                         return
 
                     day_progress_state[progress_user_id] = int(day_checked)
-                    mode = (
-                        self._t("force_check_day_mode_today")
-                        if include_today
-                        else self._t("force_check_day_mode_yesterday")
-                    )
-                    state = (
-                        self._t("force_check_day_state_active")
-                        if is_active
-                        else self._t("force_check_day_state_stop")
-                    )
+                    mode, state = self._force_check_day_labels(include_today, is_active)
                     checked_chats = int(progress_state.get("checked_chats", 0))
                     total_chats = int(progress_state.get("total", total))
                     peer_name = peer_name_cache.get(progress_user_id)
@@ -2882,7 +2882,7 @@ class TgStreaksPlugin(BasePlugin):
                     self._show_info(day_message)
 
                 checked, updated, removed, unchanged = (
-                    self.users_db.force_check_user_ids(
+                    self.streaks.force_check_user_ids(
                         user_ids,
                         on_progress=on_progress,
                         on_day_progress=on_day_progress,
@@ -2902,10 +2902,23 @@ class TgStreaksPlugin(BasePlugin):
                 self.log(f"Force check failed: {e}")
                 self._show_error(self._t("err_force_check_failed_logs"))
             finally:
-                with self._force_check_lock:
-                    self._force_check_running = False
+                self._finish_force_check()
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _try_start_force_check(self, started_message_key: str) -> bool:
+        with self._force_check_lock:
+            if self._force_check_running:
+                self._show_info(self._t("info_force_check_already_running"))
+                return False
+            self._force_check_running = True
+
+        self._show_info(self._t(started_message_key))
+        return True
+
+    def _finish_force_check(self):
+        with self._force_check_lock:
+            self._force_check_running = False
 
     def _get_tl_name(self, value: Any) -> str:
         try:
@@ -3216,9 +3229,10 @@ class TgStreaksPlugin(BasePlugin):
 
         try:
             self.users_db = UsersDatabase(jvm_plugin=self.jvm_plugin, logger=self.log)
+            self.streaks = StreaksController(users_db=self.users_db, logger=self.log)
             self._self_user_ids = {}
 
-            checked, updated, removed = self.users_db.reconcile_on_plugin_load()
+            checked, updated, removed = self.streaks.reconcile_on_plugin_load()
             if checked > 0:
                 self.log(
                     f"Streak startup check done: checked={checked}, updated={updated}, removed={removed}"
