@@ -2087,7 +2087,15 @@ class TgStreaksPlugin(BasePlugin):
         if before is None:
             return
 
-        if int(before["level_id"]) != int(after["level_id"]) and after_length >= 3:
+        upgraded = (
+            after_length == 3
+            or after_length == 10
+            or after_length == 30
+            or after_length == 100
+            or after_length == 200
+        )
+
+        if int(before["level_id"]) != int(after["level_id"]) and upgraded:
             key = f"upgrade:{peer_id}:{after['level_id']}"
             upgraded_level_color = self._resolve_level_text_color(
                 int(after["level_id"])
