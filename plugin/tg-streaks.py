@@ -809,8 +809,10 @@ class StreakLevels(Enum):
 
         if length < 10:
             return StreakLevels.DAYS_3.value
-        elif length < 100:
+        elif length < 30:
             return StreakLevels.DAYS_10.value
+        elif length < 100:
+            return StreakLevels.DAYS_30.value
         elif length < 200:
             return StreakLevels.DAYS_100.value
 
@@ -2757,6 +2759,8 @@ class TgStreaksPlugin(BasePlugin):
 
         if current_length < 10:
             target_length = 10
+        elif current_length < 30:
+            target_length = 30
         elif current_length < 100:
             target_length = 100
         elif current_length < 200:
