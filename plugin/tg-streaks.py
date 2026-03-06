@@ -796,12 +796,12 @@ class StreakLevel:
 
 
 class StreakLevels(Enum):
-    COLD = StreakLevel(5210842644938267782, (175, 175, 175))
-    DAYS_3 = StreakLevel(5210966086593323416, (255, 154, 0))
-    DAYS_10 = StreakLevel(5213167944527283652, (255, 100, 0))
-    DAYS_30 = StreakLevel(5213256365019011190, (255, 61, 0))
-    DAYS_100 = StreakLevel(5213345554309877801, (255, 0, 200))
-    DAYS_200 = StreakLevel(5213375623375916034, (176, 0, 255))
+    COLD = StreakLevel(5285071881815235305, (175, 175, 175))
+    DAYS_3 = StreakLevel(5285079178964672780, (255, 154, 0))
+    DAYS_10 = StreakLevel(5285274844789777412, (255, 100, 0))
+    DAYS_30 = StreakLevel(5285076623459129616, (255, 61, 0))
+    DAYS_100 = StreakLevel(5285003347022093599, (255, 0, 200))
+    DAYS_200 = StreakLevel(5285514817497504375, (176, 0, 255))
 
     def pick_by_length(length: int, cold: bool = False) -> StreakLevel:
         if cold:
