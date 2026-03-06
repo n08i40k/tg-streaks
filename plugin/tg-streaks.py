@@ -62,11 +62,12 @@ from org.telegram.messenger import (
     DialogObject,
     LocaleController,
     MessagesController,
+    NotificationCenter,
     UserConfig,
     UserObject,
 )
 from org.telegram.tgnet import TLRPC, RequestDelegate, TLObject
-from org.telegram.ui import ChatActivity
+from org.telegram.ui import ChatActivity, LaunchActivity
 from org.telegram.ui.Components import AnimatedEmojiDrawable
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
@@ -3167,6 +3168,72 @@ class TgStreaksPlugin(BasePlugin):
 
         user.emoji_status = TLRPC.TL_emojiStatusEmpty()
         user.premium = True
+        self._post_user_emoji_status_updated(user)
+        self._post_emoji_status_interface_update()
+
+    def _post_user_emoji_status_updated(self, user: Optional[TLRPC.User]):
+        if user is None:
+            return
+
+        def post():
+            try:
+                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
+                    cfg = UserConfig.getInstance(i)
+                    if not bool(cfg.isClientActivated()):
+                        continue
+                    NotificationCenter.getInstance(i).postNotificationName(
+                        NotificationCenter.userEmojiStatusUpdated, user
+                    )
+            except Exception as e:
+                self.log(f"Failed to post userEmojiStatusUpdated: {e}")
+
+        run_on_ui_thread(post)
+
+    def _post_emoji_status_interface_update(self):
+        def post():
+            try:
+                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
+                    cfg = UserConfig.getInstance(i)
+                    if not bool(cfg.isClientActivated()):
+                        continue
+                    NotificationCenter.getInstance(i).postNotificationName(
+                        NotificationCenter.updateInterfaces,
+                        Integer(MessagesController.UPDATE_MASK_EMOJI_STATUS),
+                    )
+            except Exception as e:
+                self.log(f"Failed to post emoji status updateInterfaces: {e}")
+
+        run_on_ui_thread(post)
+
+    def _post_emoji_loaded_notification(self):
+        def post():
+            try:
+                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
+                    cfg = UserConfig.getInstance(i)
+                    if not bool(cfg.isClientActivated()):
+                        continue
+                    NotificationCenter.getInstance(i).postNotificationName(
+                        NotificationCenter.emojiLoaded
+                    )
+            except Exception as e:
+                self.log(f"Failed to post emojiLoaded: {e}")
+
+        run_on_ui_thread(post)
+
+    def _post_dialogs_need_reload(self):
+        def post():
+            try:
+                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
+                    cfg = UserConfig.getInstance(i)
+                    if not bool(cfg.isClientActivated()):
+                        continue
+                    NotificationCenter.getInstance(i).postNotificationName(
+                        NotificationCenter.dialogsNeedReload, Boolean(True)
+                    )
+            except Exception as e:
+                self.log(f"Failed to post dialogsNeedReload: {e}")
+
+        run_on_ui_thread(post)
 
     def hook_user_emoji_status_assign(self, patch_existing: bool):
         users = cast(
@@ -3227,6 +3294,242 @@ class TgStreaksPlugin(BasePlugin):
 
         for i in range(users.size()):
             patch_user(users_iter.next())
+
+    def _rerender_dialog_cells(self):
+        def _invoke_title_action_for_all_dialogs_activities() -> int:
+            def invalidate_dialogs_view_pages(fragment: Any) -> int:
+                updated_pages = 0
+
+                def invalidate_all_recycler_children(list_view: Any):
+                    if list_view is None:
+                        return
+
+                    try:
+                        child_count = int(list_view.getChildCount())
+                    except Exception:
+                        child_count = 0
+
+                    for child_index in range(child_count):
+                        try:
+                            child = list_view.getChildAt(child_index)
+                            if child is not None:
+                                child.invalidate()
+                        except Exception:
+                            pass
+
+                    recycler_groups = [
+                        ("getCachedChildCount", "getCachedChildAt"),
+                        ("getHiddenChildCount", "getHiddenChildAt"),
+                        ("getAttachedScrapChildCount", "getAttachedScrapChildAt"),
+                    ]
+
+                    for count_method_name, get_method_name in recycler_groups:
+                        try:
+                            count_method = getattr(list_view, count_method_name)
+                            get_method = getattr(list_view, get_method_name)
+                            extra_count = int(count_method())
+                        except Exception:
+                            continue
+
+                        for child_index in range(extra_count):
+                            try:
+                                child = get_method(child_index)
+                                if child is not None:
+                                    child.invalidate()
+                            except Exception:
+                                pass
+
+                try:
+                    pages = get_private_field(fragment, "viewPages")
+                except Exception:
+                    pages = None
+
+                if pages is None:
+                    return updated_pages
+
+                try:
+                    pages_len = int(len(pages))
+                except Exception:
+                    pages_len = 0
+
+                for i in range(pages_len):
+                    try:
+                        page = pages[i]
+                    except Exception:
+                        continue
+
+                    if page is None:
+                        continue
+
+                    try:
+                        list_view = get_private_field(page, "listView")
+                    except Exception:
+                        list_view = None
+
+                    if list_view is not None:
+                        try:
+                            list_view.stopScroll()
+                        except Exception:
+                            pass
+
+                        try:
+                            list_view.setItemViewCacheSize(0)
+                        except Exception:
+                            pass
+
+                        try:
+                            list_view.invalidateViews()
+                        except Exception:
+                            pass
+
+                        try:
+                            invalidate_all_recycler_children(list_view)
+                        except Exception:
+                            pass
+
+                        try:
+                            pool = list_view.getRecycledViewPool()
+                            if pool is not None:
+                                pool.clear()
+                        except Exception:
+                            pass
+
+                        try:
+                            adapter_to_reattach = list_view.getAdapter()
+                        except Exception:
+                            adapter_to_reattach = None
+
+                        try:
+                            if adapter_to_reattach is not None:
+                                list_view.setAdapter(None)
+                                list_view.setAdapter(adapter_to_reattach)
+                        except Exception:
+                            pass
+
+                        try:
+                            list_view.setItemViewCacheSize(2)
+                        except Exception:
+                            pass
+
+                        try:
+                            list_view.invalidate()
+                            list_view.requestLayout()
+                        except Exception:
+                            pass
+
+                    try:
+                        adapter = get_private_field(page, "dialogsAdapter")
+                    except Exception:
+                        adapter = None
+
+                    if adapter is not None:
+                        try:
+                            adapter.notifyDataSetChanged()
+                        except Exception:
+                            pass
+
+                    updated_pages += 1
+
+                return updated_pages
+
+            launch = LaunchActivity.instance
+
+            if launch is None:
+                return 0
+
+            applied = 0
+            seen: set[int] = set()
+
+            def apply_to_layout(field_name: str):
+                nonlocal applied
+
+                try:
+                    layout = get_private_field(launch, field_name)
+                    if layout is None:
+                        return
+                    stack = layout.getFragmentStack()
+                    if stack is None:
+                        return
+                except Exception:
+                    return
+
+                try:
+                    size = int(stack.size())
+                except Exception:
+                    size = 0
+
+                for i in range(size):
+                    try:
+                        fragment = stack.get(i)
+                    except Exception:
+                        continue
+
+                    if fragment is None:
+                        continue
+
+                    try:
+                        class_name = cast("str", fragment.getClass().getName())
+                    except Exception:
+                        class_name = ""
+
+                    if class_name != "org.telegram.ui.DialogsActivity":
+                        continue
+
+                    try:
+                        fragment_hash = int(System.identityHashCode(fragment))
+                    except Exception:
+                        fragment_hash = id(fragment)
+
+                    if fragment_hash in seen:
+                        continue
+                    seen.add(fragment_hash)
+
+                    try:
+                        action_bar = fragment.getActionBar()
+                    except Exception:
+                        action_bar = None
+
+                    try:
+                        if action_bar is not None and not bool(
+                            action_bar.isSearchFieldVisible()
+                        ):
+                            runnable = get_private_field(
+                                action_bar, "titleActionRunnable"
+                            )
+                            if runnable is not None:
+                                runnable.run()
+                                applied += 1
+                    except Exception:
+                        pass
+
+                    try:
+                        invalidate_dialogs_view_pages(fragment)
+                    except Exception:
+                        pass
+
+            apply_to_layout("actionBarLayout")
+            apply_to_layout("rightActionBarLayout")
+            apply_to_layout("layersActionBarLayout")
+            return applied
+
+        def post_reload():
+            try:
+                self._post_emoji_loaded_notification()
+                self._post_dialogs_need_reload()
+                self._post_emoji_status_interface_update()
+                try:
+                    AnimatedEmojiDrawable.updateAll()
+                except Exception:
+                    pass
+                applied = _invoke_title_action_for_all_dialogs_activities()
+                self.log(
+                    f"Posted emoji status update via NotificationCenter; executed ActionBar title action for DialogsActivity count={applied}"
+                )
+            except Exception as e:
+                self.log(f"Failed to post emoji status NotificationCenter update: {e}")
+
+        # run_on_ui_thread(post_reload)
+        threading.Timer(0.5, lambda: run_on_ui_thread(post_reload)).start()
 
     def _load_jvm_plugin(self):
         self.jvm_plugin = JvmPluginBridge(self)
@@ -3324,6 +3627,7 @@ class TgStreaksPlugin(BasePlugin):
                 )
 
             self.hook_user_emoji_status_assign(True)
+            self._rerender_dialog_cells()
             self._register_chat_action_menu_items()
             self._sync_dead_states_snapshot()
             self._start_dead_state_monitor()
