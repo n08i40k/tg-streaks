@@ -2108,6 +2108,11 @@ class TgStreaksPlugin(BasePlugin):
                 self._enqueue_streak_ended_popup(
                     int(peer_id), int(before["length"]), name=name
                 )
+                self._reload_user_in_messages_cache(int(peer_id))
+                try:
+                    self._rerender_dialog_cells()
+                except Exception as e:
+                    self.log(f"Failed to rerender dialogs after streak death: {e}")
             return
 
         was_started = after_length >= 3 and (
@@ -2124,6 +2129,10 @@ class TgStreaksPlugin(BasePlugin):
                 StreakLevels.DAYS_3.value.text_color_int,
                 emoji_document_id=int(after["level_id"]),
             )
+            try:
+                self._rerender_dialog_cells()
+            except Exception as e:
+                self.log(f"Failed to rerender dialogs after streak start: {e}")
             return
 
         if before is None:
@@ -2241,6 +2250,24 @@ class TgStreaksPlugin(BasePlugin):
         self._post_emoji_loaded_notification()
         self._rerender_dialog_cells()
 
+    def _reload_user_in_messages_cache(self, peer_id: int):
+        try:
+            controller = get_messages_controller()
+            controller.reloadUser(int(peer_id))
+        except Exception as e:
+            self.log(f"Failed to reload user {peer_id} in MessagesController: {e}")
+            return
+
+        def after_reload():
+            try:
+                self._post_emoji_loaded_notification()
+                self._post_emoji_status_interface_update()
+                self._rerender_dialog_cells()
+            except Exception as e:
+                self.log(f"Post-reload refresh failed for user {peer_id}: {e}")
+
+        threading.Timer(0.8, lambda: run_on_ui_thread(after_reload)).start()
+
     def _sync_dead_states_snapshot(self):
         self._streak_dead_state = {}
         try:
@@ -2270,6 +2297,11 @@ class TgStreaksPlugin(BasePlugin):
 
             if not was_dead and is_dead_now:
                 self._enqueue_streak_ended_popup(user_id, int(record.get_length()))
+                self._reload_user_in_messages_cache(int(user_id))
+                try:
+                    self._rerender_dialog_cells()
+                except Exception as e:
+                    self.log(f"Failed to rerender dialogs on dead-state monitor: {e}")
 
             self._streak_dead_state[user_id] = is_dead_now
 
