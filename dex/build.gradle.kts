@@ -95,6 +95,9 @@ val telegramCompileClasspathJar by tasks.registering(Jar::class) {
         exclude("java/**")
         exclude("javax/**")
         exclude("sun/**")
+        // Avoid collision with R8's own internal RecordTag aliasing.
+        exclude("com/android/tools/r8/**")
+        exclude("j$/com/android/tools/r8/**")
     }
 }
 
@@ -124,7 +127,7 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
 
             val compileJar = file(
                 "$buildDirPath/intermediates/compile_library_classes_jar/$variant/" +
-                    "bundleLibCompileToJar$variantTitle/classes.jar"
+                        "bundleLibCompileToJar$variantTitle/classes.jar"
             )
             val classInputs = if (compileJar.exists()) {
                 listOf(compileJar.absolutePath)
@@ -147,14 +150,15 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
 
             val runtimeJars = resolveJarPaths("${variant}RuntimeClasspath")
             val compileJars = resolveJarPaths("${variant}CompileClasspath")
-            val compileTaskJars = (tasks.findByName("compile${variantTitle}Kotlin") as? KotlinCompile)
-                ?.libraries
-                ?.files
-                .orEmpty()
-                .asSequence()
-                .filter { it.isJarFile() }
-                .map { it.absolutePath }
-                .toList()
+            val compileTaskJars =
+                (tasks.findByName("compile${variantTitle}Kotlin") as? KotlinCompile)
+                    ?.libraries
+                    ?.files
+                    .orEmpty()
+                    .asSequence()
+                    .filter { it.isJarFile() }
+                    .map { it.absolutePath }
+                    .toList()
 
             val dexInputs = (classInputs + runtimeJars).distinct()
             if (dexInputs.isEmpty()) {
@@ -164,7 +168,9 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
             }
 
             val classpathJars = (compileTaskJars + compileJars)
-                .filterNot { it in dexInputs || it in androidLibs }
+                .filterNot {
+                    it.toString().contains("Aliuhook") || it in dexInputs || it in androidLibs
+                }
                 .distinct()
 
             val outputDir = "$buildDirPath/outputs/dex/$variant"
@@ -178,11 +184,12 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
 
             val buildToolsDir = "${android.sdkDirectory}/build-tools/$BUILD_TOOLS_VERSION"
             val r8Jar = "$buildToolsDir/lib/d8.jar"
-            val javaBin = if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
-                "java.exe"
-            } else {
-                "java"
-            }
+            val javaBin =
+                if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+                    "java.exe"
+                } else {
+                    "java"
+                }
 
             val out = try {
                 providers.exec {
@@ -202,12 +209,15 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
             } catch (e: Exception) {
                 logger.error(
                     "Failed to execute r8 for variant '$variant'. " +
-                        "r8Jar='$r8Jar', outputDir='$outputDir', " +
-                        "classInputs=${classInputs.size}, runtimeJars=${runtimeJars.size}, " +
-                        "dexInputs=${dexInputs.size}.",
+                            "r8Jar='$r8Jar', outputDir='$outputDir', " +
+                            "classInputs=${classInputs.size}, runtimeJars=${runtimeJars.size}, " +
+                            "dexInputs=${dexInputs.size}.",
                     e
                 )
-                throw GradleException("r8 execution failed for variant '$variant'. See logs above.", e)
+                throw GradleException(
+                    "r8 execution failed for variant '$variant'. See logs above.",
+                    e
+                )
             }
 
             val standardOutput = out.standardOutput.asText.get()
@@ -221,7 +231,7 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
             } else {
                 logger.error(
                     "r8 exited with code $exitCode for variant '$variant'. " +
-                        "r8Jar='$r8Jar', outputDir='$outputDir'."
+                            "r8Jar='$r8Jar', outputDir='$outputDir'."
                 )
                 throw GradleException("r8 failed for variant '$variant' with exit code $exitCode.")
             }
