@@ -2157,8 +2157,90 @@ class TgStreaksPlugin(BasePlugin):
     ):
         before = self._record_state(self.users_db.get_user(peer_id))
         self.streaks.on_dialog_event(peer_id, sender_type, event_day)
+        self._repair_record_from_cached_today_activity(peer_id, event_day)
         after = self._record_state(self.users_db.get_user(peer_id))
         self._maybe_notify_streak_transition(peer_id, before, after)
+
+        try:
+            if self._should_refresh_streak_emoji(before, after):
+                self._refresh_streak_emoji_for_peer(int(peer_id))
+        except Exception as e:
+            self.log(f"Failed to refresh streak emoji for peer {peer_id}: {e}")
+
+    def _should_refresh_streak_emoji(
+        self,
+        before: Optional[dict[str, int]],
+        after: Optional[dict[str, int]],
+    ) -> bool:
+        if before is None and after is None:
+            return False
+
+        before_has = (
+            before is not None
+            and not bool(before["dead"])
+            and int(before["length"]) >= 3
+        )
+        after_has = (
+            after is not None and not bool(after["dead"]) and int(after["length"]) >= 3
+        )
+
+        if before_has != after_has:
+            return True
+
+        if not after_has:
+            return False
+
+        if before is None or after is None:
+            return True
+
+        if int(before["length"]) != int(after["length"]):
+            return True
+
+        if int(before["level_id"]) != int(after["level_id"]):
+            return True
+
+        return False
+
+    def _refresh_streak_emoji_for_peer(self, peer_id: int):
+        user = None
+
+        try:
+            user = get_messages_controller().getUser(Long(int(peer_id)))
+        except Exception:
+            user = None
+
+        if user is None:
+            try:
+                users = cast(
+                    "ConcurrentHashMap[Long, TLRPC.User]",
+                    get_private_field(get_messages_controller(), "users"),
+                )
+                user = users.get(Long(int(peer_id)))
+            except Exception:
+                user = None
+
+        record = self.users_db.get_user(int(peer_id))
+        has_streak_emoji = (
+            record is not None
+            and not bool(record.should_die())
+            and int(record.get_length()) >= 3
+        )
+
+        if user is not None:
+            if has_streak_emoji:
+                self._patch_user_streak_emoji_status(user)
+            else:
+                try:
+                    user.emoji_status = None
+                except Exception:
+                    pass
+                self._post_user_emoji_status_updated(user)
+                self._post_emoji_status_interface_update()
+        else:
+            self._post_emoji_status_interface_update()
+
+        self._post_emoji_loaded_notification()
+        self._rerender_dialog_cells()
 
     def _sync_dead_states_snapshot(self):
         self._streak_dead_state = {}
