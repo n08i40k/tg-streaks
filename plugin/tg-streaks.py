@@ -77,7 +77,7 @@ __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Analog for TikTok streaks for Telegram"
 __author__ = "@n08i40k"
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 __icon__ = "exteraPlugins/0"
 __min_version__ = "12.2.10"
 
