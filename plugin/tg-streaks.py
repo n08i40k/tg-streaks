@@ -3077,13 +3077,21 @@ class TgStreaksPlugin(BasePlugin):
         if peer is None:
             return None
 
+        if isinstance(peer, int):
+            return int(peer) if int(peer) > 0 else None
+
         try:
-            # Outgoing send hook can pass plain peer id.
-            peer_id = int(peer)
-            if peer_id > 0:
-                return peer_id
+            class_name = cast("str", peer.getClass().getName())
         except Exception:
-            pass
+            class_name = ""
+
+        if class_name in ("java.lang.Integer", "java.lang.Long"):
+            try:
+                peer_id = int(peer)
+                if peer_id > 0:
+                    return peer_id
+            except Exception:
+                pass
 
         user_id = getattr(peer, "user_id", None)
 
@@ -3106,6 +3114,166 @@ class TgStreaksPlugin(BasePlugin):
             return None
 
         return user_id
+
+    def _query_cached_day_activity_flags(
+        self, dialog_id: int, day_start: int, day_end: int
+    ) -> Optional[tuple[bool, bool]]:
+        if int(dialog_id) <= 0:
+            return None
+
+        try:
+            storage = get_account_instance().getMessagesStorage()
+            db = storage.getDatabase()
+        except Exception:
+            return None
+
+        table_name = _resolve_day_check_messages_table_name(db)
+        if table_name is None:
+            return None
+
+        cursor = None
+
+        try:
+            cursor = db.queryFinalized(
+                String(
+                    f"SELECT "
+                    f"MAX(CASE WHEN out = 1 THEN 1 ELSE 0 END), "
+                    f"MAX(CASE WHEN out = 0 THEN 1 ELSE 0 END) "
+                    f"FROM {table_name} "
+                    f"WHERE uid = ? AND date >= ? AND date < ?"
+                ),
+                Integer(int(dialog_id)),
+                Integer(int(day_start)),
+                Integer(int(day_end)),
+            )
+
+            if cursor is None or not bool(cursor.next()):
+                return None
+
+            has_out = (0 if cursor.isNull(0) else int(cursor.intValue(0))) == 1
+            has_in = (0 if cursor.isNull(1) else int(cursor.intValue(1))) == 1
+
+            return (bool(has_out), bool(has_in))
+        except Exception:
+            return None
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.dispose()
+                except Exception:
+                    pass
+
+    def _repair_record_from_cached_today_activity(
+        self, peer_id: int, event_day: Optional[int] = None
+    ):
+        current = self.users_db.get_user(int(peer_id), include_authorized=True)
+        if current is None:
+            return
+
+        day = (
+            TimeUtils.get_stripped_timestamp()
+            if event_day is None
+            else TimeUtils.strip_timestamp(event_day)
+        )
+        day_end = int(day + SECONDS_IN_DAY)
+
+        flags = self._query_cached_day_activity_flags(int(peer_id), int(day), day_end)
+        if flags is None:
+            return
+
+        has_out, has_in = flags
+        if not has_out and not has_in:
+            return
+
+        updated = UserRecord.from_dict(current.to_dict())
+        if updated is None:
+            return
+
+        changed = False
+        if has_out:
+            changed = updated.update_from(SenderType.SELF, int(day)) or changed
+        if has_in:
+            changed = updated.update_from(SenderType.PEER, int(day)) or changed
+
+        if changed:
+            self.users_db.set_user_record(updated)
+
+    def _extract_private_peer_id_from_send_params(self, params: Any) -> Optional[int]:
+        candidates: list[Any] = []
+
+        direct_attrs = (
+            "peer",
+            "peer_id",
+            "dialogId",
+            "dialog_id",
+            "uid",
+            "user_id",
+        )
+
+        for attr_name in direct_attrs:
+            try:
+                value = getattr(params, attr_name, None)
+            except Exception:
+                value = None
+            if value is not None:
+                candidates.append(value)
+
+        nested_roots = ("messageObject", "message", "obj", "messageOwner")
+        for root_name in nested_roots:
+            try:
+                root = getattr(params, root_name, None)
+            except Exception:
+                root = None
+
+            if root is None:
+                continue
+
+            candidates.append(root)
+
+            for attr_name in ("peer", "peer_id", "dialogId", "dialog_id", "uid"):
+                try:
+                    value = getattr(root, attr_name, None)
+                except Exception:
+                    value = None
+                if value is not None:
+                    candidates.append(value)
+
+            try:
+                owner = getattr(root, "messageOwner", None)
+            except Exception:
+                owner = None
+
+            if owner is not None:
+                candidates.append(owner)
+                for attr_name in ("peer_id", "from_id", "dialog_id", "dialogId"):
+                    try:
+                        value = getattr(owner, attr_name, None)
+                    except Exception:
+                        value = None
+                    if value is not None:
+                        candidates.append(value)
+
+        for candidate in candidates:
+            peer_id = self._extract_private_peer_id(candidate)
+            if peer_id is not None and peer_id > 0:
+                return int(peer_id)
+
+        for candidate in candidates:
+            try:
+                dialog_id = int(candidate)
+            except Exception:
+                continue
+
+            if dialog_id <= 0:
+                continue
+
+            try:
+                if bool(DialogObject.isUserDialog(dialog_id)):
+                    return int(dialog_id)
+            except Exception:
+                pass
+
+        return None
 
     def _consume_message(self, account: int, message: Any):
         peer_id = self._extract_private_peer_id(getattr(message, "peer_id", None))
@@ -3709,7 +3877,7 @@ class TgStreaksPlugin(BasePlugin):
 
     def on_send_message_hook(self, account: int, params: Any) -> HookResult:
         try:
-            peer_id = self._extract_private_peer_id(getattr(params, "peer", None))
+            peer_id = self._extract_private_peer_id_from_send_params(params)
 
             if peer_id is None:
                 return HookResult()
