@@ -229,6 +229,46 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Your streak with {name} leveled up!",
         "ru": "Ваш стрик с {name} повысил уровень!",
     },
+    "dex_sheet_feature_how_title": {
+        "en": "How does this work?",
+        "ru": "Как это работает?",
+    },
+    "dex_sheet_feature_how_subtitle": {
+        "en": "After three days of communication in a row, you will have a streak that improves depending on its duration!",
+        "ru": "После трёх дней общения подряд у вас появится стрик, который улучшается в зависимости от длительности!",
+    },
+    "dex_sheet_feature_levels_title": {
+        "en": "What levels are there?",
+        "ru": "Какие уровни есть?",
+    },
+    "dex_sheet_feature_levels_subtitle": {
+        "en": "There are levels for 3, 10, 30, 100, and 200 consecutive days of communication. A pop-up will appear when your streak level improves.",
+        "ru": "Есть уровни за 3, 10, 30, 100 и 200 дней общения подряд. При повышении уровня стрика появится всплывающее окно.",
+    },
+    "dex_sheet_feature_keep_title": {
+        "en": "Don't forget about it ;)",
+        "ru": "Не забывайте про него ;)",
+    },
+    "dex_sheet_feature_keep_subtitle": {
+        "en": "If you don't manage to message each other within 24 hours, the streak will be terminated without the possibility of recovery.",
+        "ru": "Если вы не успеете написать друг другу в течение 24 часов, стрик завершится без возможности восстановления.",
+    },
+    "dex_sheet_feature_incorrect_title": {
+        "en": "Streak duration is incorrect?",
+        "ru": "Длительность стрика неверная?",
+    },
+    "dex_sheet_feature_incorrect_subtitle": {
+        "en": 'This can be fixed! Click the "Force check this chat" button to recalculate the streak length.',
+        "ru": 'Это можно исправить! Нажмите кнопку "Принудительно проверить этот чат", чтобы пересчитать длину стрика.',
+    },
+    "dex_sheet_title": {
+        "en": "You and {name} have been on a streak for {days} days now!",
+        "ru": "У Вас и {name} стрик уже более {days} дней!",
+    },
+    "dex_sheet_subtitle": {
+        "en": "Keep chatting and keep the streak going **:P**",
+        "ru": "Продолжайте общаться и не прерывайте стрик **:P**",
+    },
     "menu_force_check_chat_text": {
         "en": "Force check this chat",
         "ru": "Принудительно проверить этот чат",
@@ -3580,11 +3620,18 @@ class TgStreaksPlugin(BasePlugin):
 
                     return None
 
+            class Translator(dynamic_proxy(Function)):
+                def apply(self, t: String):
+                    if t is None:
+                        return ""
+                    return ref._t(str(t))
+
             self.jvm_plugin.klass.getDeclaredMethod(
                 String("inject"),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
-            ).invoke(None, Logger(), UserResolver())  # ty:ignore[no-matching-overload]
+                Function.getClass(),  # ty:ignore[unresolved-attribute]
+            ).invoke(None, Logger(), UserResolver(), Translator())  # ty:ignore[no-matching-overload]
             self.log("JVM plugin injected successfully")
         except Exception as e:
             self.log(f"Failed to inject JVM plugin: {e}")
