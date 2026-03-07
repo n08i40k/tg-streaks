@@ -138,9 +138,14 @@ class Plugin {
         log("Ejected!")
     }
 
+    private fun hookMethod(method: Member, hook: XC_MethodHook) {
+        hooks.add(XposedBridge.hookMethod(method, hook))
+    }
+
     @Suppress("LocalVariableName")
     private fun hookMethods() {
-        val DialogCell_constructor = XposedBridge.hookMethod(
+        // Чат в списке, нужно ещё увеличить bounds по x, иначе текста не будет
+        hookMethod(
             DialogCell::class.java.getConstructor(
                 DialogsActivity::class.java,
                 Context::class.java,
@@ -172,9 +177,8 @@ class Plugin {
             }
         )
 
-        hooks.add(DialogCell_constructor)
-
-        val DialogCell_buildLayout = XposedBridge.hookMethod(
+        // Конструктор чата в списке не имеет его в качестве аргумента, он задаётся после
+        hookMethod(
             DialogCell::class.java.getDeclaredMethod(
                 "buildLayout",
             ),
@@ -203,9 +207,8 @@ class Plugin {
             }
         )
 
-        hooks.add(DialogCell_buildLayout)
-
-        val DialogCell_onLayout = XposedBridge.hookMethod(
+        // Фикс отрисовки текста в местах где размер view ограничен по x
+        hookMethod(
             DialogCell::class.java.getDeclaredMethod(
                 "onLayout",
                 Boolean::class.java,
@@ -236,9 +239,8 @@ class Plugin {
             }
         )
 
-        hooks.add(DialogCell_onLayout)
-
-        val ChatMessageCell_setMessageObjectInternal = XposedBridge.hookMethod(
+        // Сообщение в группе
+        hookMethod(
             ChatMessageCell::class.java.getDeclaredMethod(
                 "setMessageObjectInternal",
                 MessageObject::class.java
@@ -270,9 +272,8 @@ class Plugin {
             }
         )
 
-        hooks.add(ChatMessageCell_setMessageObjectInternal)
-
-        val UserCell_update = XposedBridge.hookMethod(
+        // Пользователь в списке участников группы
+        hookMethod(
             UserCell::class.java.getDeclaredMethod(
                 "update",
                 Int::class.java
@@ -302,9 +303,8 @@ class Plugin {
             }
         )
 
-        hooks.add(UserCell_update)
-
-        val ProfileActivity_getEmojiStatusDrawable = XposedBridge.hookMethod(
+        // Профиль пользователя
+        hookMethod(
             ProfileActivity::class.java.getDeclaredMethod(
                 "getEmojiStatusDrawable",
                 TLRPC.EmojiStatus::class.java,
@@ -340,9 +340,8 @@ class Plugin {
             }
         )
 
-        hooks.add(ProfileActivity_getEmojiStatusDrawable)
-
-        val ChatAvatarContainer_setTitle = XposedBridge.hookMethod(
+        // Заголовок открытого лс с пользователем
+        hookMethod(
             ChatAvatarContainer::class.java
                 .getDeclaredMethods()
                 .filter { it.name == "setTitle" }
@@ -379,6 +378,5 @@ class Plugin {
             }
         )
 
-        hooks.add(ChatAvatarContainer_setTitle)
     }
 }
