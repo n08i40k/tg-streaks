@@ -9,14 +9,23 @@ package ru.n08i40k.streaks.overrides
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.drawable.Drawable
+import android.view.View
+import com.exteragram.messenger.badges.BadgesController
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.DialogObject
+import org.telegram.messenger.MessagesController
+import org.telegram.messenger.UserConfig
+import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
+import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
+import org.telegram.ui.Components.Premium.PremiumGradient
 import org.telegram.ui.Stars.StarsReactionsSheet
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.cloneFields
 import ru.n08i40k.streaks.data.StreakData
 import ru.n08i40k.streaks.getField
+import ru.n08i40k.streaks.getFieldValue
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 
@@ -60,7 +69,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             obj: Any,
             field: Field,
             arrayIndex: Int?,
-            userId: Long
+            userId: Long,
+            canDrawBadge: Boolean = false
         ) {
             if (arrayIndex == null) {
                 val drawable = field.get(obj) as? SwapAnimatedEmojiDrawable
@@ -71,7 +81,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                     return
                 }
 
-                val newDrawable = StreakAnimatedEmojiDrawable(drawable, userId)
+                val newDrawable = StreakAnimatedEmojiDrawable(drawable, userId, canDrawBadge)
 
                 field.set(obj, newDrawable)
                 newDrawable.detach()
@@ -108,7 +118,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 return
             }
 
-            val newDrawable = StreakAnimatedEmojiDrawable(drawable, userId)
+            val newDrawable = StreakAnimatedEmojiDrawable(drawable, userId, canDrawBadge)
             array[arrayIndex] = newDrawable
 
             Plugin.getInstance()!!.addStreakDrawableEjectData(
@@ -128,8 +138,42 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         }
     }
 
-    private var userId: Long
-    private var cachedStreakData: StreakData?
+    private var userId: Long = 0
+    private var cachedStreakData: StreakData? = null
+
+    private val canDrawBadge: Boolean
+    private var badgeView: SwapAnimatedEmojiDrawable? = null
+
+    private val size: Int
+
+    fun setBadge(user: TLRPC.User) {
+        if (!canDrawBadge) return
+
+        val badge = BadgesController.INSTANCE.getBadge(user)
+
+        if (badge == null) {
+            if (cachedStreakData == null && !user.premium) {
+                super.set(null as Drawable?, false)
+                super.setParticles(false, false)
+            }
+
+            badgeView = null
+        } else {
+            if (cachedStreakData == null && !user.premium) {
+                super.set(badge.documentId, false)
+                super.setParticles(true, false)
+            } else {
+                val parentView =
+                    getFieldValue<View>(SwapAnimatedEmojiDrawable::class.java, this, "parentView")!!
+
+                badgeView = SwapAnimatedEmojiDrawable(parentView, size)
+
+                badgeView!!.set(badge.documentId, false)
+                badgeView!!.setParticles(true, false)
+                badgeView!!.color = Theme.getColor(Theme.key_chats_verifiedBackground)
+            }
+        }
+    }
 
     fun setUserId(userId: Long) {
         this.userId = userId
@@ -153,6 +197,60 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
                 field.set(this, child)
             }
+
+            MessagesController
+                .getInstance(UserConfig.selectedAccount)
+                .getUser(userId)
+                ?.let {
+                    setBadge(it)
+                }
+        } else {
+            val dialog =
+                MessagesController.getInstance(UserConfig.selectedAccount).getUserOrChat(userId)
+
+            when (dialog) {
+                is TLRPC.User -> {
+                    val documentId = UserObject.getEmojiStatusDocumentId(dialog.emoji_status)
+
+                    if (documentId != null) {
+                        super.set(documentId, false)
+                        super.setParticles(
+                            DialogObject.isEmojiStatusCollectible(dialog.emoji_status),
+                            false
+                        )
+                    } else if (dialog.premium) {
+                        super.set(PremiumGradient.getInstance().premiumStarDrawableMini, false)
+                        super.setParticles(false, false)
+                    } else {
+                        super.set(null as Drawable?, false)
+                        super.setParticles(false, false)
+                    }
+
+                    setBadge(dialog)
+                }
+
+                is TLRPC.Chat -> {
+                    val documentId = DialogObject.getEmojiStatusDocumentId(dialog.emoji_status)
+
+                    if (documentId != 0L) {
+                        super.set(documentId, false)
+                        super.setParticles(
+                            DialogObject.isEmojiStatusCollectible(dialog.emoji_status),
+                            false
+                        )
+                    } else {
+                        val badge = BadgesController.INSTANCE.getBadge(dialog)
+
+                        if (badge == null) {
+                            super.set(null as Drawable?, false)
+                            super.setParticles(false, false)
+                        } else {
+                            super.set(badge.documentId, false)
+                            super.setParticles(true, false)
+                        }
+                    }
+                }
+            }
         }
 
         this.invalidateSelf()
@@ -162,24 +260,15 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         setUserId(userId)
     }
 
-    constructor(base: SwapAnimatedEmojiDrawable, userId: Long) : super(null, 0) {
+    constructor(base: SwapAnimatedEmojiDrawable, userId: Long, canDrawBadge: Boolean) : super(
+        null,
+        0
+    ) {
         cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
+        this.canDrawBadge = canDrawBadge
+        this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 
-        this.userId = userId
-        this.cachedStreakData = Plugin.getInstance()!!.resolveStreakData(userId)
-
-        this.cachedStreakData?.let {
-            super.setParticles(true, true)
-            super.set(it.documentId, 7, true)
-
-            getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
-                val parent = field.get(this) as? StarsReactionsSheet.Particles
-                val child = parent?.let { base -> StreakParticles(base, it.textColor.toArgb()) }
-
-                field.set(this, child)
-
-            }
-        }
+        setUserId(userId)
     }
 
     override fun draw(canvas: Canvas) {
@@ -195,13 +284,19 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 paint
             )
         }
+
+        badgeView?.draw(canvas)
     }
 
     override fun setBounds(left: Int, top: Int, right: Int, bottom: Int) {
-        if ((bottom - top) < (right - left))
-            super.setBounds(left, top, left + (right - left) / 3, bottom)
-        else
-            super.setBounds(left, top, right, bottom)
+        super.setBounds(left, top, left + size, bottom)
+
+        badgeView?.setBounds(
+            left + size + getTextWidth(),
+            top,
+            left + size * 2 + getTextWidth(),
+            bottom
+        )
     }
 
     override fun setParticles(p0: Boolean, p1: Boolean) {
@@ -244,5 +339,39 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             return
 
         super.set(p0, p1, p2)
+    }
+
+    private fun getTextWidth(): Int {
+        val length = cachedStreakData?.length ?: return 0
+        val padding = if (canDrawBadge) size / 5 else 0
+
+        if (length < 10)
+            return (size * 0.3f).toInt() + padding
+
+        if (length < 100)
+            return (size * 0.6f).toInt() + padding
+
+        if (length < 1000)
+            return (size * 0.9f).toInt() + padding
+
+        return (size * 1.2f).toInt() + padding
+    }
+
+    override fun getMinimumWidth(): Int {
+        val width = super.getMinimumWidth()
+
+        return if (canDrawBadge)
+            width + getTextWidth() + 1
+        else
+            width + getTextWidth()
+    }
+
+    override fun getIntrinsicWidth(): Int {
+        val width = super.getIntrinsicWidth()
+
+        return if (canDrawBadge)
+            width + getTextWidth() + 1
+        else
+            width + getTextWidth()
     }
 }

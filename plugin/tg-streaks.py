@@ -3488,7 +3488,8 @@ class TgStreaksPlugin(BasePlugin):
         if length < 3:
             return
 
-        user.emoji_status = TLRPC.TL_emojiStatusEmpty()
+        user.emoji_status = TLRPC.TL_emojiStatus()
+        user.emoji_status.document_id = StreakLevels.COLD.value.document_id
         user.premium = True
         self._post_user_emoji_status_updated(user)
         self._post_emoji_status_interface_update()

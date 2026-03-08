@@ -27,7 +27,6 @@ import org.telegram.ui.Cells.UserCell
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.AnimatedEmojiDrawable
 import org.telegram.ui.Components.ChatAvatarContainer
-import org.telegram.ui.Components.FireworksOverlay
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.ProfileActivity
@@ -193,7 +192,8 @@ class Plugin {
                             thisObject,
                             getField(thisClass, "emojiStatus"),
                             null,
-                            0
+                            0,
+                            true
                         )
                     } catch (e: Exception) {
                         logException(
@@ -288,7 +288,8 @@ class Plugin {
                             thisObject,
                             getField(thisClass, "currentNameStatusDrawable"),
                             null,
-                            currentUser.id
+                            currentUser.id,
+                            true
                         )
                     } catch (e: Exception) {
                         logException(
