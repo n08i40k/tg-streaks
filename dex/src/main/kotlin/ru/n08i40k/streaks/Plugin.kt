@@ -15,11 +15,8 @@ import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessageObject
-import org.telegram.messenger.MessagesController
-import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
-import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Cells.DialogCell
@@ -94,11 +91,6 @@ class Plugin {
         }
     }
 
-    private sealed class DialogHookAction {
-        class Disabled : DialogHookAction()
-        class PremiumPreviewBottomSheet : DialogHookAction()
-    }
-
     private lateinit var logger: ValueCallback<String>
     private lateinit var userResolver: java.util.function.Function<Long, Array<Any>?>
     private lateinit var translationResolver: java.util.function.Function<String, String>
@@ -106,11 +98,6 @@ class Plugin {
     private var hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     private var streakDrawableEjectData: ArrayList<StreakAnimatedEmojiDrawable.EjectData> =
         arrayListOf()
-    private var dialogHookAction: DialogHookAction =
-        DialogHookAction.Disabled()
-
-    // TODO: somehow unhook method from hook itself
-    private var profileActivityLambdaHooked = false
 
     fun log(message: String) {
         logger.onReceiveValue(message)
@@ -409,105 +396,28 @@ class Plugin {
             }
         )
 
-        // Callback при клике на эмодзи в профиле пользователя
-        // Из-за крайней сложности восстановить родителя (ProfileActivity) обработка диалога произойдёт постфактум
-        val ProfileActivity_unknownLambdaHook = object : XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam) {
-                try {
-                    this@Plugin.dialogHookAction = DialogHookAction.PremiumPreviewBottomSheet()
-                } catch (e: Exception) {
-                    logException(
-                        "An unknown exception occurred in ${param.thisObject.javaClass.simpleName}::apply hook!",
-                        e
-                    )
-                    onEject()
-                }
-            }
-        }
-
-        // Хук для поиска лямбы для хука выше,
-        // так как она не имеет чёткого называния, не меняющегося из билда в билд.
-        // P.S. При таком кол-ве лямбд у класса, оно 100% может поменяться.
-        hookMethod(
-            ProfileActivity::class.java.getDeclaredMethod("updateProfileData", Boolean::class.java),
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        if (this@Plugin.profileActivityLambdaHooked)
-                            return
-
-                        val profileActivity = param.thisObject as? ProfileActivity ?: return
-
-                        val nameTextView = getFieldValue<Array<SimpleTextView>>(
-                            ProfileActivity::class.java,
-                            profileActivity,
-                            "nameTextView"
-                        ) ?: return
-
-                        val userId = getFieldValue<Long>(
-                            ProfileActivity::class.java,
-                            profileActivity,
-                            "userId"
-                        )
-
-                        val user = MessagesController.getInstance(UserConfig.selectedAccount)
-                            .getUser(userId)
-
-                        if (user.self || !user.premium)
-                            return
-
-                        for (i in 0..1) {
-                            val view = nameTextView[i]
-
-                            val callback = getFieldValue<View.OnClickListener>(
-                                SimpleTextView::class.java,
-                                view,
-                                "rightDrawableOnClickListener"
-                            ) ?: continue
-
-                            log(callback.javaClass.declaredMethods.joinToString("\n") { it -> it.toString() })
-
-                            hookMethod(
-                                callback.javaClass.getDeclaredMethod("onClick", View::class.java),
-                                ProfileActivity_unknownLambdaHook
-                            )
-
-                            this@Plugin.profileActivityLambdaHooked = true
-                        }
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in ProfileActivity::updateProfileData hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
-        )
-
-        // Хук отображения диалоговых окон, отрабатывает только при надобности
+        // Хук отображения диалоговых окон для замены PremiumPreviewBottomSheet
         hookMethod(
             BaseFragment::class.java.getDeclaredMethod("showDialog", Dialog::class.java),
             object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    val action = this@Plugin.dialogHookAction
-                    this@Plugin.dialogHookAction = DialogHookAction.Disabled()
+                    try {
+                        val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return
+                        val user = getFieldValue<TLRPC.User>(
+                            PremiumPreviewBottomSheet::class.java,
+                            dialog,
+                            "user"
+                        )!!
 
-                    when (action) {
-                        is DialogHookAction.PremiumPreviewBottomSheet -> {
-                            val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return
-                            val user = getFieldValue<TLRPC.User>(
-                                PremiumPreviewBottomSheet::class.java,
-                                dialog,
-                                "user"
-                            )!!
+                        val streakData = this@Plugin.resolveStreakData(user.id) ?: return
 
-                            val streakData = this@Plugin.resolveStreakData(user.id) ?: return
-
-                            param.args[0] = StreakBottomSheet(dialog, user, streakData)
-                        }
-
-                        is DialogHookAction.Disabled -> return
+                        param.args[0] = StreakBottomSheet(dialog, user, streakData)
+                    } catch (e: Exception) {
+                        logException(
+                            "An unknown exception occurred in BaseFragment::showDialog hook!",
+                            e
+                        )
+                        onEject()
                     }
                 }
             }
