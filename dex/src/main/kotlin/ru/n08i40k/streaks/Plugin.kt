@@ -157,10 +157,42 @@ class Plugin {
         hooks.add(XposedBridge.hookMethod(method, hook))
     }
 
+    private fun hookBefore(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
+        hookMethod(
+            method,
+            object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    try {
+                        callback(param)
+                    } catch (e: Exception) {
+                        logException("An exception occurred in $method before-call hook!", e)
+                        eject()
+                    }
+                }
+            }
+        )
+    }
+
+    private fun hookAfter(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
+        hookMethod(
+            method,
+            object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    try {
+                        callback(param)
+                    } catch (e: Exception) {
+                        logException("An exception occurred in $method after-call hook!", e)
+                        eject()
+                    }
+                }
+            }
+        )
+    }
+
     @Suppress("LocalVariableName")
     private fun hookMethods() {
         // Чат в списке, нужно ещё увеличить bounds по x, иначе текста не будет
-        hookMethod(
+        hookAfter(
             DialogCell::class.java.getConstructor(
                 DialogsActivity::class.java,
                 Context::class.java,
@@ -168,63 +200,45 @@ class Plugin {
                 Boolean::class.java,
                 Int::class.java,
                 Theme.ResourcesProvider::class.java
-            ),
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        val thisObject = param.thisObject as DialogCell
-                        val thisClass = DialogCell::class.java
-
-                        StreakAnimatedEmojiDrawable.encapsulate(
-                            thisObject,
-                            getField(thisClass, "emojiStatus"),
-                            null,
-                            0,
-                            true
-                        )
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in DialogCell::constructor hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
+            )
         )
+        { param ->
+            val thisObject = param.thisObject as DialogCell
+            val thisClass = DialogCell::class.java
+
+            StreakAnimatedEmojiDrawable.encapsulate(
+                thisObject,
+                getField(thisClass, "emojiStatus"),
+                null,
+                0,
+                true
+            )
+        }
+
 
         // Конструктор чата в списке не имеет его в качестве аргумента, он задаётся после
-        hookMethod(
+        hookAfter(
             DialogCell::class.java.getDeclaredMethod(
                 "buildLayout",
-            ),
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        val thisObject = param.thisObject as DialogCell
-                        val thisClass = DialogCell::class.java
+            )
+        ) { param ->
+            val thisObject = param.thisObject as DialogCell
+            val thisClass = DialogCell::class.java
 
-                        val currentDialogId =
-                            getFieldValue<Long>(thisClass, thisObject, "currentDialogId")!!
+            val currentDialogId =
+                getFieldValue<Long>(thisClass, thisObject, "currentDialogId")!!
 
-                        getFieldValue<StreakAnimatedEmojiDrawable>(
-                            thisClass,
-                            thisObject,
-                            "emojiStatus"
-                        )?.setUserId(currentDialogId)
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in DialogCell::onLayout hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
-        )
+            getFieldValue<StreakAnimatedEmojiDrawable>(
+                thisClass,
+                thisObject,
+                "emojiStatus"
+            )?.setUserId(currentDialogId)
+        }
 
-        // Фикс отрисовки текста в местах где размер view ограничен по x
-        hookMethod(
+        // Фикс отрисовки текста в местах, где размер view ограничен по x.
+        // Например, в списке чатов, где у SwapAnimatedEmojiDrawable есть обёртка в виде View,
+        // который жёстко ограничен по x.
+        hookAfter(
             DialogCell::class.java.getDeclaredMethod(
                 "onLayout",
                 Boolean::class.java,
@@ -232,195 +246,132 @@ class Plugin {
                 Int::class.java,
                 Int::class.java,
                 Int::class.java,
-            ),
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        val thisObject = param.thisObject as DialogCell
-                        val thisClass = DialogCell::class.java
+            )
+        ) { param ->
+            val thisObject = param.thisObject as DialogCell
+            val thisClass = DialogCell::class.java
 
-                        val emojiStatusView =
-                            getFieldValue<View>(thisClass, thisObject, "emojiStatusView")!!
+            val emojiStatusView =
+                getFieldValue<View>(thisClass, thisObject, "emojiStatusView")!!
 
-                        val height = AndroidUtilities.dp(22f)
-                        emojiStatusView.layout(0, 0, height * 3, height)
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in DialogCell::onLayout hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
-        )
+            val height = AndroidUtilities.dp(22f)
+            emojiStatusView.layout(0, 0, height * 3, height)
+        }
 
         // Сообщение в группе
-        hookMethod(
+        hookAfter(
             ChatMessageCell::class.java.getDeclaredMethod(
                 "setMessageObjectInternal",
                 MessageObject::class.java
-            ),
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        val thisObject = param.thisObject as ChatMessageCell
-                        val thisClass = ChatMessageCell::class.java
+            )
+        ) { param ->
+            val thisObject = param.thisObject as ChatMessageCell
+            val thisClass = ChatMessageCell::class.java
 
-                        val currentUser =
-                            getFieldValue<TLRPC.User>(thisClass, thisObject, "currentUser")
-                                ?: return
+            val currentUser =
+                getFieldValue<TLRPC.User>(thisClass, thisObject, "currentUser")
+                    ?: return@hookAfter
 
-                        StreakAnimatedEmojiDrawable.encapsulate(
-                            thisObject,
-                            getField(thisClass, "currentNameStatusDrawable"),
-                            null,
-                            currentUser.id,
-                            true
-                        )
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in ChatMessageCell::setMessageObjectInternal hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
-        )
+            StreakAnimatedEmojiDrawable.encapsulate(
+                thisObject,
+                getField(thisClass, "currentNameStatusDrawable"),
+                null,
+                currentUser.id,
+                true
+            )
+        }
 
         // Пользователь в списке участников группы
-        hookMethod(
+        hookAfter(
             UserCell::class.java.getDeclaredMethod(
                 "update",
                 Int::class.java
-            ),
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        val thisObject = param.thisObject as UserCell
-                        val thisClass = UserCell::class.java
+            )
+        ) { param ->
+            val thisObject = param.thisObject as UserCell
+            val thisClass = UserCell::class.java
 
-                        val dialogId = getFieldValue<Long>(thisClass, thisObject, "dialogId")!!
+            val dialogId = getFieldValue<Long>(thisClass, thisObject, "dialogId")!!
 
-                        if (dialogId < 0)
-                            return
+            if (dialogId < 0)
+                return@hookAfter
 
-                        StreakAnimatedEmojiDrawable.encapsulate(
-                            thisObject,
-                            getField(thisClass, "emojiStatus"),
-                            null,
-                            dialogId,
-                            hideParticlesOnCollectibles = true
-                        )
-                    } catch (e: Exception) {
-                        logException("An unknown exception occurred in UserCell::update hook!", e)
-                        onEject()
-                    }
-                }
-            }
-        )
+            StreakAnimatedEmojiDrawable.encapsulate(
+                thisObject,
+                getField(thisClass, "emojiStatus"),
+                null,
+                dialogId,
+                hideParticlesOnCollectibles = true
+            )
+        }
 
         // Профиль пользователя
-        hookMethod(
+        hookAfter(
             ProfileActivity::class.java.getDeclaredMethod(
                 "getEmojiStatusDrawable",
                 TLRPC.EmojiStatus::class.java,
                 Boolean::class.java,
                 Boolean::class.java,
                 Int::class.java
-            ),
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        val thisObject = param.thisObject as ProfileActivity
-                        val thisClass = ProfileActivity::class.java
+            )
+        ) { param ->
+            val thisObject = param.thisObject as ProfileActivity
+            val thisClass = ProfileActivity::class.java
 
-                        val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
+            val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
 
-                        if (userId < 0)
-                            return
+            if (userId < 0)
+                return@hookAfter
 
-                        StreakAnimatedEmojiDrawable.encapsulate(
-                            thisObject,
-                            getField(thisClass, "emojiStatusDrawable"),
-                            param.args[3] as Int,
-                            userId
-                        )
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in ProfileCell::getEmojiStatusDrawable hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
-        )
+            StreakAnimatedEmojiDrawable.encapsulate(
+                thisObject,
+                getField(thisClass, "emojiStatusDrawable"),
+                param.args[3] as Int,
+                userId
+            )
+        }
 
         // Заголовок открытого лс с пользователем
-        hookMethod(
+        hookAfter(
             ChatAvatarContainer::class.java
                 .getDeclaredMethods()
                 .filter { it.name == "setTitle" }
-                .maxByOrNull { it.parameterCount }!!,
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        val thisObject = param.thisObject as ChatAvatarContainer
-                        val thisClass = ChatAvatarContainer::class.java
+                .maxByOrNull { it.parameterCount }!!
+        ) { param ->
+            val thisObject = param.thisObject as ChatAvatarContainer
+            val thisClass = ChatAvatarContainer::class.java
 
-                        val dialogId = getFieldValue<ChatActivity>(
-                            thisClass,
-                            thisObject,
-                            "parentFragment"
-                        )?.dialogId ?: return
+            val dialogId = getFieldValue<ChatActivity>(
+                thisClass,
+                thisObject,
+                "parentFragment"
+            )?.dialogId ?: return@hookAfter
 
-                        if (dialogId < 0)
-                            return
+            if (dialogId < 0)
+                return@hookAfter
 
-                        StreakAnimatedEmojiDrawable.encapsulate(
-                            thisObject,
-                            getField(thisClass, "emojiStatusDrawable"),
-                            null,
-                            dialogId
-                        )
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in ChatAvatarActivity::setTitle hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
-        )
+            StreakAnimatedEmojiDrawable.encapsulate(
+                thisObject,
+                getField(thisClass, "emojiStatusDrawable"),
+                null,
+                dialogId
+            )
+        }
 
         // Хук отображения диалоговых окон для замены PremiumPreviewBottomSheet
-        hookMethod(
-            BaseFragment::class.java.getDeclaredMethod("showDialog", Dialog::class.java),
-            object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    try {
-                        val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return
-                        val user = getFieldValue<TLRPC.User>(
-                            PremiumPreviewBottomSheet::class.java,
-                            dialog,
-                            "user"
-                        )!!
+        hookBefore(
+            BaseFragment::class.java.getDeclaredMethod("showDialog", Dialog::class.java)
+        ) { param ->
+            val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return@hookBefore
+            val user = getFieldValue<TLRPC.User>(
+                PremiumPreviewBottomSheet::class.java,
+                dialog,
+                "user"
+            )!!
 
-                        val streakData = this@Plugin.resolveStreakData(user.id) ?: return
+            val streakData = this@Plugin.resolveStreakData(user.id) ?: return@hookBefore
 
-                        param.args[0] = StreakBottomSheet(dialog, user, streakData)
-                    } catch (e: Exception) {
-                        logException(
-                            "An unknown exception occurred in BaseFragment::showDialog hook!",
-                            e
-                        )
-                        onEject()
-                    }
-                }
-            }
-        )
+            param.args[0] = StreakBottomSheet(dialog, user, streakData)
+        }
     }
 }
