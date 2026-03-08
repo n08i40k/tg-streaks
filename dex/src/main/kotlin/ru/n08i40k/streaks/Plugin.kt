@@ -323,7 +323,8 @@ class Plugin {
                             thisObject,
                             getField(thisClass, "emojiStatus"),
                             null,
-                            dialogId
+                            dialogId,
+                            hideParticlesOnCollectibles = true
                         )
                     } catch (e: Exception) {
                         logException("An unknown exception occurred in UserCell::update hook!", e)

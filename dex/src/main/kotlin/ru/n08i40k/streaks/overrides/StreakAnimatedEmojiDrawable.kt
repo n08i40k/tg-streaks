@@ -70,7 +70,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             field: Field,
             arrayIndex: Int?,
             userId: Long,
-            canDrawBadge: Boolean = false
+            canDrawBadge: Boolean = false,
+            hideParticlesOnCollectibles: Boolean = false,
         ) {
             if (arrayIndex == null) {
                 val drawable = field.get(obj) as? SwapAnimatedEmojiDrawable
@@ -81,7 +82,12 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                     return
                 }
 
-                val newDrawable = StreakAnimatedEmojiDrawable(drawable, userId, canDrawBadge)
+                val newDrawable = StreakAnimatedEmojiDrawable(
+                    drawable,
+                    userId,
+                    canDrawBadge,
+                    hideParticlesOnCollectibles
+                )
 
                 field.set(obj, newDrawable)
                 newDrawable.detach()
@@ -118,7 +124,12 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 return
             }
 
-            val newDrawable = StreakAnimatedEmojiDrawable(drawable, userId, canDrawBadge)
+            val newDrawable = StreakAnimatedEmojiDrawable(
+                drawable,
+                userId,
+                canDrawBadge,
+                hideParticlesOnCollectibles
+            )
             array[arrayIndex] = newDrawable
 
             Plugin.getInstance()!!.addStreakDrawableEjectData(
@@ -143,6 +154,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
     private val canDrawBadge: Boolean
     private var badgeView: SwapAnimatedEmojiDrawable? = null
+
+    private var hideParticlesOnCollectibles: Boolean
 
     private val size: Int
 
@@ -215,7 +228,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                     if (documentId != null) {
                         super.set(documentId, false)
                         super.setParticles(
-                            DialogObject.isEmojiStatusCollectible(dialog.emoji_status),
+                            !hideParticlesOnCollectibles && DialogObject.isEmojiStatusCollectible(dialog.emoji_status),
                             false
                         )
                     } else if (dialog.premium) {
@@ -260,12 +273,18 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         setUserId(userId)
     }
 
-    constructor(base: SwapAnimatedEmojiDrawable, userId: Long, canDrawBadge: Boolean) : super(
+    constructor(
+        base: SwapAnimatedEmojiDrawable,
+        userId: Long,
+        canDrawBadge: Boolean,
+        hideParticlesOnCollectibles: Boolean
+    ) : super(
         null,
         0
     ) {
         cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
         this.canDrawBadge = canDrawBadge
+        this.hideParticlesOnCollectibles = hideParticlesOnCollectibles
         this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 
         setUserId(userId)
