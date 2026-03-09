@@ -99,6 +99,20 @@ class Plugin {
     private var streakDrawableEjectData: ArrayList<StreakAnimatedEmojiDrawable.EjectData> =
         arrayListOf()
 
+    private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
+            return size > 32
+        }
+
+        fun sameWidth(hash: Int, width: Int): Boolean {
+            return this[hash] == width
+        }
+
+        fun push(hash: Int, width: Int) {
+            this[hash] = width
+        }
+    }
+
     fun log(message: String) {
         logger.onReceiveValue(message)
     }
@@ -279,6 +293,34 @@ class Plugin {
                 currentUser.id,
                 true
             )
+        }
+
+        hookAfter(
+            ChatMessageCell::class.java.getDeclaredMethod(
+                "setMessageContent",
+                MessageObject::class.java,
+                MessageObject.GroupedMessages::class.java,
+                Boolean::class.java,
+                Boolean::class.java,
+                Boolean::class.java,
+                Boolean::class.java
+            )
+        ) { param ->
+            val thisObject = param.thisObject as ChatMessageCell
+            val thisClass = ChatMessageCell::class.java
+
+            val streakEmoji = getFieldValue<StreakAnimatedEmojiDrawable>(
+                thisClass,
+                thisObject,
+                "currentNameStatusDrawable"
+            ) ?: return@hookAfter
+
+            val hash = System.identityHashCode(thisObject)
+
+            if (!chatMessageCellWidthCache.sameWidth(hash, thisObject.backgroundWidth)) {
+                thisObject.backgroundWidth += streakEmoji.getAdditionalWidth()
+                chatMessageCellWidthCache.push(hash, thisObject.backgroundWidth)
+            }
         }
 
         // Пользователь в списке участников группы

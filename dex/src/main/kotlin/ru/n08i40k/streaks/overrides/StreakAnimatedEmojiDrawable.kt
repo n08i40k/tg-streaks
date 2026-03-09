@@ -408,4 +408,11 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         else
             width + getTextWidth()
     }
+
+    fun getAdditionalWidth(): Int {
+        return if (canDrawBadge)
+            getTextWidth() + 1
+        else
+            getTextWidth()
+    }
 }
