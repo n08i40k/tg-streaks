@@ -157,6 +157,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
     private val size: Int
 
+    private var hasCustomParticles: Boolean = false
+
     fun setBadge(user: TLRPC.User?) {
         if (!canDrawBadge) return
 
@@ -212,6 +214,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 field.set(this, child)
             }
 
+            hasCustomParticles = true
+
             MessagesController
                 .getInstance(UserConfig.selectedAccount)
                 .getUser(userId)
@@ -219,6 +223,12 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                     setBadge(it)
                 }
         } else {
+            if (hasCustomParticles) {
+                // restore original particles class without custom color or etc.
+                super.setParticles(false, false)
+                hasCustomParticles = false
+            }
+
             val dialog =
                 MessagesController.getInstance(UserConfig.selectedAccount).getUserOrChat(userId)
 
@@ -229,7 +239,9 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                     if (documentId != null) {
                         super.set(documentId, false)
                         super.setParticles(
-                            !hideParticlesOnCollectibles && DialogObject.isEmojiStatusCollectible(dialog.emoji_status),
+                            !hideParticlesOnCollectibles && DialogObject.isEmojiStatusCollectible(
+                                dialog.emoji_status
+                            ),
                             false
                         )
                     } else if (dialog.premium) {
