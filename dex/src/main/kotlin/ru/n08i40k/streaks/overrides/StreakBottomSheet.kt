@@ -11,7 +11,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.R
@@ -144,15 +143,10 @@ class StreakBottomSheet : PremiumPreviewBottomSheet {
         super.rowCount = 0
         super.updateRows()
 
-        if (
-            streakData.length == 3
-            || streakData.length == 10
-            || streakData.length == 30
-            || streakData.length % 100 == 0
-        ) {
+        if (streakData.isJubilee) {
             super.setAnimateConfetti(true)
 
-            val fireworksOverlay = StreakFireworksOverlay(context, streakData.textColor)
+            val fireworksOverlay = StreakFireworksOverlay(context, streakData.accentColor)
 
             container.addView(
                 fireworksOverlay,
@@ -176,7 +170,7 @@ class StreakBottomSheet : PremiumPreviewBottomSheet {
             this,
             "starParticlesView"
         )
-        starParticlesView?.drawable?.paint?.setColor(this.streakData.textColor.toArgb())
+        starParticlesView?.drawable?.paint?.setColor(this.streakData.accentColor.toArgb())
         starParticlesView?.drawable?.init()
     }
 
@@ -204,7 +198,7 @@ class StreakBottomSheet : PremiumPreviewBottomSheet {
             override fun configure() {
                 super.drawable = object : Drawable(super.drawable.count) {
                     override fun getPathColor(i: Int): Int {
-                        return this@StreakBottomSheet.streakData.textColor.toArgb()
+                        return this@StreakBottomSheet.streakData.accentColor.toArgb()
                     }
                 }
 

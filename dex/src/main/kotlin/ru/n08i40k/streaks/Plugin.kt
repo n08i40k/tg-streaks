@@ -8,7 +8,6 @@ package ru.n08i40k.streaks
 
 import android.app.Dialog
 import android.content.Context
-import android.graphics.Color
 import android.view.View
 import android.webkit.ValueCallback
 import de.robv.android.xposed.XC_MethodHook
@@ -125,7 +124,7 @@ class Plugin {
 
     fun resolveStreakData(userId: Long): StreakData? =
         this.userResolver.apply(userId)
-            ?.let { StreakData(it[0] as Int, it[1] as Long, it[2] as Color) }
+            ?.let { StreakData.fromArray(it) }
 
     fun translate(key: String): String =
         if (::translationResolver.isInitialized) {

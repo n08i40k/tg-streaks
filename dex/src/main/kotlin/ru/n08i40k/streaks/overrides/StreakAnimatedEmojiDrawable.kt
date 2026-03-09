@@ -207,7 +207,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                     parent?.let { base ->
                         StreakParticles(
                             base,
-                            cachedStreakData!!.textColor.toArgb()
+                            cachedStreakData!!.accentColor.toArgb()
                         )
                     }
 
@@ -309,7 +309,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         super.draw(canvas)
 
         cachedStreakData?.let {
-            paint.setColor(it.textColor.toArgb())
+            paint.setColor(it.accentColor.toArgb())
 
             canvas.drawText(
                 it.length.toString(),

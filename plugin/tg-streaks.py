@@ -265,8 +265,8 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Какие уровни есть?",
     },
     "dex_sheet_feature_levels_subtitle": {
-        "en": "There are levels for 3, 10, 30, 100, and 200 consecutive days of communication. A pop-up will appear when your streak level improves.",
-        "ru": "Есть уровни за 3, 10, 30, 100 и 200 дней общения подряд. При повышении уровня стрика появится всплывающее окно.",
+        "en": "There are levels for 3, 10, 30, 100, and 200+ consecutive days of communication. A pop-up will appear when your streak level improves.",
+        "ru": "Есть уровни за 3, 10, 30, 100 и 200+ дней общения подряд. При повышении уровня стрика появится всплывающее окно.",
     },
     "dex_sheet_feature_keep_title": {
         "en": "Don't forget about it ;)",
@@ -854,16 +854,16 @@ def get_streak_die_date_from_freeze_ts(peer_id: int, freeze_ts: int) -> Optional
 
 class StreakLevel:
     document_id: int
-    text_color: Color
-    text_color_int: int
+    accent_color: Color
+    accent_color_int: int
 
-    def __init__(self, document_id: int, text_color: tuple[int, int, int]):
+    def __init__(self, document_id: int, accent_color: tuple[int, int, int]):
         self.document_id = document_id
-        self.text_color = Color.valueOf(
-            text_color[0] / 255, text_color[1] / 255, text_color[2] / 255, 1.0
+        self.accent_color = Color.valueOf(
+            accent_color[0] / 255, accent_color[1] / 255, accent_color[2] / 255, 1.0
         )
-        self.text_color_int = Color.rgb(
-            int(text_color[0]), int(text_color[1]), int(text_color[2])
+        self.accent_color_int = Color.rgb(
+            int(accent_color[0]), int(accent_color[1]), int(accent_color[2])
         )
 
 
@@ -889,6 +889,39 @@ class StreakLevels(Enum):
             return StreakLevels.DAYS_100.value
 
         return StreakLevels.DAYS_200.value
+
+    def is_jubilee(length: int) -> bool:
+        if length == 0:
+            return False
+
+        if length == 3:
+            return True
+
+        if length == 10:
+            return True
+
+        if length == 30:
+            return True
+
+        return (length % 100) == 0
+
+    def get_next_level_length(length: int) -> Optional[int]:
+        if length < 3:
+            return 3
+
+        if length < 10:
+            return 10
+
+        if length < 30:
+            return 30
+
+        if length < 100:
+            return 100
+
+        if length < 200:
+            return 200
+
+        return None
 
 
 class SenderType(Enum):
@@ -2212,12 +2245,14 @@ class TgStreaksPlugin(BasePlugin):
         self._streak_popup_last[key] = now
         return True
 
-    def _resolve_level_text_color(self, level_id: int) -> int:
+    def _resolve_level_accent_color(self, level_id: int) -> int:
         target_level_id = int(level_id)
 
         for level in StreakLevels:
-            if int(level.value.document_id) == target_level_id:
-                return int(level.value.text_color_int)
+            level = cast(StreakLevel, level.value)
+
+            if int(level.document_id) == target_level_id:
+                return int(level.accent_color_int)
 
         return Color.rgb(255, 173, 51)
 
@@ -2252,7 +2287,7 @@ class TgStreaksPlugin(BasePlugin):
             f"die:{peer_id}:{days}",
             self._t("popup_streak_ended_title"),
             self._t("popup_streak_ended_subtitle", name=name, days=days),
-            StreakLevels.COLD.value.text_color_int,
+            StreakLevels.COLD.value.accent_color_int,
             emoji_document_id=int(StreakLevels.COLD.value.document_id),
         )
 
@@ -2311,7 +2346,7 @@ class TgStreaksPlugin(BasePlugin):
                 key,
                 self._t("popup_streak_started_title"),
                 self._t("popup_streak_started_subtitle", name=name),
-                StreakLevels.DAYS_3.value.text_color_int,
+                StreakLevels.DAYS_3.value.accent_color_int,
                 emoji_document_id=int(after["level_id"]),
             )
             try:
@@ -2323,17 +2358,11 @@ class TgStreaksPlugin(BasePlugin):
         if before is None:
             return
 
-        upgraded = (
-            after_length == 3
-            or after_length == 10
-            or after_length == 30
-            or after_length == 100
-            or after_length == 200
-        )
+        upgraded = StreakLevels.is_jubilee(after_length)
 
         if int(before["level_id"]) != int(after["level_id"]) and upgraded:
             key = f"upgrade:{peer_id}:{after['level_id']}"
-            upgraded_level_color = self._resolve_level_text_color(
+            upgraded_level_color = self._resolve_level_accent_color(
                 int(after["level_id"])
             )
             self._enqueue_streak_popup_for_open_chat(
@@ -2424,7 +2453,7 @@ class TgStreaksPlugin(BasePlugin):
                 self._patch_user_streak_emoji_status(user)
             else:
                 try:
-                    user.emoji_status = None
+                    user.emoji_status = None  # ty:ignore[invalid-assignment]
                 except Exception:
                     pass
                 self._post_user_emoji_status_updated(user)
@@ -3097,15 +3126,9 @@ class TgStreaksPlugin(BasePlugin):
         before = self._record_state(current)
         current_length = max(int(current.get_length()), 3)
 
-        if current_length < 10:
-            target_length = 10
-        elif current_length < 30:
-            target_length = 30
-        elif current_length < 100:
-            target_length = 100
-        elif current_length < 200:
-            target_length = 200
-        else:
+        target_length = StreakLevels.get_next_level_length(current_length)
+
+        if target_length is None:
             self._show_info(self._t("info_debug_streak_already_max"))
             return
 
@@ -4082,7 +4105,8 @@ class TgStreaksPlugin(BasePlugin):
                             [
                                 Integer(length),
                                 Long(streak_level.document_id),
-                                streak_level.text_color,
+                                streak_level.accent_color,
+                                Boolean(StreakLevels.is_jubilee(length)),
                             ],
                         )
 
@@ -4099,7 +4123,7 @@ class TgStreaksPlugin(BasePlugin):
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
-            ).invoke(None, Logger(), UserResolver(), Translator())  # ty:ignore[no-matching-overload]
+            ).invoke(None, Logger(), UserResolver(), Translator())  # ty:ignore[invalid-argument-type]
             self.log("JVM plugin injected successfully")
         except Exception as e:
             self.log(f"Failed to inject JVM plugin: {e}")
