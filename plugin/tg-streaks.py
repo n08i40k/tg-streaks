@@ -79,7 +79,7 @@ __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Analog for TikTok streaks for Telegram"
 __author__ = "@n08i40k"
-__version__ = "1.3.5"
+__version__ = "1.4.0"
 __icon__ = "exteraPlugins/0"
 __min_version__ = "12.2.10"
 
@@ -96,7 +96,7 @@ DAY_CHECK_RETRY_DELAY_SECONDS = 0.8
 DAY_CHECK_MESSAGE_TABLE_CANDIDATES = ("messages_v2", "messages")
 
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
-DEX_SHA256 = "dcff9fcdedeff1be0bc47285a674929d0bbd8b6a67e01808c4a503d7ba1ed614"
+DEX_SHA256 = "013c15fa3aa795553160ffea1b69b2429b44b58c2cc26530daaeceb0ce012b65"
 
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
