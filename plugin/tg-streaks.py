@@ -17,9 +17,10 @@ from typing import (
 
 import requests
 from android.app import Dialog
-from android.content import DialogInterface
+from android.content import DialogInterface, Intent
 from android.graphics import Color, Typeface
 from android.graphics.drawable import ColorDrawable, GradientDrawable
+from android.net import Uri
 from android.view import Gravity, WindowManager
 from android.webkit import ValueCallback
 from android.widget import ImageView, LinearLayout, TextView
@@ -66,12 +67,13 @@ from org.telegram.messenger import (
     UserConfig,
     UserObject,
 )
+from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
 from org.telegram.tgnet import TLRPC, RequestDelegate, TLObject
 from org.telegram.ui import ChatActivity, LaunchActivity
 from org.telegram.ui.Components import AnimatedEmojiDrawable
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
-from ui.settings import Divider, Header, Text
+from ui.settings import Divider, Header, Switch, Text
 
 __id__ = "tg-streaks"
 __name__ = "Streaks"
@@ -81,21 +83,38 @@ __version__ = "1.3.5"
 __icon__ = "exteraPlugins/0"
 __min_version__ = "12.2.10"
 
+DEBUG_MODE = False
+
+REPO_OWNER = "n08i40k"
+REPO_NAME = __id__
+
 SECONDS_IN_DAY = 86400
 DAY_CHECK_TIMEOUT_SECONDS = 15
 DAY_CHECK_TIMEOUT_RETRIES = 5
 DAY_CHECK_REQUEST_DELAY_SECONDS = 0.35
 DAY_CHECK_RETRY_DELAY_SECONDS = 0.8
 DAY_CHECK_MESSAGE_TABLE_CANDIDATES = ("messages_v2", "messages")
-DEX_URL = f"https://github.com/{__author__.replace('@', '')}/{__id__}/releases/download/{__version__}/classes.dex"
+
+DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
 DEX_SHA256 = "dcff9fcdedeff1be0bc47285a674929d0bbd8b6a67e01808c4a503d7ba1ed614"
-SERVER_TIMEZONE_ID = "UTC"
-DEBUG_MODE = False
+
+PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
+UPDATE_CHECK_TIMEOUT_SECONDS = 6
+SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
 
 _day_check_messages_table_name: Optional[str] = None
 _day_check_messages_table_resolved = False
 
 I18N_STRINGS: dict[str, dict[str, str]] = {
+    "settings_updates": {"en": "Updates", "ru": "Обновления"},
+    "settings_check_updates": {
+        "en": "Check for plugin updates",
+        "ru": "Проверять обновления плагина",
+    },
+    "settings_check_updates_hint": {
+        "en": "Checks the latest GitHub release in the background when the plugin loads.",
+        "ru": "При загрузке плагина в фоне проверяет последний релиз на GitHub.",
+    },
     "settings_streak_tools": {"en": "Streak Tools", "ru": "Инструменты стрика"},
     "settings_force_check_all_private_chats": {
         "en": "Force check all private chats",
@@ -149,6 +168,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "err_backup_import_failed": {
         "en": "Backup import failed",
         "ru": "Ошибка импорта бэкапа",
+    },
+    "err_failed_open_update_link": {
+        "en": "Failed to open update link",
+        "ru": "Не удалось открыть ссылку обновления",
     },
     "ok_backup_exported": {
         "en": "Backup exported: {name}",
@@ -350,6 +373,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Failed to apply backup: {reason}",
         "ru": "Не удалось применить бэкап: {reason}",
     },
+    "update_bulletin_text": {
+        "en": "Streaks plugin update available!",
+        "ru": "Доступна обновление плагина Streaks!",
+    },
+    "update_bulletin_button": {
+        "en": "Update",
+        "ru": "Обновить",
+    },
 }
 
 
@@ -371,7 +402,7 @@ class TimeUtils:
 
     @staticmethod
     def get_server_timezone() -> TimeZone:
-        return TimeZone.getTimeZone(String(SERVER_TIMEZONE_ID))
+        return TimeZone.getTimeZone(String("UTC"))
 
     @staticmethod
     def get_user_timezone() -> TimeZone:
@@ -1575,6 +1606,15 @@ class StreaksController:
 class TgStreaksPlugin(BasePlugin):
     def create_settings(self) -> list[Any]:
         return [
+            Header(text=self._t("settings_updates")),
+            Switch(
+                key=SETTING_UPDATE_CHECK_ENABLED,
+                text=self._t("settings_check_updates"),
+                default=self._is_update_check_enabled(),
+                subtext=self._t("settings_check_updates_hint"),
+                icon="msg_retry",
+                on_change=lambda value: self._on_update_check_setting_changed(value),
+            ),
             Header(text=self._t("settings_streak_tools")),
             Text(
                 text=self._t("settings_force_check_all_private_chats"),
@@ -1602,6 +1642,151 @@ class TgStreaksPlugin(BasePlugin):
 
     def _show_error(self, message: str):
         run_on_ui_thread(lambda: BulletinHelper.show_error(message))
+
+    def _is_update_check_enabled(self) -> bool:
+        try:
+            return bool(self.get_setting(SETTING_UPDATE_CHECK_ENABLED, True))
+        except Exception:
+            return True
+
+    def _on_update_check_setting_changed(self, enabled: bool):
+        enabled = bool(enabled)
+
+        try:
+            self.set_setting(SETTING_UPDATE_CHECK_ENABLED, enabled)
+        except Exception as e:
+            self.log(f"Failed to persist update check setting: {e}")
+
+        if enabled:
+            self._start_update_check()
+            return
+
+        try:
+            self._update_check_stop.set()
+        except Exception:
+            pass
+
+    def _normalize_version_tag(self, value: Optional[str]) -> str:
+        if value is None:
+            return ""
+
+        normalized = str(value).strip()
+        if len(normalized) == 0:
+            return ""
+
+        return normalized.removeprefix("v").removeprefix("V")
+
+    def _open_external_url(self, url: str):
+        def open_url():
+            try:
+                context = self._resolve_popup_context()
+                if context is None:
+                    raise RuntimeError("no context")
+
+                intent = Intent()
+                intent.setAction(String(Intent.ACTION_VIEW))
+                intent.setData(Uri.parse(String(url)))
+                intent.setPackage(String(context.getPackageName()))
+                intent.addFlags(int(Intent.FLAG_ACTIVITY_NEW_TASK))
+                context.startActivity(intent)
+            except Exception as e:
+                self.log(f"Failed to open external url {url}: {e}")
+                self._show_error(self._t("err_failed_open_update_link"))
+
+        run_on_ui_thread(open_url)
+
+    def _show_update_bulletin(self):
+        text = self._t("update_bulletin_text")
+        button_text = self._t("update_bulletin_button")
+
+        def show():
+            if self._update_check_stop.is_set():
+                return
+
+            try:
+                BulletinHelper.show_with_button(
+                    text,
+                    R_tg.raw.ic_download,
+                    button_text,
+                    lambda: self._open_external_url(PLUGIN_UPDATE_TG_URL),
+                    duration=int(BulletinHelper.DURATION_PROLONG),
+                )
+            except Exception as e:
+                self.log(f"Failed to show update bulletin: {e}")
+                self._show_info(text)
+
+        run_on_ui_thread(show)
+
+    def _fetch_latest_release_tag(self) -> Optional[str]:
+        response = requests.get(
+            f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            timeout=UPDATE_CHECK_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = cast("dict[str, Any]", response.json())
+        tag_name = payload.get("tag_name")
+
+        if tag_name is None:
+            return None
+
+        normalized = str(tag_name).strip()
+        if len(normalized) == 0:
+            return None
+
+        return normalized
+
+    def _start_update_check(self):
+        if DEBUG_MODE:
+            self.log("Update check skipped: debug mode is enabled")
+            return
+
+        if not self._is_update_check_enabled():
+            self.log("Update check skipped: disabled in plugin settings")
+            return
+
+        with self._update_check_lock:
+            if self._update_check_inflight:
+                return
+            self._update_check_inflight = True
+
+        self._update_check_stop.clear()
+
+        def worker():
+            try:
+                latest_tag = self._fetch_latest_release_tag()
+                if latest_tag is None:
+                    self.log("Update check skipped: latest release tag_name is missing")
+                    return
+
+                latest_version = self._normalize_version_tag(latest_tag)
+                current_version = self._normalize_version_tag(__version__)
+
+                if len(latest_version) == 0:
+                    self.log("Update check skipped: latest release version is empty")
+                    return
+
+                if latest_version == current_version:
+                    self.log(f"Plugin is up to date: {current_version}")
+                    return
+
+                if self._update_check_stop.is_set():
+                    return
+
+                self.log(
+                    f"Plugin update available: current={__version__}, latest={latest_tag}"
+                )
+                self._show_update_bulletin()
+            except Exception as e:
+                self.log(f"Plugin update check failed: {e}")
+            finally:
+                with self._update_check_lock:
+                    self._update_check_inflight = False
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _get_app_language_code(self) -> str:
         try:
@@ -3934,6 +4119,9 @@ class TgStreaksPlugin(BasePlugin):
         self._streak_popup_dispatch_stop = threading.Event()
         self._streak_dead_state: dict[int, bool] = {}
         self._streak_dead_monitor_stop = threading.Event()
+        self._update_check_stop = threading.Event()
+        self._update_check_lock = threading.Lock()
+        self._update_check_inflight = False
 
         self._load_jvm_plugin()
 
@@ -3962,6 +4150,7 @@ class TgStreaksPlugin(BasePlugin):
             self._sync_dead_states_snapshot()
             self._start_dead_state_monitor()
             self._start_streak_popup_dispatch_monitor()
+            self._start_update_check()
         except Exception as e:
             self.log(f"Exception: {e}")
 
@@ -3973,6 +4162,11 @@ class TgStreaksPlugin(BasePlugin):
 
         try:
             self._streak_popup_dispatch_stop.set()
+        except Exception:
+            pass
+
+        try:
+            self._update_check_stop.set()
         except Exception:
             pass
 
