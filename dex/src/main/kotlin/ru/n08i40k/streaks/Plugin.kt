@@ -34,7 +34,7 @@ import ru.n08i40k.streaks.overrides.StreakParticles
 import java.lang.reflect.Member
 
 private typealias Logger = ValueCallback<String>
-private typealias UserResolver = java.util.function.Function<Long, Array<Any>?>
+private typealias StreakResolver = java.util.function.Function<Long, Array<Any>?>
 private typealias TranslationResolver = java.util.function.Function<String, String?>
 
 class Plugin {
@@ -45,13 +45,13 @@ class Plugin {
         @JvmStatic
         fun inject(
             logger: Logger,
-            userResolver: UserResolver,
+            streakResolver: StreakResolver,
             translationResolver: TranslationResolver
         ) {
             if (INSTANCE != null)
                 return
 
-            INSTANCE = Plugin(logger, userResolver, translationResolver)
+            INSTANCE = Plugin(logger, streakResolver, translationResolver)
             INSTANCE!!.onInject()
         }
 
@@ -88,7 +88,7 @@ class Plugin {
     }
 
     private val logger: Logger
-    private val userResolver: UserResolver
+    private val streakResolver: StreakResolver
     private val translationResolver: TranslationResolver
 
     private var hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
@@ -111,11 +111,11 @@ class Plugin {
 
     constructor(
         logger: Logger,
-        userResolver: UserResolver,
+        streakResolver: StreakResolver,
         translationResolver: TranslationResolver
     ) {
         this.logger = logger
-        this.userResolver = userResolver
+        this.streakResolver = streakResolver
         this.translationResolver = translationResolver
     }
 
@@ -129,7 +129,7 @@ class Plugin {
     }
 
     fun resolveStreakData(userId: Long): StreakData? =
-        this.userResolver.apply(userId)
+        this.streakResolver.apply(userId)
             ?.let { StreakData.fromArray(it) }
 
     fun translate(key: String): String =

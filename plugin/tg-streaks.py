@@ -4085,7 +4085,7 @@ class TgStreaksPlugin(BasePlugin):
                 def onReceiveValue(self, var1):
                     ref.log(var1)
 
-            class UserResolver(dynamic_proxy(Function)):
+            class StreakResolver(dynamic_proxy(Function)):
                 def apply(self, t: Long):
                     if t <= 0:
                         return None
@@ -4112,7 +4112,7 @@ class TgStreaksPlugin(BasePlugin):
 
                     return None
 
-            class Translator(dynamic_proxy(Function)):
+            class TranslationResolver(dynamic_proxy(Function)):
                 def apply(self, t: String):
                     if t is None:
                         return ""
@@ -4123,7 +4123,7 @@ class TgStreaksPlugin(BasePlugin):
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
-            ).invoke(None, Logger(), UserResolver(), Translator())  # ty:ignore[invalid-argument-type]
+            ).invoke(None, Logger(), StreakResolver(), TranslationResolver())  # ty:ignore[invalid-argument-type]
             self.log("JVM plugin injected successfully")
         except Exception as e:
             self.log(f"Failed to inject JVM plugin: {e}")
