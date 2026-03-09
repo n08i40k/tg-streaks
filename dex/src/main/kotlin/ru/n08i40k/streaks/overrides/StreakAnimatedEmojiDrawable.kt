@@ -284,9 +284,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         this.invalidateSelf()
     }
 
-    fun resetCache(clearStreak: Boolean = false) {
+    fun resetCache(clearStreak: Boolean = false) =
         setUserId(userId, clearStreak)
-    }
 
     constructor(
         base: SwapAnimatedEmojiDrawable,
@@ -409,10 +408,9 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             width + getTextWidth()
     }
 
-    fun getAdditionalWidth(): Int {
-        return if (canDrawBadge)
+    fun getAdditionalWidth(): Int =
+        if (canDrawBadge)
             getTextWidth() + 1
         else
             getTextWidth()
-    }
 }

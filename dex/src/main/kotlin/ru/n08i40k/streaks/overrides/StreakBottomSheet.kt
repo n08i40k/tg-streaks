@@ -78,6 +78,7 @@ class StreakBottomSheet : PremiumPreviewBottomSheet {
 
     private fun t(key: String): String = Plugin.getInstance()?.translate(key) ?: key
 
+    @Suppress("SameParameterValue")
     private fun tf(key: String, vararg replacements: Pair<String, Any?>): String {
         var text = t(key)
         replacements.forEach { (name, value) ->

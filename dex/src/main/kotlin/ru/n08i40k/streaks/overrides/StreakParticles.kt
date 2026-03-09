@@ -19,7 +19,6 @@ class StreakParticles : Particles {
         this.color = color
     }
 
-    override fun draw(canvas: Canvas, color: Int, p2: Float) {
+    override fun draw(canvas: Canvas, color: Int, p2: Float) =
         super.draw(canvas, this.color, p2)
-    }
 }

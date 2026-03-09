@@ -33,6 +33,10 @@ import ru.n08i40k.streaks.overrides.StreakBottomSheet
 import ru.n08i40k.streaks.overrides.StreakParticles
 import java.lang.reflect.Member
 
+private typealias Logger = ValueCallback<String>
+private typealias UserResolver = java.util.function.Function<Long, Array<Any>?>
+private typealias TranslationResolver = java.util.function.Function<String, String?>
+
 class Plugin {
     @Suppress("unused")
     companion object {
@@ -40,18 +44,14 @@ class Plugin {
 
         @JvmStatic
         fun inject(
-            logger: ValueCallback<String>,
-            userResolver: java.util.function.Function<Long, Array<Any>?>,
-            translationResolver: java.util.function.Function<String, String>
+            logger: Logger,
+            userResolver: UserResolver,
+            translationResolver: TranslationResolver
         ) {
-            if (INSTANCE == null)
-                INSTANCE = Plugin()
-            else
+            if (INSTANCE != null)
                 return
 
-            INSTANCE!!.logger = logger
-            INSTANCE!!.userResolver = userResolver
-            INSTANCE!!.translationResolver = translationResolver
+            INSTANCE = Plugin(logger, userResolver, translationResolver)
             INSTANCE!!.onInject()
         }
 
@@ -69,10 +69,7 @@ class Plugin {
 
         @JvmStatic
         fun clearCaches() {
-            if (INSTANCE == null)
-                return
-
-            INSTANCE!!.streakDrawableEjectData.forEach { it.drawable.get()?.resetCache() }
+            INSTANCE?.streakDrawableEjectData?.forEach { it.drawable.get()?.resetCache() }
         }
 
         @JvmStatic
@@ -90,9 +87,9 @@ class Plugin {
         }
     }
 
-    private lateinit var logger: ValueCallback<String>
-    private lateinit var userResolver: java.util.function.Function<Long, Array<Any>?>
-    private lateinit var translationResolver: java.util.function.Function<String, String>
+    private val logger: Logger
+    private val userResolver: UserResolver
+    private val translationResolver: TranslationResolver
 
     private var hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     private var streakDrawableEjectData: ArrayList<StreakAnimatedEmojiDrawable.EjectData> =
@@ -112,9 +109,18 @@ class Plugin {
         }
     }
 
-    fun log(message: String) {
-        logger.onReceiveValue(message)
+    constructor(
+        logger: Logger,
+        userResolver: UserResolver,
+        translationResolver: TranslationResolver
+    ) {
+        this.logger = logger
+        this.userResolver = userResolver
+        this.translationResolver = translationResolver
     }
+
+    fun log(message: String) =
+        logger.onReceiveValue(message)
 
     fun logException(message: String, exception: Exception) {
         logger.onReceiveValue(message)
@@ -127,15 +133,10 @@ class Plugin {
             ?.let { StreakData.fromArray(it) }
 
     fun translate(key: String): String =
-        if (::translationResolver.isInitialized) {
-            translationResolver.apply(key) ?: key
-        } else {
-            key
-        }
+        translationResolver.apply(key) ?: key
 
-    fun addStreakDrawableEjectData(ejectData: StreakAnimatedEmojiDrawable.EjectData) {
+    fun addStreakDrawableEjectData(ejectData: StreakAnimatedEmojiDrawable.EjectData) =
         streakDrawableEjectData.add(ejectData)
-    }
 
     private fun onInject() {
         try {
@@ -202,7 +203,6 @@ class Plugin {
         )
     }
 
-    @Suppress("LocalVariableName")
     private fun hookMethods() {
         // Чат в списке, нужно ещё увеличить bounds по x, иначе текста не будет
         hookAfter(
