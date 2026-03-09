@@ -178,8 +178,11 @@ class Plugin {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     try {
                         callback(param)
-                    } catch (e: Exception) {
-                        logException("An exception occurred in $method before-call hook!", e)
+                    } catch (e: Throwable) {
+                        logException(
+                            "An exception occurred in $method before-call hook!",
+                            e as? Exception ?: Exception(e)
+                        )
                         eject()
                     }
                 }
@@ -194,8 +197,11 @@ class Plugin {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     try {
                         callback(param)
-                    } catch (e: Exception) {
-                        logException("An exception occurred in $method after-call hook!", e)
+                    } catch (e: Throwable) {
+                        logException(
+                            "An exception occurred in $method after-call hook!",
+                            e as? Exception ?: Exception(e)
+                        )
                         eject()
                     }
                 }
