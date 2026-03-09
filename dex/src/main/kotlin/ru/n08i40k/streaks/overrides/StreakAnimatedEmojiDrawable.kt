@@ -38,9 +38,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
     ) {
         fun restore() {
             val drawable = this.drawable.get() ?: return
-
-            drawable.setUserId(0)
-            drawable.setParticles(false, false)
+            drawable.resetCache(true)
 
             val targetObject = this.targetObject.get() ?: return
 
@@ -188,15 +186,13 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         }
     }
 
-    fun setUserId(userId: Long) {
+    fun setUserId(userId: Long, clearStreak: Boolean = false) {
         this.userId = userId
         this.cachedStreakData = Plugin.getInstance()!!.resolveStreakData(userId)
 
-        val isExists = cachedStreakData != null
-        super.setParticles(isExists, isExists)
-
-        if (isExists) {
+        if (cachedStreakData != null && !clearStreak) {
             super.set(cachedStreakData!!.documentId, 7, true)
+            super.setParticles(true, true)
 
             getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
                 val parent = field.get(this) as? StarsReactionsSheet.Particles
@@ -269,8 +265,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         this.invalidateSelf()
     }
 
-    fun resetCache() {
-        setUserId(userId)
+    fun resetCache(clearStreak: Boolean = false) {
+        setUserId(userId, clearStreak)
     }
 
     constructor(
