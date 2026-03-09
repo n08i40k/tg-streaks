@@ -157,8 +157,13 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
     private val size: Int
 
-    fun setBadge(user: TLRPC.User) {
+    fun setBadge(user: TLRPC.User?) {
         if (!canDrawBadge) return
+
+        if (user == null) {
+            badgeView = null
+            return
+        }
 
         val badge = BadgesController.INSTANCE.getBadge(user)
 
@@ -258,6 +263,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                             super.setParticles(true, false)
                         }
                     }
+
+                    setBadge(null)
                 }
             }
         }
