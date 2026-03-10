@@ -64,6 +64,7 @@ from org.telegram.messenger import (
     LocaleController,
     MessagesController,
     NotificationCenter,
+    SendMessagesHelper,
     UserConfig,
     UserObject,
 )
@@ -197,6 +198,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Debug: streak upgraded to {days} days",
         "ru": "Debug: стрик улучшен до {days} дней",
     },
+    "ok_upgrade_service_messages_enabled": {
+        "en": "Upgrade service messages enabled for this chat",
+        "ru": "Сервисные сообщения об апгрейде включены для этого чата",
+    },
+    "ok_upgrade_service_messages_disabled": {
+        "en": "Upgrade service messages disabled for this chat",
+        "ru": "Сервисные сообщения об апгрейде выключены для этого чата",
+    },
     "info_private_user_only": {
         "en": "This action works only for private user chats",
         "ru": "Это действие работает только в личных чатах с пользователями",
@@ -308,6 +317,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Jump to the day when this streak started",
         "ru": "Перейти к дню, когда начался этот стрик",
     },
+    "menu_upgrade_service_messages_text": {
+        "en": "Upgrade service messages",
+        "ru": "Сервисные сообщения об апгрейде",
+    },
+    "menu_upgrade_service_messages_subtext": {
+        "en": "Disabled by default. Tap to toggle for this chat.",
+        "ru": "По умолчанию выключено. Нажмите, чтобы переключить для этого чата.",
+    },
     "menu_debug_create_streak_text": {
         "en": "[DEBUG] Create 3-day streak",
         "ru": "[DEBUG] Создать стрик на 3 дня",
@@ -380,6 +397,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "update_bulletin_button": {
         "en": "Update",
         "ru": "Обновить",
+    },
+    "service_message_upgrade_text": {
+        "en": "Streak upgraded to {days} days!",
+        "ru": "Стрик достиг {days} дней!",
     },
 }
 
@@ -1637,6 +1658,8 @@ class StreaksController:
 
 
 class TgStreaksPlugin(BasePlugin):
+    _chat_upgrade_service_state_cache: dict[int, bool]
+
     def create_settings(self) -> list[Any]:
         return [
             Header(text=self._t("settings_updates")),
@@ -1698,6 +1721,141 @@ class TgStreaksPlugin(BasePlugin):
             self._update_check_stop.set()
         except Exception:
             pass
+
+    def _chat_upgrade_service_setting_key(self, dialog_id: int) -> str:
+        return f"upgrade_service_messages:{int(dialog_id)}"
+
+    def _get_upgrade_service_state_cache(self) -> dict[int, bool]:
+        cache = getattr(self, "_chat_upgrade_service_state_cache", None)
+        if cache is None:
+            cache = {}
+            self._chat_upgrade_service_state_cache = cache
+        return cache
+
+    def _get_chat_upgrade_service_state(self, dialog_id: int) -> Optional[bool]:
+        if int(dialog_id) <= 0:
+            return None
+
+        cache = self._get_upgrade_service_state_cache()
+        cached = cache.get(int(dialog_id))
+        if cached is not None:
+            return bool(cached)
+
+        key = self._chat_upgrade_service_setting_key(int(dialog_id))
+
+        try:
+            value = self.get_setting(key, None)
+        except Exception:
+            return None
+
+        if value is None:
+            return None
+
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, (int, float)):
+            return bool(value)
+
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in ("1", "true", "yes", "on"):
+                cache[int(dialog_id)] = True
+                return True
+            if lowered in ("0", "false", "no", "off"):
+                cache[int(dialog_id)] = False
+                return False
+
+        try:
+            lowered = str(value).strip().lower()
+        except Exception:
+            lowered = ""
+
+        if lowered in ("1", "true", "yes", "on"):
+            cache[int(dialog_id)] = True
+            return True
+
+        if lowered in ("0", "false", "no", "off"):
+            cache[int(dialog_id)] = False
+            return False
+
+        return None
+
+    def _is_chat_upgrade_service_enabled(self, dialog_id: int) -> bool:
+        return bool(self._get_chat_upgrade_service_state(dialog_id) is True)
+
+    def _set_chat_upgrade_service_state(self, dialog_id: int, enabled: bool):
+        if int(dialog_id) <= 0:
+            return
+
+        self._get_upgrade_service_state_cache()[int(dialog_id)] = bool(enabled)
+        key = self._chat_upgrade_service_setting_key(int(dialog_id))
+
+        try:
+            self.set_setting(key, bool(enabled))
+        except Exception as e:
+            self.log(
+                f"Failed to persist upgrade service setting for chat {dialog_id}: {e}"
+            )
+
+    def _parse_upgrade_service_message_days(self, text: Any) -> Optional[int]:
+        if text is None:
+            return None
+
+        try:
+            value = str(text).strip()
+        except Exception:
+            return None
+
+        if not value.startswith("tg-streaks:upgrade:"):
+            return None
+
+        suffix = value[len("tg-streaks:upgrade:") :]
+        if len(suffix) == 0 or not suffix.isdigit():
+            return None
+
+        try:
+            days = int(suffix)
+        except Exception:
+            return None
+
+        if days <= 0:
+            return None
+
+        return days
+
+    def _is_upgrade_service_message_text(self, text: Any) -> bool:
+        return self._parse_upgrade_service_message_days(text) is not None
+
+    def _is_upgrade_service_message(self, message: Any) -> bool:
+        if message is None:
+            return False
+
+        for attr_name in ("message", "caption"):
+            try:
+                value = getattr(message, attr_name, None)
+            except Exception:
+                value = None
+
+            if self._is_upgrade_service_message_text(value):
+                return True
+
+        return False
+
+    def _is_upgrade_service_send_params(self, params: Any) -> bool:
+        if params is None:
+            return False
+
+        for attr_name in ("message", "caption"):
+            try:
+                value = getattr(params, attr_name, None)
+            except Exception:
+                value = None
+
+            if self._is_upgrade_service_message_text(value):
+                return True
+
+        return False
 
     def _normalize_version_tag(self, value: Optional[str]) -> str:
         if value is None:
@@ -2291,6 +2449,66 @@ class TgStreaksPlugin(BasePlugin):
             emoji_document_id=int(StreakLevels.COLD.value.document_id),
         )
 
+    def _should_send_upgrade_service_message_for_day(
+        self, event_day: Optional[int]
+    ) -> bool:
+        if event_day is None:
+            return True
+
+        return int(event_day) == int(TimeUtils.get_stripped_timestamp())
+
+    def _maybe_send_upgrade_service_message(
+        self, account: int, peer_id: int, days: int, event_day: Optional[int]
+    ):
+        if not self._is_chat_upgrade_service_enabled(int(peer_id)):
+            return
+
+        if not self._should_send_upgrade_service_message_for_day(event_day):
+            return
+
+        event_key_day = (
+            int(TimeUtils.get_stripped_timestamp())
+            if event_day is None
+            else int(event_day)
+        )
+        dedupe_key = f"{peer_id}:{days}:{event_key_day}"
+
+        with self._upgrade_service_lock:
+            if dedupe_key in self._sent_upgrade_service_messages:
+                return
+
+        service_text = f"tg-streaks:upgrade:{days}"
+
+        def send():
+            try:
+                target_account = int(account)
+                if target_account < 0:
+                    try:
+                        target_account = int(get_account_instance().getCurrentAccount())
+                    except Exception:
+                        target_account = 0
+
+                self.log(
+                    f"Sending upgrade service message: account={target_account}, peer={peer_id}, text={service_text}"
+                )
+
+                params = SendMessagesHelper.SendMessageParams.of(
+                    String(service_text), int(peer_id)
+                )
+                SendMessagesHelper.getInstance(int(target_account)).sendMessage(params)
+
+                with self._upgrade_service_lock:
+                    self._sent_upgrade_service_messages.add(dedupe_key)
+                    if len(self._sent_upgrade_service_messages) > 128:
+                        self._sent_upgrade_service_messages.clear()
+                        self._sent_upgrade_service_messages.add(dedupe_key)
+            except Exception as e:
+                self.log(
+                    f"Failed to send upgrade service message for chat {peer_id}: {e}"
+                )
+
+        run_on_ui_thread(send)
+
     def _force_check_day_labels(
         self, include_today: bool, is_active: bool
     ) -> tuple[str, str]:
@@ -2308,9 +2526,11 @@ class TgStreaksPlugin(BasePlugin):
 
     def _maybe_notify_streak_transition(
         self,
+        account: int,
         peer_id: int,
         before: Optional[dict[str, int]],
         after: Optional[dict[str, int]],
+        event_day: Optional[int] = None,
     ):
         if after is None:
             return
@@ -2349,6 +2569,11 @@ class TgStreaksPlugin(BasePlugin):
                 StreakLevels.DAYS_3.value.accent_color_int,
                 emoji_document_id=int(after["level_id"]),
             )
+
+            self._maybe_send_upgrade_service_message(
+                int(account), int(peer_id), after_length, event_day
+            )
+
             try:
                 self._rerender_dialog_cells()
             except Exception as e:
@@ -2374,14 +2599,22 @@ class TgStreaksPlugin(BasePlugin):
                 emoji_document_id=int(after["level_id"]),
             )
 
+            self._maybe_send_upgrade_service_message(
+                int(account), int(peer_id), after_length, event_day
+            )
+
     def _notify_for_dialog_event(
-        self, peer_id: int, sender_type: SenderType, event_day: Optional[int] = None
+        self,
+        account: int,
+        peer_id: int,
+        sender_type: SenderType,
+        event_day: Optional[int] = None,
     ):
         before = self._record_state(self.users_db.get_user(peer_id))
         self.streaks.on_dialog_event(peer_id, sender_type, event_day)
         self._repair_record_from_cached_today_activity(peer_id, event_day)
         after = self._record_state(self.users_db.get_user(peer_id))
-        self._maybe_notify_streak_transition(peer_id, before, after)
+        self._maybe_notify_streak_transition(account, peer_id, before, after, event_day)
 
         try:
             if self._should_refresh_streak_emoji(before, after):
@@ -2586,6 +2819,23 @@ class TgStreaksPlugin(BasePlugin):
             self._chat_go_to_streak_start_menu_item_id = None
             self.log(f"Failed to register go-to-streak-start menu item: {e}")
 
+        try:
+            item_id = self.add_menu_item(
+                MenuItemData(
+                    menu_type=MenuItemType.CHAT_ACTION_MENU,
+                    text=self._t("menu_upgrade_service_messages_text"),
+                    subtext=self._t("menu_upgrade_service_messages_subtext"),
+                    on_click=lambda payload: (
+                        self._on_toggle_upgrade_service_messages_clicked(payload)
+                    ),
+                    priority=998,
+                )
+            )
+            self._chat_upgrade_service_messages_menu_item_id = item_id
+        except Exception as e:
+            self._chat_upgrade_service_messages_menu_item_id = None
+            self.log(f"Failed to register upgrade-service-messages menu item: {e}")
+
         if not DEBUG_MODE:
             return
 
@@ -2658,6 +2908,10 @@ class TgStreaksPlugin(BasePlugin):
             "go-to-streak-start",
         )
         self._remove_menu_item_safely(
+            getattr(self, "_chat_upgrade_service_messages_menu_item_id", None),
+            "upgrade-service-messages",
+        )
+        self._remove_menu_item_safely(
             getattr(self, "_chat_debug_create_streak_menu_item_id", None),
             "debug-create",
         )
@@ -2670,6 +2924,8 @@ class TgStreaksPlugin(BasePlugin):
         )
         self._chat_force_check_menu_item_id = None
         self._chat_go_to_streak_start_menu_item_id = None
+        self._chat_upgrade_service_messages_menu_item_id = None
+        self._chat_upgrade_service_state_cache = {}
         self._chat_debug_create_streak_menu_item_id = None
         self._chat_debug_kill_streak_menu_item_id = None
         self._chat_debug_upgrade_streak_menu_item_id = None
@@ -2787,6 +3043,37 @@ class TgStreaksPlugin(BasePlugin):
                 continue
 
         return None
+
+    def _extract_current_account_from_menu_payload(self, payload: Any) -> int:
+        chat_activity = self._extract_chat_activity_from_menu_payload(payload)
+
+        if chat_activity is not None:
+            try:
+                return int(chat_activity.getCurrentAccount())
+            except Exception:
+                pass
+
+            try:
+                return int(getattr(chat_activity, "currentAccount"))
+            except Exception:
+                pass
+
+        fragment = get_last_fragment()
+        if fragment is not None:
+            try:
+                return int(fragment.getCurrentAccount())
+            except Exception:
+                pass
+
+            try:
+                return int(getattr(fragment, "currentAccount"))
+            except Exception:
+                pass
+
+        try:
+            return int(get_account_instance().getCurrentAccount())
+        except Exception:
+            return 0
 
     def _can_force_check_dialog_id(self, dialog_id: int) -> bool:
         if dialog_id <= 0:
@@ -3038,6 +3325,25 @@ class TgStreaksPlugin(BasePlugin):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _on_toggle_upgrade_service_messages_clicked(self, payload: Any):
+        dialog_id = self._extract_dialog_id_from_menu_payload(payload)
+
+        if dialog_id is None:
+            self._show_error(self._t("err_cannot_detect_current_chat"))
+            return
+
+        if not self._can_force_check_dialog_id(dialog_id):
+            self._show_info(self._t("info_private_user_only"))
+            return
+
+        enabled = not self._is_chat_upgrade_service_enabled(dialog_id)
+        self._set_chat_upgrade_service_state(dialog_id, enabled)
+
+        if enabled:
+            self._show_success(self._t("ok_upgrade_service_messages_enabled"))
+        else:
+            self._show_success(self._t("ok_upgrade_service_messages_disabled"))
+
     def _extract_debug_target_dialog_id(self, payload: Any) -> Optional[int]:
         if not DEBUG_MODE:
             self._show_info(self._t("info_debug_mode_disabled"))
@@ -3070,13 +3376,22 @@ class TgStreaksPlugin(BasePlugin):
         )
 
     def _persist_debug_record(
-        self, before: Optional[dict[str, int]], record: UserRecord
+        self,
+        payload: Any,
+        before: Optional[dict[str, int]],
+        record: UserRecord,
     ):
         self.users_db.set_user_record(record)
         self._patch_cached_users_streak_emoji_status()
         after_record = self.users_db.get_user(record.user_id)
         after = self._record_state(after_record)
-        self._maybe_notify_streak_transition(record.user_id, before, after)
+        self._maybe_notify_streak_transition(
+            self._extract_current_account_from_menu_payload(payload),
+            record.user_id,
+            before,
+            after,
+            TimeUtils.get_stripped_timestamp(),
+        )
 
         if after_record is not None:
             self._streak_dead_state[int(record.user_id)] = bool(
@@ -3090,7 +3405,7 @@ class TgStreaksPlugin(BasePlugin):
 
         before = self._record_state(self.users_db.get_user(dialog_id))
         record = self._make_alive_record(dialog_id, 3)
-        self._persist_debug_record(before, record)
+        self._persist_debug_record(payload, before, record)
         self._show_success(self._t("ok_debug_streak_set_3"))
 
     def _on_debug_kill_streak_clicked(self, payload: Any):
@@ -3111,7 +3426,7 @@ class TgStreaksPlugin(BasePlugin):
             last_sended_at=current.last_sended_at,
             last_received_at=current.last_received_at,
         )
-        self._persist_debug_record(before, dead_record)
+        self._persist_debug_record(payload, before, dead_record)
         self._show_success(self._t("ok_debug_streak_marked_dead"))
 
     def _on_debug_upgrade_streak_clicked(self, payload: Any):
@@ -3133,7 +3448,7 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         upgraded = self._make_alive_record(dialog_id, target_length)
-        self._persist_debug_record(before, upgraded)
+        self._persist_debug_record(payload, before, upgraded)
         self._show_success(self._t("ok_debug_streak_upgraded", days=target_length))
 
     def _resolve_dialog_user(
@@ -3597,6 +3912,9 @@ class TgStreaksPlugin(BasePlugin):
         return None
 
     def _consume_message(self, account: int, message: Any):
+        if self._is_upgrade_service_message(message):
+            return
+
         peer_id = self._extract_private_peer_id(getattr(message, "peer_id", None))
 
         if peer_id is None:
@@ -3620,7 +3938,7 @@ class TgStreaksPlugin(BasePlugin):
 
         message_date = int(getattr(message, "date", int(time.time())))
         self._notify_for_dialog_event(
-            peer_id, sender_type, TimeUtils.strip_timestamp(message_date)
+            account, peer_id, sender_type, TimeUtils.strip_timestamp(message_date)
         )
 
     def _consume_update(self, account: int, update_name: str, update: Any):
@@ -3650,7 +3968,7 @@ class TgStreaksPlugin(BasePlugin):
             )
             message_date = int(getattr(update, "date", int(time.time())))
             self._notify_for_dialog_event(
-                peer_id, sender_type, TimeUtils.strip_timestamp(message_date)
+                account, peer_id, sender_type, TimeUtils.strip_timestamp(message_date)
             )
             return
 
@@ -4134,6 +4452,8 @@ class TgStreaksPlugin(BasePlugin):
         self._force_check_running = False
         self._chat_force_check_menu_item_id = None
         self._chat_go_to_streak_start_menu_item_id = None
+        self._chat_upgrade_service_messages_menu_item_id = None
+        self._chat_upgrade_service_state_cache = {}
         self._chat_debug_create_streak_menu_item_id = None
         self._chat_debug_kill_streak_menu_item_id = None
         self._chat_debug_upgrade_streak_menu_item_id = None
@@ -4146,6 +4466,8 @@ class TgStreaksPlugin(BasePlugin):
         self._update_check_stop = threading.Event()
         self._update_check_lock = threading.Lock()
         self._update_check_inflight = False
+        self._upgrade_service_lock = threading.Lock()
+        self._sent_upgrade_service_messages: set[str] = set()
 
         self._load_jvm_plugin()
 
@@ -4209,6 +4531,9 @@ class TgStreaksPlugin(BasePlugin):
 
     def on_send_message_hook(self, account: int, params: Any) -> HookResult:
         try:
+            if self._is_upgrade_service_send_params(params):
+                return HookResult()
+
             peer_id = self._extract_private_peer_id_from_send_params(params)
 
             if peer_id is None:
@@ -4219,7 +4544,7 @@ class TgStreaksPlugin(BasePlugin):
             if self_user_id > 0 and peer_id == self_user_id:
                 return HookResult()
 
-            self._notify_for_dialog_event(peer_id, SenderType.SELF)
+            self._notify_for_dialog_event(account, peer_id, SenderType.SELF)
         except Exception as e:
             self.log(f"send hook error: {e}")
 

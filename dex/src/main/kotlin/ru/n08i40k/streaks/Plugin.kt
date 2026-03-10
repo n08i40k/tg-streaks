@@ -10,6 +10,7 @@ import android.app.Dialog
 import android.content.Context
 import android.view.View
 import android.webkit.ValueCallback
+import androidx.collection.LongSparseArray
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import org.telegram.messenger.AndroidUtilities
@@ -17,6 +18,7 @@ import org.telegram.messenger.MessageObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
 import org.telegram.ui.ActionBar.Theme
+import org.telegram.ui.Cells.ChatActionCell
 import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.Cells.UserCell
@@ -90,6 +92,8 @@ class Plugin {
     private val logger: Logger
     private val streakResolver: StreakResolver
     private val translationResolver: TranslationResolver
+
+    private val upgradeMessageRegex = Regex("^tg-streaks:upgrade:(\\d+)$")
 
     private var hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     private var streakDrawableEjectData: ArrayList<StreakAnimatedEmojiDrawable.EjectData> =
@@ -298,6 +302,51 @@ class Plugin {
                 currentUser.id,
                 true
             )
+        }
+
+        // каким блять хуем я не могу кастануть child в parent?
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        hookBefore(
+            MessageObject::class.java.getDeclaredConstructor(
+                Int::class.java,
+                TLRPC.Message::class.java,
+                MessageObject::class.java,
+                java.util.AbstractMap::class.java,
+                java.util.AbstractMap::class.java,
+                LongSparseArray::class.java,
+                LongSparseArray::class.java,
+                Boolean::class.java,
+                Boolean::class.java,
+                Long::class.java,
+                Boolean::class.java,
+                Boolean::class.java,
+                Boolean::class.java,
+                Int::class.java
+            )
+
+        ) { param ->
+            val message = param.args[1] as? TLRPC.Message ?: return@hookBefore
+
+            val days = upgradeMessageRegex
+                .matchEntire(message.message ?: return@hookBefore)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+                ?.takeIf { it > 0 }
+                ?: return@hookBefore
+
+            val customMessage = TLRPC.TL_messageService() as TLRPC.Message
+            cloneFields(message as Object, customMessage as Object, TLRPC.Message::class.java)
+
+            customMessage.action =
+                (TLRPC.TL_messageActionCustomAction() as TLRPC.MessageAction).apply {
+                    this.message =
+                        translate("service_message_upgrade_text")
+                            .replace("{days}", days.toString())
+                }
+            customMessage.message = ""
+
+            param.args[1] = customMessage
         }
 
         hookAfter(
