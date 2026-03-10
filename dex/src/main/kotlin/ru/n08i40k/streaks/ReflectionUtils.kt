@@ -34,5 +34,5 @@ fun getField(klass: Class<*>, name: String): Field {
 inline fun <reified T> getFieldValue(klass: Class<*>, obj: Any, name: String): T? =
     getField(klass, name).get(obj) as? T
 
-fun setFieldValue(klass: Class<*>, obj: Any, name: String, value: Any) =
+fun setFieldValue(klass: Class<*>, obj: Any, name: String, value: Any?) =
     getField(klass, name).set(obj, value)
