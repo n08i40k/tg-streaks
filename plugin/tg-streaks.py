@@ -102,6 +102,23 @@ DEX_SHA256 = "013c15fa3aa795553160ffea1b69b2429b44b58c2cc26530daaeceb0ce012b65"
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
+MENU_PAYLOAD_DIALOG_KEYS = (
+    "dialog_id",
+    "dialogId",
+    "peer_id",
+    "peerId",
+    "chat_id",
+    "chatId",
+    "user_id",
+    "userId",
+)
+MENU_PAYLOAD_FRAGMENT_KEYS = (
+    "chatActivity",
+    "fragment",
+    "chatFragment",
+    "target",
+    "object",
+)
 
 _day_check_messages_table_name: Optional[str] = None
 _day_check_messages_table_resolved = False
@@ -703,7 +720,7 @@ def _try_get_cached_day_activity(
             Integer(int(end_ts)),
         )
 
-        if cursor is None or not bool(cursor.next()):
+        if cursor is None or not cursor.next():
             return None
 
         has_out = 0 if cursor.isNull(0) else int(cursor.intValue(0))
@@ -732,9 +749,9 @@ def was_chat_active(
 
     cached_result = _try_get_cached_day_activity(peer, start_ts, end_ts)
     if cached_result is not None:
-        return bool(cached_result)
+        return cached_result
 
-    attempts = int(DAY_CHECK_TIMEOUT_RETRIES) + 1
+    attempts = DAY_CHECK_TIMEOUT_RETRIES + 1
     last_state: Optional[dict[str, Any]] = None
 
     def run_single_attempt() -> dict[str, Any]:
@@ -803,7 +820,7 @@ def was_chat_active(
 
         load()
 
-        if not done.wait(timeout=int(DAY_CHECK_TIMEOUT_SECONDS)):
+        if not done.wait(timeout=DAY_CHECK_TIMEOUT_SECONDS):
             state["failed"] = True
             state["timeout"] = True
             state["failure_reason"] = (
@@ -817,12 +834,12 @@ def was_chat_active(
         state = run_single_attempt()
         last_state = state
 
-        if bool(state.get("timeout", False)) and attempt < (attempts - 1):
+        if state.get("timeout", False) and attempt < (attempts - 1):
             if DAY_CHECK_RETRY_DELAY_SECONDS > 0:
                 time.sleep(float(DAY_CHECK_RETRY_DELAY_SECONDS))
             continue
 
-        if fail_on_error and bool(state["failed"]):
+        if fail_on_error and state["failed"]:
             reason = cast("str", state.get("failure_reason", "")) or "unknown"
             raise RuntimeError(f"day activity check failed: {reason}")
 
@@ -902,29 +919,17 @@ class StreakLevels(Enum):
 
         if length < 10:
             return StreakLevels.DAYS_3.value
-        elif length < 30:
+        if length < 30:
             return StreakLevels.DAYS_10.value
-        elif length < 100:
+        if length < 100:
             return StreakLevels.DAYS_30.value
-        elif length < 200:
+        if length < 200:
             return StreakLevels.DAYS_100.value
 
         return StreakLevels.DAYS_200.value
 
     def is_jubilee(length: int) -> bool:
-        if length == 0:
-            return False
-
-        if length == 3:
-            return True
-
-        if length == 10:
-            return True
-
-        if length == 30:
-            return True
-
-        return (length % 100) == 0
+        return length in (3, 10, 30) or (length > 0 and length % 100 == 0)
 
     def get_next_level_length(length: int) -> Optional[int]:
         if length < 3:
@@ -1016,6 +1021,7 @@ class UserRecord:
             else int(self.last_received_at),
         }
 
+    @staticmethod
     def from_dict(payload: dict[str, Any]) -> Optional["UserRecord"]:
         try:
             user_id = int(payload["user_id"])
@@ -1042,6 +1048,7 @@ class UserRecord:
             ),
         )
 
+    @staticmethod
     def new(peer_id: int, sender: SenderType, event_day: Optional[int] = None):
         day = (
             TimeUtils.get_stripped_timestamp()
@@ -1256,7 +1263,7 @@ class UsersDatabase:
         except Exception as e:
             return (False, f"Failed to list backups: {e}")
 
-        if len(backup_paths) == 0:
+        if not backup_paths:
             return (False, "No backups found")
 
         latest_path = backup_paths[0]
@@ -1723,7 +1730,7 @@ class TgStreaksPlugin(BasePlugin):
             pass
 
     def _chat_upgrade_service_setting_key(self, dialog_id: int) -> str:
-        return f"upgrade_service_messages:{int(dialog_id)}"
+        return f"upgrade_service_messages:{dialog_id}"
 
     def _get_upgrade_service_state_cache(self) -> dict[int, bool]:
         cache = getattr(self, "_chat_upgrade_service_state_cache", None)
@@ -1733,15 +1740,17 @@ class TgStreaksPlugin(BasePlugin):
         return cache
 
     def _get_chat_upgrade_service_state(self, dialog_id: int) -> Optional[bool]:
-        if int(dialog_id) <= 0:
+        dialog_id = int(dialog_id)
+
+        if dialog_id <= 0:
             return None
 
         cache = self._get_upgrade_service_state_cache()
-        cached = cache.get(int(dialog_id))
+        cached = cache.get(dialog_id)
         if cached is not None:
-            return bool(cached)
+            return cached
 
-        key = self._chat_upgrade_service_setting_key(int(dialog_id))
+        key = self._chat_upgrade_service_setting_key(dialog_id)
 
         try:
             value = self.get_setting(key, None)
@@ -1759,40 +1768,37 @@ class TgStreaksPlugin(BasePlugin):
 
         if isinstance(value, str):
             lowered = value.strip().lower()
-            if lowered in ("1", "true", "yes", "on"):
-                cache[int(dialog_id)] = True
-                return True
-            if lowered in ("0", "false", "no", "off"):
-                cache[int(dialog_id)] = False
-                return False
-
-        try:
-            lowered = str(value).strip().lower()
-        except Exception:
-            lowered = ""
+        else:
+            try:
+                lowered = str(value).strip().lower()
+            except Exception:
+                return None
 
         if lowered in ("1", "true", "yes", "on"):
-            cache[int(dialog_id)] = True
+            cache[dialog_id] = True
             return True
 
         if lowered in ("0", "false", "no", "off"):
-            cache[int(dialog_id)] = False
+            cache[dialog_id] = False
             return False
 
         return None
 
     def _is_chat_upgrade_service_enabled(self, dialog_id: int) -> bool:
-        return bool(self._get_chat_upgrade_service_state(dialog_id) is True)
+        return self._get_chat_upgrade_service_state(dialog_id) is True
 
     def _set_chat_upgrade_service_state(self, dialog_id: int, enabled: bool):
-        if int(dialog_id) <= 0:
+        dialog_id = int(dialog_id)
+        enabled = bool(enabled)
+
+        if dialog_id <= 0:
             return
 
-        self._get_upgrade_service_state_cache()[int(dialog_id)] = bool(enabled)
-        key = self._chat_upgrade_service_setting_key(int(dialog_id))
+        self._get_upgrade_service_state_cache()[dialog_id] = enabled
+        key = self._chat_upgrade_service_setting_key(dialog_id)
 
         try:
-            self.set_setting(key, bool(enabled))
+            self.set_setting(key, enabled)
         except Exception as e:
             self.log(
                 f"Failed to persist upgrade service setting for chat {dialog_id}: {e}"
@@ -1827,13 +1833,12 @@ class TgStreaksPlugin(BasePlugin):
     def _is_upgrade_service_message_text(self, text: Any) -> bool:
         return self._parse_upgrade_service_message_days(text) is not None
 
-    def _is_upgrade_service_message(self, message: Any) -> bool:
-        if message is None:
+    def _has_upgrade_service_text(self, obj: Any) -> bool:
+        if obj is None:
             return False
-
         for attr_name in ("message", "caption"):
             try:
-                value = getattr(message, attr_name, None)
+                value = getattr(obj, attr_name, None)
             except Exception:
                 value = None
 
@@ -1841,21 +1846,12 @@ class TgStreaksPlugin(BasePlugin):
                 return True
 
         return False
+
+    def _is_upgrade_service_message(self, message: Any) -> bool:
+        return self._has_upgrade_service_text(message)
 
     def _is_upgrade_service_send_params(self, params: Any) -> bool:
-        if params is None:
-            return False
-
-        for attr_name in ("message", "caption"):
-            try:
-                value = getattr(params, attr_name, None)
-            except Exception:
-                value = None
-
-            if self._is_upgrade_service_message_text(value):
-                return True
-
-        return False
+        return self._has_upgrade_service_text(params)
 
     def _normalize_version_tag(self, value: Optional[str]) -> str:
         if value is None:
@@ -2307,9 +2303,7 @@ class TgStreaksPlugin(BasePlugin):
 
         try:
             dialog_id = int(fragment.getDialogId())
-            if dialog_id == 0:
-                return None
-            return dialog_id
+            return dialog_id or None
         except Exception:
             return None
 
@@ -2325,9 +2319,10 @@ class TgStreaksPlugin(BasePlugin):
         if not self._can_show_streak_popup(key):
             return
 
+        peer_id = int(peer_id)
         current_dialog_id = self._resolve_open_chat_dialog_id()
 
-        if current_dialog_id is not None and int(current_dialog_id) == int(peer_id):
+        if current_dialog_id == peer_id:
             self._show_streak_popup(
                 title,
                 subtitle,
@@ -2346,10 +2341,10 @@ class TgStreaksPlugin(BasePlugin):
         }
 
         with self._streak_popup_queue_lock:
-            queue = self._pending_streak_popups.get(int(peer_id))
+            queue = self._pending_streak_popups.get(peer_id)
             if queue is None:
                 queue = []
-                self._pending_streak_popups[int(peer_id)] = queue
+                self._pending_streak_popups[peer_id] = queue
 
             queue.append(popup_payload)
             if len(queue) > 5:
@@ -2452,24 +2447,21 @@ class TgStreaksPlugin(BasePlugin):
     def _should_send_upgrade_service_message_for_day(
         self, event_day: Optional[int]
     ) -> bool:
-        if event_day is None:
-            return True
-
-        return int(event_day) == int(TimeUtils.get_stripped_timestamp())
+        return event_day is None or event_day == TimeUtils.get_stripped_timestamp()
 
     def _maybe_send_upgrade_service_message(
         self, account: int, peer_id: int, days: int, event_day: Optional[int]
     ):
-        if not self._is_chat_upgrade_service_enabled(int(peer_id)):
+        peer_id = int(peer_id)
+
+        if not self._is_chat_upgrade_service_enabled(peer_id):
             return
 
         if not self._should_send_upgrade_service_message_for_day(event_day):
             return
 
         event_key_day = (
-            int(TimeUtils.get_stripped_timestamp())
-            if event_day is None
-            else int(event_day)
+            TimeUtils.get_stripped_timestamp() if event_day is None else event_day
         )
         dedupe_key = f"{peer_id}:{days}:{event_key_day}"
 
@@ -2481,21 +2473,20 @@ class TgStreaksPlugin(BasePlugin):
 
         def send():
             try:
-                target_account = int(account)
+                target_account = account
                 if target_account < 0:
                     try:
-                        target_account = int(get_account_instance().getCurrentAccount())
+                        target_account = get_account_instance().getCurrentAccount()
                     except Exception:
                         target_account = 0
 
                 self.log(
                     f"Sending upgrade service message: account={target_account}, peer={peer_id}, text={service_text}"
                 )
-
                 params = SendMessagesHelper.SendMessageParams.of(
-                    String(service_text), int(peer_id)
+                    String(service_text), peer_id
                 )
-                SendMessagesHelper.getInstance(int(target_account)).sendMessage(params)
+                SendMessagesHelper.getInstance(target_account).sendMessage(params)
 
                 with self._upgrade_service_lock:
                     self._sent_upgrade_service_messages.add(dedupe_key)
@@ -2536,19 +2527,15 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         name = self._resolve_peer_name(peer_id)
-        after_length = int(after["length"])
-        after_dead = bool(after["dead"])
+        after_length = after["length"]
+        after_dead = after["dead"]
+        before_length = before["length"] if before is not None else 0
+        before_dead = before is not None and before["dead"]
 
         if after_dead:
-            if (
-                before is not None
-                and not bool(before["dead"])
-                and int(before["length"]) >= 3
-            ):
-                self._enqueue_streak_ended_popup(
-                    int(peer_id), int(before["length"]), name=name
-                )
-                self._reload_user_in_messages_cache(int(peer_id))
+            if before is not None and not before["dead"] and before_length >= 3:
+                self._enqueue_streak_ended_popup(peer_id, before_length, name=name)
+                self._reload_user_in_messages_cache(peer_id)
                 try:
                     self._rerender_dialog_cells()
                 except Exception as e:
@@ -2556,22 +2543,22 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         was_started = after_length >= 3 and (
-            before is None or bool(before["dead"]) or int(before["length"]) < 3
+            before is None or before_dead or before_length < 3
         )
 
         if was_started:
             key = f"start:{peer_id}:{after_length}"
             self._enqueue_streak_popup_for_open_chat(
-                int(peer_id),
+                peer_id,
                 key,
                 self._t("popup_streak_started_title"),
                 self._t("popup_streak_started_subtitle", name=name),
                 StreakLevels.DAYS_3.value.accent_color_int,
-                emoji_document_id=int(after["level_id"]),
+                emoji_document_id=after["level_id"],
             )
 
             self._maybe_send_upgrade_service_message(
-                int(account), int(peer_id), after_length, event_day
+                account, peer_id, after_length, event_day
             )
 
             try:
@@ -2583,24 +2570,24 @@ class TgStreaksPlugin(BasePlugin):
         if before is None:
             return
 
+        before_level_id = before["level_id"]
+        after_level_id = after["level_id"]
         upgraded = StreakLevels.is_jubilee(after_length)
 
-        if int(before["level_id"]) != int(after["level_id"]) and upgraded:
-            key = f"upgrade:{peer_id}:{after['level_id']}"
-            upgraded_level_color = self._resolve_level_accent_color(
-                int(after["level_id"])
-            )
+        if before_level_id != after_level_id and upgraded:
+            key = f"upgrade:{peer_id}:{after_level_id}"
+            upgraded_level_color = self._resolve_level_accent_color(after_level_id)
             self._enqueue_streak_popup_for_open_chat(
-                int(peer_id),
+                peer_id,
                 key,
                 self._t("popup_streak_upgraded_title", days=after_length),
                 self._t("popup_streak_upgraded_subtitle", name=name),
                 upgraded_level_color,
-                emoji_document_id=int(after["level_id"]),
+                emoji_document_id=after_level_id,
             )
 
             self._maybe_send_upgrade_service_message(
-                int(account), int(peer_id), after_length, event_day
+                account, peer_id, after_length, event_day
             )
 
     def _notify_for_dialog_event(
@@ -2630,14 +2617,8 @@ class TgStreaksPlugin(BasePlugin):
         if before is None and after is None:
             return False
 
-        before_has = (
-            before is not None
-            and not bool(before["dead"])
-            and int(before["length"]) >= 3
-        )
-        after_has = (
-            after is not None and not bool(after["dead"]) and int(after["length"]) >= 3
-        )
+        before_has = before is not None and not before["dead"] and before["length"] >= 3
+        after_has = after is not None and not after["dead"] and after["length"] >= 3
 
         if before_has != after_has:
             return True
@@ -2648,10 +2629,10 @@ class TgStreaksPlugin(BasePlugin):
         if before is None or after is None:
             return True
 
-        if int(before["length"]) != int(after["length"]):
+        if before["length"] != after["length"]:
             return True
 
-        if int(before["level_id"]) != int(after["level_id"]):
+        if before["level_id"] != after["level_id"]:
             return True
 
         return False
@@ -2934,88 +2915,16 @@ class TgStreaksPlugin(BasePlugin):
         if payload is None:
             return None
 
-        payload_getter = None
+        def parse_dialog_id(value: Any) -> Optional[int]:
+            if value is None:
+                return None
 
-        if isinstance(payload, dict):
-            payload_getter = payload.get
-        else:
-            for key in (
-                "dialog_id",
-                "dialogId",
-                "peer_id",
-                "peerId",
-                "chat_id",
-                "chatId",
-                "user_id",
-                "userId",
-            ):
-                try:
-                    value = payload.get(key)
-                    payload_getter = payload.get
-                except Exception:
-                    break
+            try:
+                dialog_id = int(value)
+            except Exception:
+                return None
 
-                if value is None:
-                    continue
-
-                try:
-                    dialog_id = int(value)
-                    if dialog_id != 0:
-                        return dialog_id
-                except Exception:
-                    continue
-
-        if payload_getter is not None:
-            for key in (
-                "dialog_id",
-                "dialogId",
-                "peer_id",
-                "peerId",
-                "chat_id",
-                "chatId",
-                "user_id",
-                "userId",
-            ):
-                value = payload_getter(key)
-                if value is None:
-                    continue
-
-                try:
-                    dialog_id = int(value)
-                    if dialog_id != 0:
-                        return dialog_id
-                except Exception:
-                    continue
-
-            for key in ("chatActivity", "fragment", "chatFragment", "target", "object"):
-                value = payload_getter(key)
-                if value is None:
-                    continue
-
-                try:
-                    dialog_id = int(value.getDialogId())
-                    if dialog_id != 0:
-                        return dialog_id
-                except Exception:
-                    continue
-
-        try:
-            dialog_id = int(payload.getDialogId())
-            if dialog_id != 0:
-                return dialog_id
-        except Exception:
-            return None
-
-        return None
-
-    def _extract_chat_activity_from_menu_payload(
-        self, payload: Any
-    ) -> Optional[ChatActivity]:
-        if payload is None:
-            return None
-
-        candidates: list[Any] = [payload]
-        payload_getter = None
+            return dialog_id or None
 
         if isinstance(payload, dict):
             payload_getter = payload.get
@@ -3026,7 +2935,46 @@ class TgStreaksPlugin(BasePlugin):
                 payload_getter = None
 
         if payload_getter is not None:
-            for key in ("chatActivity", "fragment", "chatFragment", "target", "object"):
+            for key in MENU_PAYLOAD_DIALOG_KEYS:
+                dialog_id = parse_dialog_id(payload_getter(key))
+                if dialog_id is not None:
+                    return dialog_id
+
+            for key in MENU_PAYLOAD_FRAGMENT_KEYS:
+                value = payload_getter(key)
+                if value is None:
+                    continue
+
+                try:
+                    dialog_id = parse_dialog_id(value.getDialogId())
+                except Exception:
+                    dialog_id = None
+
+                if dialog_id is not None:
+                    return dialog_id
+
+        try:
+            return parse_dialog_id(payload.getDialogId())
+        except Exception:
+            return None
+
+    def _extract_chat_activity_from_menu_payload(
+        self, payload: Any
+    ) -> Optional[ChatActivity]:
+        if payload is None:
+            return None
+
+        candidates: list[Any] = [payload]
+        if isinstance(payload, dict):
+            payload_getter = payload.get
+        else:
+            try:
+                payload_getter = payload.get
+            except Exception:
+                payload_getter = None
+
+        if payload_getter is not None:
+            for key in MENU_PAYLOAD_FRAGMENT_KEYS:
                 value = payload_getter(key)
                 if value is not None:
                     candidates.append(value)
@@ -3045,28 +2993,24 @@ class TgStreaksPlugin(BasePlugin):
         return None
 
     def _extract_current_account_from_menu_payload(self, payload: Any) -> int:
-        chat_activity = self._extract_chat_activity_from_menu_payload(payload)
+        candidates = [self._extract_chat_activity_from_menu_payload(payload)]
 
-        if chat_activity is not None:
+        try:
+            candidates.append(get_last_fragment())
+        except Exception:
+            pass
+
+        for candidate in candidates:
+            if candidate is None:
+                continue
+
             try:
-                return int(chat_activity.getCurrentAccount())
+                return int(candidate.getCurrentAccount())
             except Exception:
                 pass
 
             try:
-                return int(getattr(chat_activity, "currentAccount"))
-            except Exception:
-                pass
-
-        fragment = get_last_fragment()
-        if fragment is not None:
-            try:
-                return int(fragment.getCurrentAccount())
-            except Exception:
-                pass
-
-            try:
-                return int(getattr(fragment, "currentAccount"))
+                return int(getattr(candidate, "currentAccount"))
             except Exception:
                 pass
 
@@ -3714,7 +3658,7 @@ class TgStreaksPlugin(BasePlugin):
             return None
 
         if isinstance(peer, int):
-            return int(peer) if int(peer) > 0 else None
+            return peer if peer > 0 else None
 
         try:
             class_name = cast("str", peer.getClass().getName())
@@ -3754,7 +3698,7 @@ class TgStreaksPlugin(BasePlugin):
     def _query_cached_day_activity_flags(
         self, dialog_id: int, day_start: int, day_end: int
     ) -> Optional[tuple[bool, bool]]:
-        if int(dialog_id) <= 0:
+        if dialog_id <= 0:
             return None
 
         try:
@@ -3778,18 +3722,18 @@ class TgStreaksPlugin(BasePlugin):
                     f"FROM {table_name} "
                     f"WHERE uid = ? AND date >= ? AND date < ?"
                 ),
-                Integer(int(dialog_id)),
-                Integer(int(day_start)),
-                Integer(int(day_end)),
+                Integer(dialog_id),
+                Integer(day_start),
+                Integer(day_end),
             )
 
-            if cursor is None or not bool(cursor.next()):
+            if cursor is None or not cursor.next():
                 return None
 
             has_out = (0 if cursor.isNull(0) else int(cursor.intValue(0))) == 1
             has_in = (0 if cursor.isNull(1) else int(cursor.intValue(1))) == 1
 
-            return (bool(has_out), bool(has_in))
+            return (has_out, has_in)
         except Exception:
             return None
         finally:
@@ -3802,7 +3746,7 @@ class TgStreaksPlugin(BasePlugin):
     def _repair_record_from_cached_today_activity(
         self, peer_id: int, event_day: Optional[int] = None
     ):
-        current = self.users_db.get_user(int(peer_id), include_authorized=True)
+        current = self.users_db.get_user(peer_id, include_authorized=True)
         if current is None:
             return
 
@@ -3813,7 +3757,7 @@ class TgStreaksPlugin(BasePlugin):
         )
         day_end = int(day + SECONDS_IN_DAY)
 
-        flags = self._query_cached_day_activity_flags(int(peer_id), int(day), day_end)
+        flags = self._query_cached_day_activity_flags(peer_id, day, day_end)
         if flags is None:
             return
 
@@ -3827,9 +3771,9 @@ class TgStreaksPlugin(BasePlugin):
 
         changed = False
         if has_out:
-            changed = updated.update_from(SenderType.SELF, int(day)) or changed
+            changed = updated.update_from(SenderType.SELF, day) or changed
         if has_in:
-            changed = updated.update_from(SenderType.PEER, int(day)) or changed
+            changed = updated.update_from(SenderType.PEER, day) or changed
 
         if changed:
             self.users_db.set_user_record(updated)
@@ -3892,7 +3836,7 @@ class TgStreaksPlugin(BasePlugin):
         for candidate in candidates:
             peer_id = self._extract_private_peer_id(candidate)
             if peer_id is not None and peer_id > 0:
-                return int(peer_id)
+                return peer_id
 
         for candidate in candidates:
             try:
@@ -3904,8 +3848,8 @@ class TgStreaksPlugin(BasePlugin):
                 continue
 
             try:
-                if bool(DialogObject.isUserDialog(dialog_id)):
-                    return int(dialog_id)
+                if DialogObject.isUserDialog(dialog_id):
+                    return dialog_id
             except Exception:
                 pass
 
@@ -4020,69 +3964,52 @@ class TgStreaksPlugin(BasePlugin):
         self._post_user_emoji_status_updated(user)
         self._post_emoji_status_interface_update()
 
+    def _post_notification_to_active_accounts(
+        self, notification_name: int, *args: Any, error_context: str
+    ):
+        def post():
+            try:
+                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
+                    cfg = UserConfig.getInstance(i)
+                    if not cfg.isClientActivated():
+                        continue
+                    NotificationCenter.getInstance(i).postNotificationName(
+                        notification_name, *args
+                    )
+            except Exception as e:
+                self.log(f"Failed to post {error_context}: {e}")
+
+        run_on_ui_thread(post)
+
     def _post_user_emoji_status_updated(self, user: Optional[TLRPC.User]):
         if user is None:
             return
 
-        def post():
-            try:
-                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
-                    cfg = UserConfig.getInstance(i)
-                    if not bool(cfg.isClientActivated()):
-                        continue
-                    NotificationCenter.getInstance(i).postNotificationName(
-                        NotificationCenter.userEmojiStatusUpdated, user
-                    )
-            except Exception as e:
-                self.log(f"Failed to post userEmojiStatusUpdated: {e}")
-
-        run_on_ui_thread(post)
+        self._post_notification_to_active_accounts(
+            NotificationCenter.userEmojiStatusUpdated,
+            user,
+            error_context="userEmojiStatusUpdated",
+        )
 
     def _post_emoji_status_interface_update(self):
-        def post():
-            try:
-                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
-                    cfg = UserConfig.getInstance(i)
-                    if not bool(cfg.isClientActivated()):
-                        continue
-                    NotificationCenter.getInstance(i).postNotificationName(
-                        NotificationCenter.updateInterfaces,
-                        Integer(MessagesController.UPDATE_MASK_EMOJI_STATUS),
-                    )
-            except Exception as e:
-                self.log(f"Failed to post emoji status updateInterfaces: {e}")
-
-        run_on_ui_thread(post)
+        self._post_notification_to_active_accounts(
+            NotificationCenter.updateInterfaces,
+            Integer(MessagesController.UPDATE_MASK_EMOJI_STATUS),
+            error_context="emoji status updateInterfaces",
+        )
 
     def _post_emoji_loaded_notification(self):
-        def post():
-            try:
-                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
-                    cfg = UserConfig.getInstance(i)
-                    if not bool(cfg.isClientActivated()):
-                        continue
-                    NotificationCenter.getInstance(i).postNotificationName(
-                        NotificationCenter.emojiLoaded
-                    )
-            except Exception as e:
-                self.log(f"Failed to post emojiLoaded: {e}")
-
-        run_on_ui_thread(post)
+        self._post_notification_to_active_accounts(
+            NotificationCenter.emojiLoaded,
+            error_context="emojiLoaded",
+        )
 
     def _post_dialogs_need_reload(self):
-        def post():
-            try:
-                for i in range(UserConfig.MAX_ACCOUNT_COUNT):
-                    cfg = UserConfig.getInstance(i)
-                    if not bool(cfg.isClientActivated()):
-                        continue
-                    NotificationCenter.getInstance(i).postNotificationName(
-                        NotificationCenter.dialogsNeedReload, Boolean(True)
-                    )
-            except Exception as e:
-                self.log(f"Failed to post dialogsNeedReload: {e}")
-
-        run_on_ui_thread(post)
+        self._post_notification_to_active_accounts(
+            NotificationCenter.dialogsNeedReload,
+            Boolean(True),
+            error_context="dialogsNeedReload",
+        )
 
     def hook_user_emoji_status_assign(self, patch_existing: bool):
         users = cast(
@@ -4339,8 +4266,9 @@ class TgStreaksPlugin(BasePlugin):
                         action_bar = None
 
                     try:
-                        if action_bar is not None and not bool(
-                            action_bar.isSearchFieldVisible()
+                        if (
+                            action_bar is not None
+                            and not action_bar.isSearchFieldVisible()
                         ):
                             runnable = get_private_field(
                                 action_bar, "titleActionRunnable"
@@ -4377,7 +4305,6 @@ class TgStreaksPlugin(BasePlugin):
             except Exception as e:
                 self.log(f"Failed to post emoji status NotificationCenter update: {e}")
 
-        # run_on_ui_thread(post_reload)
         threading.Timer(0.5, lambda: run_on_ui_thread(post_reload)).start()
 
     def _load_jvm_plugin(self):
