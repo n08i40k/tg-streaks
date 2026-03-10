@@ -101,10 +101,17 @@ val telegramCompileClasspathJar by tasks.registering(Jar::class) {
     }
 }
 
+val embed by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isVisible = false
+}
+
 dependencies {
     implementation(libs.aliuhook)
     compileOnly(libs.jetbrains.kotlin.stdlib)
     compileOnly(files(telegramCompileClasspathJar))
+    add(embed.name, libs.jetbrains.kotlin.stdlib)
 }
 
 fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String) {
@@ -150,6 +157,7 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
 
             val runtimeJars = resolveJarPaths("${variant}RuntimeClasspath")
             val compileJars = resolveJarPaths("${variant}CompileClasspath")
+            val embeddedJars = resolveJarPaths(embed.name)
             val compileTaskJars =
                 (tasks.findByName("compile${variantTitle}Kotlin") as? KotlinCompile)
                     ?.libraries
@@ -160,7 +168,7 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
                     .map { it.absolutePath }
                     .toList()
 
-            val dexInputs = (classInputs + runtimeJars).distinct()
+            val dexInputs = (classInputs + runtimeJars + embeddedJars).distinct()
             if (dexInputs.isEmpty()) {
                 throw GradleException(
                     "No class inputs found for variant '$variant'. Run $assembleTask first."
@@ -197,7 +205,8 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
                     isIgnoreExitValue = true
 
                     args("-cp", r8Jar, "com.android.tools.r8.R8")
-                    args(if (variant.equals("debug", ignoreCase = true)) "--debug" else "--release")
+                    // The addon dex must always be repackaged/obfuscated to avoid host collisions.
+                    args("--release")
                     args("--dex")
                     args("--output", outputDirFile.absolutePath)
                     args("--min-api", MIN_SDK.toString())
@@ -211,6 +220,7 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
                     "Failed to execute r8 for variant '$variant'. " +
                             "r8Jar='$r8Jar', outputDir='$outputDir', " +
                             "classInputs=${classInputs.size}, runtimeJars=${runtimeJars.size}, " +
+                            "embeddedJars=${embeddedJars.size}, " +
                             "dexInputs=${dexInputs.size}.",
                     e
                 )
