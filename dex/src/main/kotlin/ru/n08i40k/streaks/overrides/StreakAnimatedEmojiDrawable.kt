@@ -72,7 +72,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             hideParticlesOnCollectibles: Boolean = false,
         ) {
             if (arrayIndex == null) {
-                val drawable = field.get(obj) as? SwapAnimatedEmojiDrawable
+                val drawable = (field.get(obj) ?: return) as? SwapAnimatedEmojiDrawable
                     ?: throw TypeCastException("Field value type isn't SwapAnimatedEmojiDrawable")
 
                 if (drawable as? StreakAnimatedEmojiDrawable != null) {
@@ -101,7 +101,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 return
             }
 
-            val unknownArray = field.get(obj) ?: throw NullPointerException("Field is null")
+            val unknownArray = field.get(obj) ?: return
 
             if (!unknownArray::class.java.isArray)
                 throw TypeCastException("Field value type isn't array")
@@ -110,12 +110,12 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 throw TypeCastException("Field value type isn't SwapAnimatedEmojiDrawable[]")
 
             @Suppress("UNCHECKED_CAST")
-            val array = unknownArray as Array<SwapAnimatedEmojiDrawable>
+            val array = unknownArray as Array<SwapAnimatedEmojiDrawable?>
 
             if (array.size <= arrayIndex)
                 throw IndexOutOfBoundsException("SwapAnimatedEmojiDrawable[] size is below $arrayIndex")
 
-            val drawable = array[arrayIndex]
+            val drawable = array[arrayIndex] ?: return
 
             if (drawable as? StreakAnimatedEmojiDrawable != null) {
                 drawable.setUserId(userId)
