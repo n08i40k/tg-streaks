@@ -18,6 +18,7 @@ import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.Theme
+import org.telegram.ui.Components.AnimatedEmojiDrawable
 import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
 import org.telegram.ui.Components.Premium.PremiumGradient
 import org.telegram.ui.Stars.StarsReactionsSheet
@@ -159,38 +160,96 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
     private var hasCustomParticles: Boolean = false
 
+    private fun clearBadgeView() {
+        badgeView?.detach()
+        badgeView = null
+    }
+
+    private fun replaceBadgeView(view: SwapAnimatedEmojiDrawable?) {
+        if (badgeView === view) {
+            syncBadgeBounds()
+            return
+        }
+
+        badgeView?.detach()
+        badgeView = view
+        badgeView?.attach()
+        syncBadgeBounds()
+    }
+
+    private fun syncBadgeBounds() {
+        badgeView?.setBounds(
+            bounds.left + size + getTextWidth(),
+            bounds.top,
+            bounds.left + size * 2 + getTextWidth(),
+            bounds.bottom
+        )
+    }
+
+    private fun applyBadgeDocument(user: TLRPC.User, document: TLRPC.Document) {
+        if (this.userId != user.id) {
+            return
+        }
+
+        if (cachedStreakData == null && !user.premium) {
+            super.set(document, false)
+            super.setParticles(true, false)
+            clearBadgeView()
+        } else {
+            val parentView =
+                getFieldValue<View>(
+                    SwapAnimatedEmojiDrawable::class.java,
+                    this,
+                    "parentView"
+                ) ?: return
+
+            replaceBadgeView(SwapAnimatedEmojiDrawable(parentView, size).apply {
+                set(document, false)
+                setParticles(true, false)
+                color = Theme.getColor(Theme.key_chats_verifiedBackground)
+            })
+        }
+
+        invalidateSelf()
+    }
+
     fun setBadge(user: TLRPC.User?) {
         if (!canDrawBadge) return
 
         if (user == null) {
-            badgeView = null
+            clearBadgeView()
+            invalidateSelf()
             return
         }
 
-        val badge = BadgesController.INSTANCE.getBadge(user)
 
-        if (badge == null) {
+        if (!BadgesController.INSTANCE.hasBadge(user)) {
             if (cachedStreakData == null && !user.premium) {
                 super.set(null as Drawable?, false)
                 super.setParticles(false, false)
             }
 
-            badgeView = null
-        } else {
-            if (cachedStreakData == null && !user.premium) {
-                super.set(badge.documentId, false)
-                super.setParticles(true, false)
-            } else {
-                val parentView =
-                    getFieldValue<View>(SwapAnimatedEmojiDrawable::class.java, this, "parentView")!!
-
-                badgeView = SwapAnimatedEmojiDrawable(parentView, size)
-
-                badgeView!!.set(badge.documentId, false)
-                badgeView!!.setParticles(true, false)
-                badgeView!!.color = Theme.getColor(Theme.key_chats_verifiedBackground)
-            }
+            clearBadgeView()
+            invalidateSelf()
+            return
         }
+
+        val badge = BadgesController.INSTANCE.getBadge(user)
+            ?: throw IllegalStateException("User has badge, but it is null")
+
+        AnimatedEmojiDrawable.findDocument(UserConfig.selectedAccount, badge.documentId)
+            ?.let { cachedDocument ->
+                applyBadgeDocument(user, cachedDocument)
+                return
+            }
+
+        AnimatedEmojiDrawable
+            .getDocumentFetcher(UserConfig.selectedAccount)
+            .fetchDocument(badge.documentId) { document ->
+                AndroidUtilities.runOnUIThread {
+                    applyBadgeDocument(user, document)
+                }
+            }
     }
 
     fun setUserId(userId: Long, clearStreak: Boolean = false) {
@@ -323,13 +382,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
 
     override fun setBounds(left: Int, top: Int, right: Int, bottom: Int) {
         super.setBounds(left, top, left + size, bottom)
-
-        badgeView?.setBounds(
-            left + size + getTextWidth(),
-            top,
-            left + size * 2 + getTextWidth(),
-            bottom
-        )
+        syncBadgeBounds()
     }
 
     override fun setParticles(p0: Boolean, p1: Boolean) {
@@ -413,4 +466,9 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
             getTextWidth() + 1
         else
             getTextWidth()
+
+    override fun setAlpha(alpha: Int) {
+        badgeView?.alpha = alpha
+        super.setAlpha(alpha)
+    }
 }
