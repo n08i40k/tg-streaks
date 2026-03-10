@@ -8,13 +8,17 @@ package ru.n08i40k.streaks
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.Bitmap
 import android.view.View
 import android.webkit.ValueCallback
 import androidx.collection.LongSparseArray
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.ImageReceiver
 import org.telegram.messenger.MessageObject
+import org.telegram.messenger.MessagesController
+import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
 import org.telegram.ui.ActionBar.Theme
@@ -38,6 +42,7 @@ import java.lang.reflect.Member
 private typealias Logger = ValueCallback<String>
 private typealias StreakResolver = java.util.function.Function<Long, Array<Any>?>
 private typealias TranslationResolver = java.util.function.Function<String, String?>
+private typealias ReviveResolver = java.util.function.Function<Long, Boolean>
 
 class Plugin {
     @Suppress("unused")
@@ -48,12 +53,13 @@ class Plugin {
         fun inject(
             logger: Logger,
             streakResolver: StreakResolver,
-            translationResolver: TranslationResolver
+            translationResolver: TranslationResolver,
+            reviveResolver: ReviveResolver
         ) {
             if (INSTANCE != null)
                 return
 
-            INSTANCE = Plugin(logger, streakResolver, translationResolver)
+            INSTANCE = Plugin(logger, streakResolver, translationResolver, reviveResolver)
             INSTANCE!!.onInject()
         }
 
@@ -92,8 +98,11 @@ class Plugin {
     private val logger: Logger
     private val streakResolver: StreakResolver
     private val translationResolver: TranslationResolver
+    private val reviveResolver: ReviveResolver
 
     private val upgradeMessageRegex = Regex("^tg-streaks:upgrade:(\\d+)$")
+    private val deathMessageText = "tg-streaks:death"
+    private val restoreMessageText = "tg-streaks:restore"
 
     private var hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     private var streakDrawableEjectData: ArrayList<StreakAnimatedEmojiDrawable.EjectData> =
@@ -116,11 +125,13 @@ class Plugin {
     constructor(
         logger: Logger,
         streakResolver: StreakResolver,
-        translationResolver: TranslationResolver
+        translationResolver: TranslationResolver,
+        reviveResolver: ReviveResolver
     ) {
         this.logger = logger
         this.streakResolver = streakResolver
         this.translationResolver = translationResolver
+        this.reviveResolver = reviveResolver
     }
 
     fun log(message: String) =
@@ -138,6 +149,9 @@ class Plugin {
 
     fun translate(key: String): String =
         translationResolver.apply(key) ?: key
+
+    fun reviveStreak(dialogId: Long): Boolean =
+        reviveResolver.apply(dialogId)
 
     fun addStreakDrawableEjectData(ejectData: StreakAnimatedEmojiDrawable.EjectData) =
         streakDrawableEjectData.add(ejectData)
@@ -326,27 +340,221 @@ class Plugin {
 
         ) { param ->
             val message = param.args[1] as? TLRPC.Message ?: return@hookBefore
+            val currentAccount = param.args[0] as? Int ?: 0
 
-            val days = upgradeMessageRegex
-                .matchEntire(message.message ?: return@hookBefore)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toIntOrNull()
-                ?.takeIf { it > 0 }
-                ?: return@hookBefore
+            if (message.message == null)
+                return@hookBefore
 
-            val customMessage = TLRPC.TL_messageService() as TLRPC.Message
-            cloneFields(message as Object, customMessage as Object, TLRPC.Message::class.java)
+            val tryStreakUpgrade = streakUpgrade@{
+                val days = upgradeMessageRegex
+                    .matchEntire(message.message)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.toIntOrNull()
+                    ?.takeIf { it > 0 } ?: return@streakUpgrade null
 
-            customMessage.action =
-                (TLRPC.TL_messageActionCustomAction() as TLRPC.MessageAction).apply {
-                    this.message =
-                        translate("service_message_upgrade_text")
-                            .replace("{days}", days.toString())
+                TLRPC.TL_messageActionCustomAction().apply {
+                    val messageText = translate("service_message_upgrade_text")
+                        .replace("{days}", days.toString())
+
+                    (this as TLRPC.MessageAction).message = messageText
                 }
-            customMessage.message = ""
+            }
 
-            param.args[1] = customMessage
+            val tryStreakDeath = streakDeath@{
+                if (message.message != deathMessageText)
+                    return@streakDeath null
+
+                TLRPC.TL_messageActionPrizeStars().apply {
+                    boost_peer = message.peer_id
+                    flags = 0
+                    giveaway_msg_id = 0
+                    stars = 0
+                    transaction_id = deathMessageText
+                    unclaimed = false
+                }
+            }
+
+            val tryStreakRestore = streakRestore@{
+                if (message.message != restoreMessageText)
+                    return@streakRestore null
+
+                val peerId = message.peer_id?.user_id
+                val fromId = message.from_id?.user_id
+
+                val restoredByPeer =
+                    peerId != null && fromId != null && peerId > 0 && fromId == peerId
+
+                val messageText =
+                    if (!restoredByPeer) {
+                        translate("service_message_restore_text_self")
+                    } else {
+                        val peerName =
+                            peerId
+                                .takeIf { it > 0 }
+                                ?.let { MessagesController.getInstance(currentAccount).getUser(it) }
+                                ?.let { UserObject.getUserName(it) }
+                                ?.takeIf { it.isNotBlank() }
+                                ?: "Unknown"
+
+                        translate("service_message_restore_text_peer")
+                            .replace("{name}", peerName)
+                    }
+
+                TLRPC.TL_messageActionCustomAction().apply {
+                    (this as TLRPC.MessageAction).message = messageText
+                }
+            }
+
+            val action: TLRPC.MessageAction =
+                (tryStreakUpgrade() as? TLRPC.MessageAction)
+                    ?: (tryStreakDeath() as? TLRPC.MessageAction)
+                    ?: (tryStreakRestore() as? TLRPC.MessageAction)
+                    ?: return@hookBefore
+
+            param.args[1] = TLRPC.TL_messageService().apply {
+                cloneFields(message as Object, this as Object, TLRPC.Message::class.java)
+
+                (this as TLRPC.Message).action = action
+                (this as TLRPC.Message).message = null
+            }
+        }
+
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        hookBefore(
+            ChatActionCell::class.java.getDeclaredMethod(
+                "openStarsGiftTransaction",
+            )
+        ) { param ->
+            val messageObject = getFieldValue<MessageObject>(
+                ChatActionCell::class.java,
+                param.thisObject,
+                "currentMessageObject"
+            ) ?: return@hookBefore
+
+            val prizeStars =
+                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                    ?: return@hookBefore
+
+            if (prizeStars.transaction_id != deathMessageText)
+                return@hookBefore
+
+            this@Plugin.reviveStreak(messageObject.dialogId)
+
+            param.result = null
+        }
+
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        hookBefore(
+            ChatActionCell::class.java.getDeclaredMethod(
+                "createGiftPremiumLayouts",
+                CharSequence::class.java,
+                CharSequence::class.java,
+                CharSequence::class.java,
+                CharSequence::class.java,
+                Boolean::class.java,
+                CharSequence::class.java,
+                Int::class.java,
+                CharSequence::class.java,
+                Int::class.java,
+                Boolean::class.java,
+                Boolean::class.java
+            )
+        ) { param ->
+            val messageObject = getFieldValue<MessageObject>(
+                ChatActionCell::class.java,
+                param.thisObject,
+                "currentMessageObject"
+            ) ?: return@hookBefore
+
+            val prizeStars =
+                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                    ?: return@hookBefore
+
+            if (prizeStars.transaction_id != deathMessageText)
+                return@hookBefore
+
+            param.args[0] = translate("service_message_death_title")
+            param.args[1] = translate("service_message_death_subtitle")
+            param.args[3] = translate("service_message_death_hint")
+            param.args[5] = translate("service_message_death_button")
+            param.args[9] = false
+            param.args[10] = true
+        }
+
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        hookAfter(
+            ChatActionCell::class.java.getDeclaredMethod(
+                "isNewStyleButtonLayout",
+            )
+        ) { param ->
+            val messageObject = getFieldValue<MessageObject>(
+                ChatActionCell::class.java,
+                param.thisObject,
+                "currentMessageObject"
+            ) ?: return@hookAfter
+
+            val prizeStars =
+                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                    ?: return@hookAfter
+
+            if (prizeStars.transaction_id != deathMessageText)
+                return@hookAfter
+
+            param.result = true
+        }
+
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        hookAfter(
+            ChatActionCell::class.java.getDeclaredMethod(
+                "getImageSize",
+                MessageObject::class.java
+            )
+        ) { param ->
+            val messageObject = getFieldValue<MessageObject>(
+                ChatActionCell::class.java,
+                param.thisObject,
+                "currentMessageObject"
+            ) ?: return@hookAfter
+
+            val prizeStars =
+                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                    ?: return@hookAfter
+
+            if (prizeStars.transaction_id != deathMessageText)
+                return@hookAfter
+
+            param.result = -AndroidUtilities.dp(19.5f)
+        }
+
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        hookAfter(
+            ChatActionCell::class.java.getDeclaredMethod(
+                "setMessageObject",
+                MessageObject::class.java,
+                Boolean::class.java,
+            )
+        ) { param ->
+            val messageObject = param.args[0] as? MessageObject ?: return@hookAfter
+
+            val prizeStars =
+                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                    ?: return@hookAfter
+
+            if (prizeStars.transaction_id != deathMessageText)
+                return@hookAfter
+
+            val thisObject = param.thisObject as ChatActionCell
+            val thisClass = ChatActionCell::class.java
+
+            val imageReceiver =
+                getFieldValue<ImageReceiver>(thisClass, thisObject, "imageReceiver")!!
+            imageReceiver.setAllowStartLottieAnimation(false)
+            imageReceiver.setDelegate(null)
+            imageReceiver.setImageBitmap(null as Bitmap?)
+            imageReceiver.clearImage()
+            imageReceiver.clearDecorators()
+            imageReceiver.setVisible(false, true)
         }
 
         hookAfter(

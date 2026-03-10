@@ -62,6 +62,7 @@ from org.telegram.messenger import (
     ApplicationLoader,
     DialogObject,
     LocaleController,
+    MessageObject,
     MessagesController,
     NotificationCenter,
     SendMessagesHelper,
@@ -95,6 +96,9 @@ DAY_CHECK_TIMEOUT_RETRIES = 5
 DAY_CHECK_REQUEST_DELAY_SECONDS = 0.35
 DAY_CHECK_RETRY_DELAY_SECONDS = 0.8
 DAY_CHECK_MESSAGE_TABLE_CANDIDATES = ("messages_v2", "messages")
+UPGRADE_SERVICE_MESSAGE_PREFIX = "tg-streaks:upgrade:"
+DEATH_SERVICE_MESSAGE_TEXT = "tg-streaks:death"
+RESTORE_SERVICE_MESSAGE_TEXT = "tg-streaks:restore"
 
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
 DEX_SHA256 = "013c15fa3aa795553160ffea1b69b2429b44b58c2cc26530daaeceb0ce012b65"
@@ -223,9 +227,17 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Upgrade service messages disabled for this chat",
         "ru": "Сервисные сообщения об апгрейде выключены для этого чата",
     },
+    "ok_streak_restored": {
+        "en": "Streak restored",
+        "ru": "Стрик восстановлен",
+    },
     "info_private_user_only": {
         "en": "This action works only for private user chats",
         "ru": "Это действие работает только в личных чатах с пользователями",
+    },
+    "info_streak_restore_unavailable": {
+        "en": "This streak can no longer be restored",
+        "ru": "Этот стрик больше нельзя восстановить",
     },
     "info_force_check_already_running": {
         "en": "Force check is already running",
@@ -299,8 +311,8 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Не забывайте про него ;)",
     },
     "dex_sheet_feature_keep_subtitle": {
-        "en": "If you don't manage to message each other within 24 hours, the streak will be terminated without the possibility of recovery.",
-        "ru": "Если вы не успеете написать друг другу в течение 24 часов, стрик завершится без возможности восстановления.",
+        "en": "If you don't manage to message each other within 24 hours, the streak will end. It can be restored only within the next 24 hours.",
+        "ru": "Если вы не успеете написать друг другу в течение 24 часов, стрик завершится. Его можно восстановить только в течение следующих 24 часов.",
     },
     "dex_sheet_feature_incorrect_title": {
         "en": "Streak duration is incorrect?",
@@ -341,6 +353,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "menu_upgrade_service_messages_subtext": {
         "en": "Disabled by default. Tap to toggle for this chat.",
         "ru": "По умолчанию выключено. Нажмите, чтобы переключить для этого чата.",
+    },
+    "menu_restore_streak_text": {
+        "en": "Restore streak",
+        "ru": "Восстановить стрик",
+    },
+    "menu_restore_streak_subtext": {
+        "en": "Use this when the death service message button is unavailable",
+        "ru": "Используйте, если кнопка в сервисном сообщении недоступна",
     },
     "menu_debug_create_streak_text": {
         "en": "[DEBUG] Create 3-day streak",
@@ -418,6 +438,30 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "service_message_upgrade_text": {
         "en": "Streak upgraded to {days} days!",
         "ru": "Стрик достиг {days} дней!",
+    },
+    "service_message_death_title": {
+        "en": "Your streak has ended!",
+        "ru": "Ваш стрик завершился!",
+    },
+    "service_message_death_subtitle": {
+        "en": "You can restore it within the next 24 hours",
+        "ru": "Вы можете восстановить его в течение следующих 24 часов",
+    },
+    "service_message_death_hint": {
+        "en": "Tap the button below to restore your streak",
+        "ru": "Нажмите кнопку ниже, чтобы восстановить стрик",
+    },
+    "service_message_death_button": {
+        "en": "Restore",
+        "ru": "Восстановить",
+    },
+    "service_message_restore_text_self": {
+        "en": "You restored the streak!",
+        "ru": "Вы восстановили стрик!",
+    },
+    "service_message_restore_text_peer": {
+        "en": "{name} restored the streak!",
+        "ru": "{name} восстановил(а) стрик!",
     },
 }
 
@@ -854,6 +898,89 @@ def was_chat_active(
     return False
 
 
+def find_restore_service_days(
+    peer: TLRPC.InputPeer,
+    start_ts: int,
+    end_ts: int,
+    fail_on_error: bool = False,
+) -> set[int]:
+    done = threading.Event()
+    restored_days: set[int] = set()
+    initial_offset_date = int(max(end_ts, TimeUtils.get_server_stripped_timestamp()))
+    state = {
+        "offset_id": 0,
+        "offset_date": initial_offset_date,
+        "failed": False,
+        "failure_reason": "",
+    }
+
+    def load():
+        req = TLRPC.TL_messages_getHistory()
+        req.peer = peer
+        req.offset_id = int(state["offset_id"])
+        req.offset_date = int(state["offset_date"])
+        req.limit = 100
+
+        class Delegate(dynamic_proxy(RequestDelegate)):
+            def run(self, response: TLObject, error: TLRPC.TL_error | None) -> None:
+                if error is not None:
+                    state["failed"] = True
+                    try:
+                        state["failure_reason"] = f"request error: {error.text}"
+                    except Exception:
+                        state["failure_reason"] = f"request error: {error}"
+                    done.set()
+                    return
+
+                response_obj = cast("TLRPC.messages_Messages", response)
+                msgs = response_obj.messages
+
+                if msgs is None or msgs.size() == 0:
+                    done.set()
+                    return
+
+                for i in range(msgs.size()):
+                    message = msgs.get(i)
+                    message_date = int(getattr(message, "date", 0))
+
+                    if not (start_ts <= message_date < end_ts):
+                        continue
+
+                    try:
+                        message_text = str(getattr(message, "message", "")).strip()
+                    except Exception:
+                        message_text = ""
+
+                    if message_text == RESTORE_SERVICE_MESSAGE_TEXT:
+                        restore_day = TimeUtils.strip_timestamp(message_date)
+                        restored_days.add(restore_day)
+                        if restore_day > SECONDS_IN_DAY:
+                            restored_days.add(restore_day - SECONDS_IN_DAY)
+
+                oldest = msgs.get(msgs.size() - 1)
+                oldest_date = int(oldest.date)
+                state["offset_id"] = int(oldest.id)
+                state["offset_date"] = oldest_date
+
+                if oldest_date >= start_ts:
+                    load()
+                else:
+                    done.set()
+
+        get_connections_manager().sendRequest(req, Delegate())
+
+    load()
+
+    if not done.wait(timeout=60):
+        state["failed"] = True
+        state["failure_reason"] = "restore history scan timed out"
+
+    if fail_on_error and state["failed"]:
+        raise RuntimeError(cast("str", state["failure_reason"]) or "unknown")
+
+    return restored_days
+
+
 def get_streak_length(peer_id: int):
     peer = get_messages_controller().getInputPeer(peer_id)  # ty:ignore[no-matching-overload]
 
@@ -1007,8 +1134,32 @@ class UserRecord:
 
     last_sended_at: Optional[int]
     last_received_at: Optional[int]
+    restored_days: list[int]
 
-    def to_dict(self) -> dict[str, Optional[int]]:
+    @staticmethod
+    def _normalize_restored_days(days: Any) -> list[int]:
+        if days is None:
+            return []
+
+        normalized: list[int] = []
+        seen: set[int] = set()
+
+        for raw_day in days:
+            try:
+                day = TimeUtils.strip_timestamp(int(raw_day))
+            except Exception:
+                continue
+
+            if day <= 0 or day in seen:
+                continue
+
+            seen.add(day)
+            normalized.append(day)
+
+        normalized.sort()
+        return normalized
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "user_id": int(self.user_id),
             "started_at": int(self.started_at),
@@ -1019,6 +1170,7 @@ class UserRecord:
             "last_received_at": None
             if self.last_received_at is None
             else int(self.last_received_at),
+            "restored_days": list(self.restored_days),
         }
 
     @staticmethod
@@ -1035,6 +1187,9 @@ class UserRecord:
 
         last_sended_at_raw = payload.get("last_sended_at")
         last_received_at_raw = payload.get("last_received_at")
+        restored_days = UserRecord._normalize_restored_days(
+            payload.get("restored_days", [])
+        )
 
         return UserRecord(
             user_id=user_id,
@@ -1046,6 +1201,7 @@ class UserRecord:
             last_received_at=(
                 None if last_received_at_raw is None else int(last_received_at_raw)
             ),
+            restored_days=restored_days,
         )
 
     @staticmethod
@@ -1062,19 +1218,28 @@ class UserRecord:
             freezes_at=(day + SECONDS_IN_DAY),
             last_sended_at=(day if sender == SenderType.SELF else None),
             last_received_at=(day if sender == SenderType.PEER else None),
+            restored_days=[],
         )
 
         return self
 
     def get_length(self) -> int:
-        length = (
-            TimeUtils.get_stripped_timestamp() - self.started_at
-        ) // SECONDS_IN_DAY
+        current_day = TimeUtils.get_stripped_timestamp()
+        length = (current_day - self.started_at) // SECONDS_IN_DAY
 
         if not self.is_freezed():
             length += 1
 
-        return length
+        last_counted_day = (
+            current_day if not self.is_freezed() else current_day - SECONDS_IN_DAY
+        )
+        restored_days_count = sum(
+            1
+            for day in self.restored_days
+            if self.started_at <= day <= last_counted_day
+        )
+
+        return max(length - restored_days_count, 0)
 
     def is_freezed(self) -> bool:
         return TimeUtils.get_stripped_timestamp() >= self.freezes_at
@@ -1083,6 +1248,83 @@ class UserRecord:
         return (
             (TimeUtils.get_stripped_timestamp() - self.freezes_at) // SECONDS_IN_DAY
         ) > 0
+
+    def can_restore(self, event_day: Optional[int] = None) -> bool:
+        day = (
+            TimeUtils.get_stripped_timestamp()
+            if event_day is None
+            else TimeUtils.strip_timestamp(event_day)
+        )
+        return self.should_die() and day < (self.freezes_at + 2 * SECONDS_IN_DAY)
+
+    def is_restored_day(self, event_day: Optional[int] = None) -> bool:
+        day = (
+            TimeUtils.get_stripped_timestamp()
+            if event_day is None
+            else TimeUtils.strip_timestamp(event_day)
+        )
+        return day in self.restored_days
+
+    def add_restored_day(self, event_day: int) -> bool:
+        day = TimeUtils.strip_timestamp(event_day)
+
+        if day <= 0 or day in self.restored_days:
+            return False
+
+        self.restored_days.append(day)
+        self.restored_days.sort()
+        return True
+
+    def clear_restored_days(self) -> bool:
+        if not self.restored_days:
+            return False
+
+        self.restored_days = []
+        return True
+
+    def revive(self, event_day: Optional[int] = None) -> bool:
+        day = (
+            TimeUtils.get_stripped_timestamp()
+            if event_day is None
+            else TimeUtils.strip_timestamp(event_day)
+        )
+
+        if not self.can_restore(day):
+            return False
+
+        changed = False
+        changed = self.add_restored_day(self.freezes_at) or changed
+        changed = self.add_restored_day(day) or changed
+
+        next_freeze = day + SECONDS_IN_DAY
+        if next_freeze != self.freezes_at:
+            self.freezes_at = next_freeze
+            changed = True
+
+        return changed
+
+    def apply_remote_restore(self, event_day: int) -> bool:
+        day = TimeUtils.strip_timestamp(event_day)
+
+        if day <= 0:
+            return False
+
+        if day < self.freezes_at:
+            return False
+
+        if day >= (self.freezes_at + 2 * SECONDS_IN_DAY):
+            return False
+
+        changed = False
+        changed = self.add_restored_day(self.freezes_at) or changed
+        changed = self.add_restored_day(day) or changed
+
+        next_freeze = day + SECONDS_IN_DAY
+        if next_freeze > self.freezes_at:
+            self.freezes_at = next_freeze
+            changed = True
+
+        return changed
 
     @cache_by_field_value(field_name="freezes_at")
     def is_alive(self) -> bool:  # "hungry" function, shouldn't be called frequently
@@ -1114,6 +1356,9 @@ class UserRecord:
         )
 
         changed = False
+
+        if self.is_restored_day(day):
+            return False
 
         if sender_type == SenderType.SELF:
             if self.last_sended_at is None or day > self.last_sended_at:
@@ -1413,6 +1658,11 @@ class StreaksController:
         current = self._users_db.get_user(peer_id, include_authorized=True)
         changed = False
 
+        if current is not None and current.should_die():
+            if current.can_restore(day):
+                return
+            current = None
+
         if current is None:
             record = UserRecord.new(peer_id, sender_type, day)
             changed = True
@@ -1426,16 +1676,47 @@ class StreaksController:
         if changed:
             self._users_db.set_user_record(record)
 
+    def _get_rebuild_restored_days(self, user_id: int) -> set[int]:
+        record = self._users_db.get_user(user_id, include_authorized=True)
+        if record is None:
+            return set()
+
+        restored_days = set(record.restored_days)
+
+        try:
+            peer = get_messages_controller().getInputPeer(user_id)  # ty:ignore[no-matching-overload]
+        except Exception:
+            peer = None
+
+        if peer is not None:
+            scan_start = max(record.freezes_at, record.started_at)
+            scan_end = TimeUtils.get_stripped_timestamp(1)
+
+            try:
+                restored_days.update(
+                    find_restore_service_days(peer, scan_start, scan_end)
+                )
+            except Exception as e:
+                self._logger(f"restore history scan failed for {user_id}: {e}")
+
+        if record.should_die() and not restored_days and not record.can_restore():
+            return set()
+
+        return restored_days
+
     def _build_recent_record(
         self,
         user_id: int,
         include_today: bool,
+        restored_days: Optional[set[int]] = None,
         on_day_progress: Optional[Callable[[int, bool, bool], None]] = None,
         fail_on_error: bool = False,
     ) -> Optional[UserRecord]:
         peer = get_messages_controller().getInputPeer(user_id)  # ty:ignore[no-matching-overload]
         if peer is None:
             return None
+
+        restored_days = restored_days or set()
 
         first_day_check = True
 
@@ -1449,40 +1730,43 @@ class StreaksController:
             return was_chat_active(peer, day_offset, fail_on_error=fail_on_error)
 
         day_offset = 0 if include_today else -1
-        is_active = check_day(day_offset)
-        if on_day_progress is not None:
-            on_day_progress(day_offset, is_active, include_today)
-
-        if not is_active:
-            return None
-
-        streak_days = 1
+        oldest_day: Optional[int] = None
+        latest_active_day: Optional[int] = None
 
         while True:
-            day_offset = -streak_days if include_today else -(streak_days + 1)
             is_active = check_day(day_offset)
             if on_day_progress is not None:
                 on_day_progress(day_offset, is_active, include_today)
 
-            if not is_active:
+            day = TimeUtils.get_stripped_timestamp(day_offset)
+            if not is_active and day not in restored_days:
                 break
-            streak_days += 1
 
-        today = TimeUtils.get_stripped_timestamp()
-        started_at = today - (
-            (streak_days - 1) * SECONDS_IN_DAY
+            oldest_day = day
+            if is_active and day not in restored_days and latest_active_day is None:
+                latest_active_day = day
+
+            day_offset -= 1
+
+        if oldest_day is None or latest_active_day is None:
+            return None
+
+        latest_day = (
+            TimeUtils.get_stripped_timestamp()
             if include_today
-            else streak_days * SECONDS_IN_DAY
+            else TimeUtils.get_stripped_timestamp(-1)
         )
-        active_day = today if include_today else today - SECONDS_IN_DAY
-        freeze_day = today + SECONDS_IN_DAY if include_today else today
+        active_restored_days = [
+            day for day in sorted(restored_days) if oldest_day <= day <= latest_day
+        ]
 
         return UserRecord(
             user_id=user_id,
-            started_at=started_at,
-            freezes_at=freeze_day,
-            last_sended_at=active_day,
-            last_received_at=active_day,
+            started_at=oldest_day,
+            freezes_at=latest_day + SECONDS_IN_DAY,
+            last_sended_at=latest_active_day,
+            last_received_at=latest_active_day,
+            restored_days=active_restored_days,
         )
 
     def _build_recent_record_any(
@@ -1492,6 +1776,7 @@ class StreaksController:
         fail_on_error: bool = False,
     ) -> Optional[UserRecord]:
         checked_days = 0
+        restored_days = self._get_rebuild_restored_days(user_id)
 
         def day_progress(day_offset: int, is_active: bool, include_today: bool):
             nonlocal checked_days
@@ -1503,6 +1788,7 @@ class StreaksController:
         record = self._build_recent_record(
             user_id,
             include_today=True,
+            restored_days=restored_days,
             on_day_progress=day_progress,
             fail_on_error=fail_on_error,
         )
@@ -1513,6 +1799,7 @@ class StreaksController:
         return self._build_recent_record(
             user_id,
             include_today=False,
+            restored_days=restored_days,
             on_day_progress=day_progress,
             fail_on_error=fail_on_error,
         )
@@ -1559,9 +1846,17 @@ class StreaksController:
                     changed = True
                 continue
 
-            rebuilt = self._build_recent_record(user_id, include_today=True)
+            rebuilt = self._build_recent_record(
+                user_id,
+                include_today=True,
+                restored_days=self._get_rebuild_restored_days(user_id),
+            )
             if rebuilt is None:
-                rebuilt = self._build_recent_record(user_id, include_today=False)
+                rebuilt = self._build_recent_record(
+                    user_id,
+                    include_today=False,
+                    restored_days=self._get_rebuild_restored_days(user_id),
+                )
 
             if rebuilt is not None:
                 if self._users_db.set_user_record(
@@ -1804,6 +2099,29 @@ class TgStreaksPlugin(BasePlugin):
                 f"Failed to persist upgrade service setting for chat {dialog_id}: {e}"
             )
 
+    def _remember_dialog_account(self, dialog_id: int, account: int):
+        dialog_id = int(dialog_id)
+        account = int(account)
+
+        if dialog_id <= 0 or account < 0:
+            return
+
+        self._dialog_account_map[dialog_id] = account
+
+        if len(self._dialog_account_map) > 512:
+            self._dialog_account_map.clear()
+            self._dialog_account_map[dialog_id] = account
+
+    def _resolve_dialog_account(self, dialog_id: int, fallback: int = -1) -> int:
+        dialog_id = int(dialog_id)
+
+        if dialog_id > 0:
+            remembered = self._dialog_account_map.get(dialog_id)
+            if remembered is not None:
+                return remembered
+
+        return fallback
+
     def _parse_upgrade_service_message_days(self, text: Any) -> Optional[int]:
         if text is None:
             return None
@@ -1813,10 +2131,10 @@ class TgStreaksPlugin(BasePlugin):
         except Exception:
             return None
 
-        if not value.startswith("tg-streaks:upgrade:"):
+        if not value.startswith(UPGRADE_SERVICE_MESSAGE_PREFIX):
             return None
 
-        suffix = value[len("tg-streaks:upgrade:") :]
+        suffix = value[len(UPGRADE_SERVICE_MESSAGE_PREFIX) :]
         if len(suffix) == 0 or not suffix.isdigit():
             return None
 
@@ -1833,6 +2151,51 @@ class TgStreaksPlugin(BasePlugin):
     def _is_upgrade_service_message_text(self, text: Any) -> bool:
         return self._parse_upgrade_service_message_days(text) is not None
 
+    def _is_death_service_message_text(self, text: Any) -> bool:
+        if text is None:
+            return False
+
+        try:
+            return str(text).strip() == DEATH_SERVICE_MESSAGE_TEXT
+        except Exception:
+            return False
+
+    def _is_restore_service_message_text(self, text: Any) -> bool:
+        if text is None:
+            return False
+
+        try:
+            return str(text).strip() == RESTORE_SERVICE_MESSAGE_TEXT
+        except Exception:
+            return False
+
+    def _is_internal_service_message_text(self, text: Any) -> bool:
+        return (
+            self._is_upgrade_service_message_text(text)
+            or self._is_death_service_message_text(text)
+            or self._is_restore_service_message_text(text)
+        )
+
+    def _safe_log_value(self, value: Any, limit: int = 220) -> str:
+        try:
+            text = str(value)
+        except Exception as e:
+            text = f"<unprintable:{self._get_tl_name(e)}>"
+
+        text = text.replace("\n", "\\n")
+        if len(text) > limit:
+            text = text[:limit] + "..."
+        return text
+
+    def _is_tagged_service_message_text(self, text: Any) -> bool:
+        if text is None:
+            return False
+
+        try:
+            return "tg-streaks:" in str(text)
+        except Exception:
+            return False
+
     def _has_upgrade_service_text(self, obj: Any) -> bool:
         if obj is None:
             return False
@@ -1842,7 +2205,7 @@ class TgStreaksPlugin(BasePlugin):
             except Exception:
                 value = None
 
-            if self._is_upgrade_service_message_text(value):
+            if self._is_internal_service_message_text(value):
                 return True
 
         return False
@@ -1852,6 +2215,112 @@ class TgStreaksPlugin(BasePlugin):
 
     def _is_upgrade_service_send_params(self, params: Any) -> bool:
         return self._has_upgrade_service_text(params)
+
+    def _extract_update_message_text(self, update: Any) -> Optional[str]:
+        try:
+            text = self._extract_message_text(update)
+        except Exception:
+            text = None
+
+        if text:
+            return text
+
+        try:
+            nested_update = getattr(update, "update", None)
+        except Exception:
+            nested_update = None
+
+        if nested_update is not None:
+            try:
+                text = self._extract_update_message_text(nested_update)
+            except Exception:
+                text = None
+
+            if text:
+                return text
+
+        return None
+
+    def _log_service_update_trace(
+        self,
+        stage: str,
+        account: int,
+        update_name: str,
+        update: Any,
+        extra: str = "",
+    ):
+        try:
+            text = self._extract_update_message_text(update)
+        except Exception as e:
+            self.log(
+                f"{stage}: failed to extract update text for {update_name} on account {account}: {e}"
+            )
+            return
+
+        if not self._is_tagged_service_message_text(text):
+            return
+
+        suffix = f", {extra}" if extra else ""
+        self.log(
+            f"{stage}: account={account}, update={update_name}, text={self._safe_log_value(text)}{suffix}"
+        )
+
+    def _maybe_consume_restore_service_message(
+        self, account: int, peer_id: int, from_id: Optional[int], event_day: int
+    ) -> bool:
+        try:
+            self_user_id = self._get_self_user_id(account)
+            self.log(
+                f"Incoming restore service message: account={account}, peer={peer_id}, from_id={from_id}, self_user_id={self_user_id}, event_day={event_day}"
+            )
+
+            if from_id is not None and self_user_id > 0 and from_id == self_user_id:
+                self.log(
+                    f"Skip restore service message for chat {peer_id}: sender is self"
+                )
+                return True
+
+            current = self.users_db.get_user(peer_id, include_authorized=True)
+            if current is None:
+                self.log(
+                    f"Skip restore service message for chat {peer_id}: no streak record"
+                )
+                return True
+
+            self.log(
+                f"Current restore candidate for chat {peer_id}: started_at={current.started_at}, freezes_at={current.freezes_at}, should_die={current.should_die()}, can_restore_now={current.can_restore()}, can_restore_event_day={current.can_restore(event_day)}, restored_days={current.restored_days}"
+            )
+
+            restored = UserRecord.from_dict(current.to_dict())
+            if restored is None:
+                self.log(
+                    f"Skip restore service message for chat {peer_id}: failed to clone record"
+                )
+                return True
+
+            if restored.apply_remote_restore(event_day):
+                self._remember_dialog_account(peer_id, account)
+                self.users_db.set_user_record(restored)
+                self._streak_dead_state[peer_id] = restored.should_die()
+
+                try:
+                    self._refresh_streak_emoji_for_peer(peer_id)
+                except Exception as e:
+                    self.log(
+                        f"Failed to refresh remotely restored streak emoji for peer {peer_id}: {e}"
+                    )
+
+                self.log(
+                    f"Applied remote streak restore for chat {peer_id} on day {event_day}: new_freezes_at={restored.freezes_at}, new_restored_days={restored.restored_days}"
+                )
+            else:
+                self.log(
+                    f"Skip restore service message for chat {peer_id}: remote restore rejected (freezes_at={current.freezes_at}, restored_days={current.restored_days})"
+                )
+        except Exception as e:
+            self.log(f"Restore service handling failed for chat {peer_id}: {e}")
+
+        return True
 
     def _normalize_version_tag(self, value: Optional[str]) -> str:
         if value is None:
@@ -2449,6 +2918,47 @@ class TgStreaksPlugin(BasePlugin):
     ) -> bool:
         return event_day is None or event_day == TimeUtils.get_stripped_timestamp()
 
+    def _send_internal_service_message(
+        self,
+        account: int,
+        peer_id: int,
+        service_text: str,
+        dedupe_key: str,
+        log_name: str,
+    ):
+        with self._upgrade_service_lock:
+            if dedupe_key in self._sent_upgrade_service_messages:
+                return
+
+        def send():
+            try:
+                target_account = self._resolve_dialog_account(peer_id, account)
+                if target_account < 0:
+                    try:
+                        target_account = get_account_instance().getCurrentAccount()
+                    except Exception:
+                        target_account = 0
+
+                self.log(
+                    f"Sending {log_name} service message: account={target_account}, peer={peer_id}, text={service_text}"
+                )
+                params = SendMessagesHelper.SendMessageParams.of(
+                    String(service_text), peer_id
+                )
+                SendMessagesHelper.getInstance(target_account).sendMessage(params)
+
+                with self._upgrade_service_lock:
+                    self._sent_upgrade_service_messages.add(dedupe_key)
+                    if len(self._sent_upgrade_service_messages) > 128:
+                        self._sent_upgrade_service_messages.clear()
+                        self._sent_upgrade_service_messages.add(dedupe_key)
+            except Exception as e:
+                self.log(
+                    f"Failed to send {log_name} service message for chat {peer_id}: {e}"
+                )
+
+        run_on_ui_thread(send)
+
     def _maybe_send_upgrade_service_message(
         self, account: int, peer_id: int, days: int, event_day: Optional[int]
     ):
@@ -2463,42 +2973,62 @@ class TgStreaksPlugin(BasePlugin):
         event_key_day = (
             TimeUtils.get_stripped_timestamp() if event_day is None else event_day
         )
-        dedupe_key = f"{peer_id}:{days}:{event_key_day}"
+        self._send_internal_service_message(
+            account,
+            peer_id,
+            f"{UPGRADE_SERVICE_MESSAGE_PREFIX}{days}",
+            f"upgrade:{peer_id}:{days}:{event_key_day}",
+            "upgrade",
+        )
 
-        with self._upgrade_service_lock:
-            if dedupe_key in self._sent_upgrade_service_messages:
-                return
+    def _maybe_send_death_service_message(
+        self, account: int, peer_id: int, days: int, event_day: Optional[int] = None
+    ):
+        peer_id = int(peer_id)
+        days = int(days)
 
-        service_text = f"tg-streaks:upgrade:{days}"
+        if days < 3 or not self._is_chat_upgrade_service_enabled(peer_id):
+            return
 
-        def send():
-            try:
-                target_account = account
-                if target_account < 0:
-                    try:
-                        target_account = get_account_instance().getCurrentAccount()
-                    except Exception:
-                        target_account = 0
+        if not self._should_send_upgrade_service_message_for_day(event_day):
+            return
 
-                self.log(
-                    f"Sending upgrade service message: account={target_account}, peer={peer_id}, text={service_text}"
-                )
-                params = SendMessagesHelper.SendMessageParams.of(
-                    String(service_text), peer_id
-                )
-                SendMessagesHelper.getInstance(target_account).sendMessage(params)
+        record = self.users_db.get_user(peer_id, include_authorized=True)
+        if record is None or not record.can_restore(event_day):
+            return
 
-                with self._upgrade_service_lock:
-                    self._sent_upgrade_service_messages.add(dedupe_key)
-                    if len(self._sent_upgrade_service_messages) > 128:
-                        self._sent_upgrade_service_messages.clear()
-                        self._sent_upgrade_service_messages.add(dedupe_key)
-            except Exception as e:
-                self.log(
-                    f"Failed to send upgrade service message for chat {peer_id}: {e}"
-                )
+        event_key_day = (
+            TimeUtils.get_stripped_timestamp() if event_day is None else event_day
+        )
+        self._send_internal_service_message(
+            account,
+            peer_id,
+            DEATH_SERVICE_MESSAGE_TEXT,
+            f"death:{peer_id}:{days}:{event_key_day}",
+            "death",
+        )
 
-        run_on_ui_thread(send)
+    def _maybe_send_restore_service_message(
+        self, account: int, peer_id: int, event_day: Optional[int] = None
+    ):
+        peer_id = int(peer_id)
+
+        if not self._is_chat_upgrade_service_enabled(peer_id):
+            return
+
+        if not self._should_send_upgrade_service_message_for_day(event_day):
+            return
+
+        event_key_day = (
+            TimeUtils.get_stripped_timestamp() if event_day is None else event_day
+        )
+        self._send_internal_service_message(
+            account,
+            peer_id,
+            RESTORE_SERVICE_MESSAGE_TEXT,
+            f"restore:{peer_id}:{event_key_day}",
+            "restore",
+        )
 
     def _force_check_day_labels(
         self, include_today: bool, is_active: bool
@@ -2536,6 +3066,9 @@ class TgStreaksPlugin(BasePlugin):
             if before is not None and not before["dead"] and before_length >= 3:
                 self._enqueue_streak_ended_popup(peer_id, before_length, name=name)
                 self._reload_user_in_messages_cache(peer_id)
+                self._maybe_send_death_service_message(
+                    account, peer_id, before_length, event_day
+                )
                 try:
                     self._rerender_dialog_cells()
                 except Exception as e:
@@ -2597,6 +3130,7 @@ class TgStreaksPlugin(BasePlugin):
         sender_type: SenderType,
         event_day: Optional[int] = None,
     ):
+        self._remember_dialog_account(peer_id, account)
         before = self._record_state(self.users_db.get_user(peer_id))
         self.streaks.on_dialog_event(peer_id, sender_type, event_day)
         self._repair_record_from_cached_today_activity(peer_id, event_day)
@@ -2716,6 +3250,7 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         seen: set[int] = set()
+        changed = False
 
         for record in records:
             user_id = int(record.user_id)
@@ -2724,12 +3259,27 @@ class TgStreaksPlugin(BasePlugin):
             was_dead = bool(self._streak_dead_state.get(user_id, is_dead_now))
 
             if not was_dead and is_dead_now:
-                self._enqueue_streak_ended_popup(user_id, int(record.get_length()))
-                self._reload_user_in_messages_cache(int(user_id))
+                days = int(record.get_length())
+                self._enqueue_streak_ended_popup(user_id, days)
+                self._reload_user_in_messages_cache(user_id)
+                self._maybe_send_death_service_message(
+                    self._resolve_dialog_account(user_id),
+                    user_id,
+                    days,
+                    TimeUtils.get_stripped_timestamp(),
+                )
                 try:
                     self._rerender_dialog_cells()
                 except Exception as e:
                     self.log(f"Failed to rerender dialogs on dead-state monitor: {e}")
+
+            if is_dead_now and not record.can_restore() and record.restored_days:
+                updated = UserRecord.from_dict(record.to_dict())
+                if updated is not None and updated.clear_restored_days():
+                    self.users_db.set_user_record(
+                        updated, persist=False, reset_cache=False
+                    )
+                    changed = True
 
             self._streak_dead_state[user_id] = is_dead_now
 
@@ -2738,6 +3288,9 @@ class TgStreaksPlugin(BasePlugin):
         ]
         for user_id in missing:
             self._streak_dead_state.pop(user_id, None)
+
+        if changed:
+            self.users_db.save()
 
     def _start_dead_state_monitor(self):
         self._streak_dead_monitor_stop.clear()
@@ -2806,6 +3359,7 @@ class TgStreaksPlugin(BasePlugin):
                     menu_type=MenuItemType.CHAT_ACTION_MENU,
                     text=self._t("menu_upgrade_service_messages_text"),
                     subtext=self._t("menu_upgrade_service_messages_subtext"),
+                    icon="msg_settings",
                     on_click=lambda payload: (
                         self._on_toggle_upgrade_service_messages_clicked(payload)
                     ),
@@ -2816,6 +3370,22 @@ class TgStreaksPlugin(BasePlugin):
         except Exception as e:
             self._chat_upgrade_service_messages_menu_item_id = None
             self.log(f"Failed to register upgrade-service-messages menu item: {e}")
+
+        try:
+            item_id = self.add_menu_item(
+                MenuItemData(
+                    menu_type=MenuItemType.CHAT_ACTION_MENU,
+                    text=self._t("menu_restore_streak_text"),
+                    subtext=self._t("menu_restore_streak_subtext"),
+                    icon="msg_reactions",
+                    on_click=lambda payload: self._on_restore_streak_clicked(payload),
+                    priority=997,
+                )
+            )
+            self._chat_restore_streak_menu_item_id = item_id
+        except Exception as e:
+            self._chat_restore_streak_menu_item_id = None
+            self.log(f"Failed to register restore-streak menu item: {e}")
 
         if not DEBUG_MODE:
             return
@@ -2829,7 +3399,7 @@ class TgStreaksPlugin(BasePlugin):
                     on_click=lambda payload: self._on_debug_create_streak_clicked(
                         payload
                     ),
-                    priority=998,
+                    priority=996,
                 )
             )
             self._chat_debug_create_streak_menu_item_id = item_id
@@ -2846,7 +3416,7 @@ class TgStreaksPlugin(BasePlugin):
                     on_click=lambda payload: self._on_debug_kill_streak_clicked(
                         payload
                     ),
-                    priority=997,
+                    priority=995,
                 )
             )
             self._chat_debug_kill_streak_menu_item_id = item_id
@@ -2863,7 +3433,7 @@ class TgStreaksPlugin(BasePlugin):
                     on_click=lambda payload: self._on_debug_upgrade_streak_clicked(
                         payload
                     ),
-                    priority=996,
+                    priority=995,
                 )
             )
             self._chat_debug_upgrade_streak_menu_item_id = item_id
@@ -2893,6 +3463,10 @@ class TgStreaksPlugin(BasePlugin):
             "upgrade-service-messages",
         )
         self._remove_menu_item_safely(
+            getattr(self, "_chat_restore_streak_menu_item_id", None),
+            "restore-streak",
+        )
+        self._remove_menu_item_safely(
             getattr(self, "_chat_debug_create_streak_menu_item_id", None),
             "debug-create",
         )
@@ -2906,6 +3480,7 @@ class TgStreaksPlugin(BasePlugin):
         self._chat_force_check_menu_item_id = None
         self._chat_go_to_streak_start_menu_item_id = None
         self._chat_upgrade_service_messages_menu_item_id = None
+        self._chat_restore_streak_menu_item_id = None
         self._chat_upgrade_service_state_cache = {}
         self._chat_debug_create_streak_menu_item_id = None
         self._chat_debug_kill_streak_menu_item_id = None
@@ -3288,6 +3863,83 @@ class TgStreaksPlugin(BasePlugin):
         else:
             self._show_success(self._t("ok_upgrade_service_messages_disabled"))
 
+    def _restore_streak(
+        self,
+        account: int,
+        dialog_id: int,
+        event_day: Optional[int] = None,
+        send_service_message: bool = True,
+    ) -> bool:
+        current = self.users_db.get_user(dialog_id, include_authorized=True)
+        if current is None:
+            return False
+
+        restore_day = event_day
+        if not current.can_restore(restore_day):
+            if not current.can_restore():
+                return False
+            restore_day = None
+
+        restored = UserRecord.from_dict(current.to_dict())
+        if restored is None or not restored.revive(restore_day):
+            return False
+
+        self._remember_dialog_account(dialog_id, account)
+        self.users_db.set_user_record(restored)
+        self._streak_dead_state[dialog_id] = restored.should_die()
+        if send_service_message:
+            self._maybe_send_restore_service_message(account, dialog_id, restore_day)
+
+        try:
+            self._refresh_streak_emoji_for_peer(dialog_id)
+        except Exception as e:
+            self.log(
+                f"Failed to refresh restored streak emoji for peer {dialog_id}: {e}"
+            )
+
+        try:
+            self._rerender_dialog_cells()
+        except Exception as e:
+            self.log(f"Failed to rerender dialogs after streak restore: {e}")
+
+        return True
+
+    def _revive_streak_from_dialog_id(self, dialog_id: int, account: int = -1) -> bool:
+        try:
+            dialog_id = int(dialog_id)
+        except Exception:
+            return False
+
+        if dialog_id <= 0:
+            return False
+
+        try:
+            restored = self._restore_streak(account, dialog_id)
+        except Exception as e:
+            self.log(f"Failed to restore streak for chat {dialog_id}: {e}")
+            restored = False
+
+        if restored:
+            self._show_success(self._t("ok_streak_restored"))
+            return True
+
+        self._show_info(self._t("info_streak_restore_unavailable"))
+        return False
+
+    def _on_restore_streak_clicked(self, payload: Any):
+        dialog_id = self._extract_dialog_id_from_menu_payload(payload)
+
+        if dialog_id is None:
+            self._show_error(self._t("err_cannot_detect_current_chat"))
+            return
+
+        if not self._can_force_check_dialog_id(dialog_id):
+            self._show_info(self._t("info_private_user_only"))
+            return
+
+        account = self._extract_current_account_from_menu_payload(payload)
+        self._revive_streak_from_dialog_id(dialog_id, account)
+
     def _extract_debug_target_dialog_id(self, payload: Any) -> Optional[int]:
         if not DEBUG_MODE:
             self._show_info(self._t("info_debug_mode_disabled"))
@@ -3317,6 +3969,7 @@ class TgStreaksPlugin(BasePlugin):
             freezes_at=today + SECONDS_IN_DAY,
             last_sended_at=today,
             last_received_at=today,
+            restored_days=[],
         )
 
     def _persist_debug_record(
@@ -3367,8 +4020,9 @@ class TgStreaksPlugin(BasePlugin):
             user_id=int(dialog_id),
             started_at=int(current.started_at),
             freezes_at=today - SECONDS_IN_DAY,
-            last_sended_at=current.last_sended_at,
-            last_received_at=current.last_received_at,
+            last_sended_at=TimeUtils.get_local_day_offset(-2),
+            last_received_at=TimeUtils.get_local_day_offset(-2),
+            restored_days=list(current.restored_days),
         )
         self._persist_debug_record(payload, before, dead_record)
         self._show_success(self._t("ok_debug_streak_marked_dead"))
@@ -3855,49 +4509,207 @@ class TgStreaksPlugin(BasePlugin):
 
         return None
 
+    def _extract_private_dialog_id_from_message(self, message: Any) -> Optional[int]:
+        candidates: list[Any] = [message]
+
+        for attr_name in ("peer_id", "peer", "dialog_id", "dialogId", "user_id", "uid"):
+            try:
+                value = getattr(message, attr_name, None)
+            except Exception:
+                value = None
+            if value is not None:
+                candidates.append(value)
+
+        try:
+            owner = getattr(message, "messageOwner", None)
+        except Exception:
+            owner = None
+
+        if owner is not None:
+            candidates.append(owner)
+            for attr_name in (
+                "peer_id",
+                "peer",
+                "dialog_id",
+                "dialogId",
+                "user_id",
+                "uid",
+            ):
+                try:
+                    value = getattr(owner, attr_name, None)
+                except Exception:
+                    value = None
+                if value is not None:
+                    candidates.append(value)
+
+        try:
+            dialog_id = message.getDialogId()
+        except Exception:
+            dialog_id = None
+        if dialog_id is not None:
+            candidates.append(dialog_id)
+
+        for candidate in candidates:
+            peer_id = self._extract_private_peer_id(candidate)
+            if peer_id is not None and peer_id > 0:
+                return peer_id
+
+        for candidate in candidates:
+            try:
+                dialog_id = int(candidate)
+            except Exception:
+                continue
+
+            if dialog_id <= 0:
+                continue
+
+            try:
+                if DialogObject.isUserDialog(dialog_id):
+                    return dialog_id
+            except Exception:
+                pass
+
+        return None
+
+    def _extract_sender_id_from_message(self, message: Any) -> Optional[int]:
+        candidates: list[Any] = []
+
+        for attr_name in ("from_id", "sender_id", "fromId", "senderId"):
+            try:
+                value = getattr(message, attr_name, None)
+            except Exception:
+                value = None
+            if value is not None:
+                candidates.append(value)
+
+        try:
+            owner = getattr(message, "messageOwner", None)
+        except Exception:
+            owner = None
+
+        if owner is not None:
+            for attr_name in ("from_id", "sender_id", "fromId", "senderId"):
+                try:
+                    value = getattr(owner, attr_name, None)
+                except Exception:
+                    value = None
+                if value is not None:
+                    candidates.append(value)
+
+        for candidate in candidates:
+            sender_id = self._extract_private_peer_id(candidate)
+            if sender_id is not None and sender_id > 0:
+                return sender_id
+
+        return None
+
+    def _extract_message_text(self, message: Any) -> Optional[str]:
+        roots = [message]
+
+        try:
+            owner = getattr(message, "messageOwner", None)
+        except Exception:
+            owner = None
+
+        if owner is not None:
+            roots.append(owner)
+
+        for root in roots:
+            for attr_name in (
+                "message",
+                "caption",
+                "messageText",
+                "text",
+                "messageTextForReply",
+            ):
+                try:
+                    value = getattr(root, attr_name, None)
+                except Exception:
+                    value = None
+
+                if value is None:
+                    continue
+
+                try:
+                    text = str(value).strip()
+                except Exception:
+                    continue
+
+                if text:
+                    return text
+
+            for method_name in ("getMessageText", "getCaption", "getText"):
+                try:
+                    method = getattr(root, method_name, None)
+                except Exception:
+                    method = None
+
+                if method is None:
+                    continue
+
+                try:
+                    value = method()
+                except Exception:
+                    continue
+
+                if value is None:
+                    continue
+
+                try:
+                    text = str(value).strip()
+                except Exception:
+                    continue
+
+                if text:
+                    return text
+
+        return None
+
     def _consume_message(self, account: int, message: Any):
-        if self._is_upgrade_service_message(message):
-            return
+        try:
+            message_text = self._extract_message_text(message)
+            peer_id = self._extract_private_dialog_id_from_message(message)
 
-        peer_id = self._extract_private_peer_id(getattr(message, "peer_id", None))
+            raw_message_date = getattr(message, "date", int(time.time()))
+            message_date = int(raw_message_date)
+            event_day = TimeUtils.strip_timestamp(message_date)
+            from_id = self._extract_sender_id_from_message(message)
+            message_out = bool(getattr(message, "out", False))
 
-        if peer_id is None:
-            return
+            if self._is_tagged_service_message_text(message_text):
+                self.log(
+                    f"Consume tagged message: account={account}, class={self._get_tl_name(message)}, text={self._safe_log_value(message_text)}, peer={peer_id}, from_id={from_id}, out={message_out}, date={message_date}, event_day={event_day}"
+                )
 
-        self_user_id = self._get_self_user_id(account)
+            if from_id is None and message_out:
+                self_user_id = self._get_self_user_id(account)
+                if self_user_id > 0:
+                    from_id = self_user_id
+            elif from_id is None and peer_id is not None:
+                from_id = peer_id
 
-        if self_user_id > 0 and peer_id == self_user_id:
-            return
+            if self._is_restore_service_message_text(message_text) and peer_id is None:
+                self.log(
+                    f"Restore service message without resolved dialog id: account={account}, from_id={from_id}, event_day={event_day}, message_class={self._get_tl_name(message)}, message={self._safe_log_value(message)}"
+                )
 
-        sender_type = SenderType.PEER
-        from_id = self._extract_private_peer_id(getattr(message, "from_id", None))
-        message_out = bool(getattr(message, "out", False))
+            if peer_id is None:
+                if self._is_tagged_service_message_text(message_text):
+                    self.log(
+                        f"Skip tagged message without peer: account={account}, class={self._get_tl_name(message)}"
+                    )
+                return
 
-        if from_id is not None and self_user_id > 0:
-            sender_type = (
-                SenderType.SELF if from_id == self_user_id else SenderType.PEER
-            )
-        elif message_out:
-            sender_type = SenderType.SELF
+            if self._is_restore_service_message_text(message_text):
+                self._maybe_consume_restore_service_message(
+                    account, peer_id, from_id, event_day
+                )
+                return
 
-        message_date = int(getattr(message, "date", int(time.time())))
-        self._notify_for_dialog_event(
-            account, peer_id, sender_type, TimeUtils.strip_timestamp(message_date)
-        )
-
-    def _consume_update(self, account: int, update_name: str, update: Any):
-        if update_name in ("TL_updateNewMessage", "TL_updateNewChannelMessage"):
-            message = getattr(update, "message", None)
-
-            if message is not None:
-                self._consume_message(account, message)
-
-            return
-
-        if update_name == "TL_updateShortMessage":
-            peer_id = int(getattr(update, "user_id", 0))
-
-            if peer_id <= 0:
+            if self._is_internal_service_message_text(message_text):
+                self.log(
+                    f"Skip internal service message: account={account}, peer={peer_id}, text={self._safe_log_value(message_text)}"
+                )
                 return
 
             self_user_id = self._get_self_user_id(account)
@@ -3905,24 +4717,150 @@ class TgStreaksPlugin(BasePlugin):
             if self_user_id > 0 and peer_id == self_user_id:
                 return
 
+            sender_type = SenderType.PEER
+            if from_id is not None and self_user_id > 0:
+                sender_type = (
+                    SenderType.SELF if from_id == self_user_id else SenderType.PEER
+                )
+            elif message_out:
+                sender_type = SenderType.SELF
+
+            self._notify_for_dialog_event(account, peer_id, sender_type, event_day)
+        except Exception as e:
+            self.log(
+                f"_consume_message failed: account={account}, class={self._get_tl_name(message)}, error={e}"
+            )
+
+    def _consume_update(self, account: int, update_name: str, update: Any):
+        if update_name in ("TL_updateNewMessage", "TL_updateNewChannelMessage"):
+            try:
+                message = getattr(update, "message", None)
+            except Exception as e:
+                self.log(
+                    f"Failed to get message from {update_name} on account {account}: {e}"
+                )
+                return
+
+            self._log_service_update_trace(
+                "Incoming update", account, update_name, update
+            )
+
+            if message is None:
+                self.log(f"{update_name} has no message payload on account {account}")
+                return
+
+            self._consume_message(account, message)
+
+            return
+
+        if update_name in ("TL_updateEditMessage", "TL_updateEditChannelMessage"):
+            try:
+                message = getattr(update, "message", None)
+            except Exception as e:
+                self.log(
+                    f"Failed to get edited message from {update_name} on account {account}: {e}"
+                )
+                return
+
+            self._log_service_update_trace(
+                "Incoming edit update", account, update_name, update
+            )
+
+            if message is None:
+                return
+
+            try:
+                message_text = self._extract_message_text(message)
+            except Exception as e:
+                self.log(
+                    f"Failed to extract edited message text from {update_name} on account {account}: {e}"
+                )
+                return
+
+            if self._is_restore_service_message_text(message_text):
+                self._consume_message(account, message)
+            elif self._is_tagged_service_message_text(message_text):
+                self.log(
+                    f"Skip non-restore tagged edit update: account={account}, update={update_name}, text={self._safe_log_value(message_text)}"
+                )
+
+            return
+
+        if update_name == "TL_updateShortMessage":
+            try:
+                peer_id = int(getattr(update, "user_id", 0))
+            except Exception as e:
+                self.log(
+                    f"Failed to read peer from TL_updateShortMessage on account {account}: {e}"
+                )
+                return
+
+            if peer_id <= 0:
+                self._log_service_update_trace(
+                    "Skip short message with invalid peer",
+                    account,
+                    update_name,
+                    update,
+                )
+                return
+
+            self_user_id = self._get_self_user_id(account)
+
+            if self_user_id > 0 and peer_id == self_user_id:
+                return
+
+            message_text = getattr(update, "message", None)
+            message_date = int(getattr(update, "date", int(time.time())))
+            event_day = TimeUtils.strip_timestamp(message_date)
+            from_id = (
+                self_user_id
+                if bool(getattr(update, "out", False)) and self_user_id > 0
+                else peer_id
+            )
+
+            if self._is_tagged_service_message_text(message_text):
+                self.log(
+                    f"Consume short tagged update: account={account}, peer={peer_id}, from_id={from_id}, out={bool(getattr(update, 'out', False))}, date={message_date}, event_day={event_day}, text={self._safe_log_value(message_text)}"
+                )
+
+            if self._is_restore_service_message_text(message_text):
+                self._maybe_consume_restore_service_message(
+                    account, peer_id, from_id, event_day
+                )
+                return
+
+            if self._is_internal_service_message_text(message_text):
+                return
+
             sender_type = (
                 SenderType.SELF
                 if bool(getattr(update, "out", False))
                 else SenderType.PEER
             )
-            message_date = int(getattr(update, "date", int(time.time())))
-            self._notify_for_dialog_event(
-                account, peer_id, sender_type, TimeUtils.strip_timestamp(message_date)
-            )
+            self._notify_for_dialog_event(account, peer_id, sender_type, event_day)
+            return
+
+        if update_name == "TL_updateShortChatMessage":
             return
 
         if update_name == "TL_updateShort":
             nested_update = getattr(update, "update", None)
 
             if nested_update is not None:
-                self._consume_update(
-                    account, self._get_tl_name(nested_update), nested_update
+                nested_name = self._get_tl_name(nested_update)
+                self._log_service_update_trace(
+                    "Incoming short wrapper",
+                    account,
+                    nested_name,
+                    nested_update,
+                    extra=f"wrapper={update_name}",
                 )
+                try:
+                    self._consume_update(account, nested_name, nested_update)
+                except Exception as e:
+                    self.log(
+                        f"Failed to consume nested update {nested_name} from {update_name} on account {account}: {e}"
+                    )
 
             return
 
@@ -3934,9 +4872,20 @@ class TgStreaksPlugin(BasePlugin):
 
             for i in range(updates.size()):
                 nested_update = updates.get(i)
-                self._consume_update(
-                    account, self._get_tl_name(nested_update), nested_update
+                nested_name = self._get_tl_name(nested_update)
+                self._log_service_update_trace(
+                    "Incoming updates wrapper",
+                    account,
+                    nested_name,
+                    nested_update,
+                    extra=f"wrapper={update_name}, index={i}",
                 )
+                try:
+                    self._consume_update(account, nested_name, nested_update)
+                except Exception as e:
+                    self.log(
+                        f"Failed to consume nested update {nested_name} from {update_name}[{i}] on account {account}: {e}"
+                    )
 
     def _patch_cached_users_streak_emoji_status(self):
         users = cast(
@@ -4010,6 +4959,80 @@ class TgStreaksPlugin(BasePlugin):
             Boolean(True),
             error_context="dialogsNeedReload",
         )
+
+    def _remember_consumed_tagged_message(self, message: Any) -> bool:
+        try:
+            message_text = self._extract_message_text(message)
+        except Exception:
+            message_text = None
+
+        if not self._is_tagged_service_message_text(message_text):
+            return False
+
+        try:
+            dialog_id = self._extract_private_dialog_id_from_message(message) or 0
+        except Exception:
+            dialog_id = 0
+
+        try:
+            message_id = int(getattr(message, "id", 0))
+        except Exception:
+            try:
+                message_id = int(message.getId())
+            except Exception:
+                message_id = 0
+
+        try:
+            message_date = int(getattr(message, "date", 0))
+        except Exception:
+            message_date = 0
+
+        dedupe_key = f"{dialog_id}:{message_id}:{message_date}:{self._safe_log_value(message_text, 96)}"
+        seen = self._consumed_tagged_message_keys
+        if dedupe_key in seen:
+            return True
+
+        seen.add(dedupe_key)
+        if len(seen) > 512:
+            self._consumed_tagged_message_keys = set(list(seen)[-256:])
+
+        return False
+
+    def hook_message_object_constructors(self):
+        class MessageObjectCtorHook(MethodHook):
+            def __init__(self, plugin: TgStreaksPlugin):
+                self.plugin = plugin
+
+            def after_hooked_method(self, param):
+                try:
+                    message_object = cast("MessageObject", param.thisObject)
+                except Exception as e:
+                    self.plugin.log(f"MessageObject ctor hook cast failed: {e}")
+                    return
+
+                try:
+                    if self.plugin._remember_consumed_tagged_message(message_object):
+                        return
+
+                    text = self.plugin._extract_message_text(message_object)
+                    if not self.plugin._is_tagged_service_message_text(text):
+                        return
+
+                    account = int(getattr(message_object, "currentAccount", -1))
+                    self.plugin.log(
+                        f"MessageObject ctor tagged message: account={account}, class={self.plugin._get_tl_name(message_object)}, text={self.plugin._safe_log_value(text)}"
+                    )
+                    self.plugin._consume_message(account, message_object)
+                except Exception as e:
+                    self.plugin.log(f"MessageObject ctor hook failed: {e}")
+
+        try:
+            self.hook_all_constructors(
+                cast("Class", MessageObject), MessageObjectCtorHook(self)
+            )
+            self.log("MessageObject constructor hook attached")
+        except Exception as e:
+            self.log(f"Failed to hook MessageObject constructors: {e}")
 
     def hook_user_emoji_status_assign(self, patch_existing: bool):
         users = cast(
@@ -4363,12 +5386,26 @@ class TgStreaksPlugin(BasePlugin):
                         return ""
                     return ref._t(str(t))
 
+            class ReviveResolver(dynamic_proxy(Function)):
+                def apply(self, t: Long):
+                    if t is None:
+                        return Boolean(False)
+
+                    return Boolean(ref._revive_streak_from_dialog_id(int(t)))
+
             self.jvm_plugin.klass.getDeclaredMethod(
                 String("inject"),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
-            ).invoke(None, Logger(), StreakResolver(), TranslationResolver())  # ty:ignore[invalid-argument-type]
+                Function.getClass(),  # ty:ignore[unresolved-attribute]
+            ).invoke(
+                cast("Object", None),
+                cast("Object", Logger()),
+                cast("Object", StreakResolver()),
+                cast("Object", TranslationResolver()),
+                cast("Object", ReviveResolver()),
+            )
             self.log("JVM plugin injected successfully")
         except Exception as e:
             self.log(f"Failed to inject JVM plugin: {e}")
@@ -4380,7 +5417,9 @@ class TgStreaksPlugin(BasePlugin):
         self._chat_force_check_menu_item_id = None
         self._chat_go_to_streak_start_menu_item_id = None
         self._chat_upgrade_service_messages_menu_item_id = None
+        self._chat_restore_streak_menu_item_id = None
         self._chat_upgrade_service_state_cache = {}
+        self._dialog_account_map: dict[int, int] = {}
         self._chat_debug_create_streak_menu_item_id = None
         self._chat_debug_kill_streak_menu_item_id = None
         self._chat_debug_upgrade_streak_menu_item_id = None
@@ -4401,7 +5440,10 @@ class TgStreaksPlugin(BasePlugin):
         self.add_on_send_message_hook()
         self.add_hook("TL_updateNewMessage")
         self.add_hook("TL_updateNewChannelMessage")
+        self.add_hook("TL_updateEditMessage")
+        self.add_hook("TL_updateEditChannelMessage")
         self.add_hook("TL_updateShortMessage")
+        self.add_hook("TL_updateShortChatMessage")
         self.add_hook("TL_updateShort")
         self.add_hook("TL_updates")
         self.add_hook("TL_updatesCombined")
@@ -4410,6 +5452,7 @@ class TgStreaksPlugin(BasePlugin):
             self.users_db = UsersDatabase(jvm_plugin=self.jvm_plugin, logger=self.log)
             self.streaks = StreaksController(users_db=self.users_db, logger=self.log)
             self._self_user_ids = {}
+            self._consumed_tagged_message_keys: set[str] = set()
 
             checked, updated, removed = self.streaks.reconcile_on_plugin_load()
             if checked > 0:
@@ -4417,6 +5460,7 @@ class TgStreaksPlugin(BasePlugin):
                     f"Streak startup check done: checked={checked}, updated={updated}, removed={removed}"
                 )
 
+            self.hook_message_object_constructors()
             self.hook_user_emoji_status_assign(True)
             self._rerender_dialog_cells()
             self._register_chat_action_menu_items()
@@ -4479,8 +5523,24 @@ class TgStreaksPlugin(BasePlugin):
 
     def on_update_hook(self, update_name: str, account: int, update: Any) -> HookResult:
         try:
+            self._log_service_update_trace(
+                "on_update_hook", account, update_name, update
+            )
             self._consume_update(account, update_name, update)
         except Exception as e:
             self.log(f"update hook error ({update_name}): {e}")
+
+        return HookResult()
+
+    def on_updates_hook(
+        self, container_name: str, account: int, updates: Any
+    ) -> HookResult:
+        try:
+            self._log_service_update_trace(
+                "on_updates_hook", account, container_name, updates
+            )
+            self._consume_update(account, container_name, updates)
+        except Exception as e:
+            self.log(f"updates hook error ({container_name}): {e}")
 
         return HookResult()
