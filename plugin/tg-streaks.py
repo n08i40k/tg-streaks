@@ -139,8 +139,8 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     },
     "settings_streak_tools": {"en": "Streak Tools", "ru": "Инструменты стрика"},
     "settings_force_check_all_private_chats": {
-        "en": "Force check all private chats",
-        "ru": "Принудительно проверить все личные чаты",
+        "en": "Recalculate streaks in all private chats",
+        "ru": "Пересчитать стрики во всех личных чатах",
     },
     "settings_only_private_hint": {
         "en": "Only private dialogs with real users are checked. Bots and groups are skipped.",
@@ -148,12 +148,12 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     },
     "settings_db_backups": {"en": "Database Backups", "ru": "Резервные копии базы"},
     "settings_export_backup_now": {
-        "en": "Export backup now",
-        "ru": "Экспортировать бэкап сейчас",
+        "en": "Create backup now",
+        "ru": "Создать резервную копию сейчас",
     },
     "settings_import_latest_backup": {
-        "en": "Import latest backup",
-        "ru": "Импортировать последний бэкап",
+        "en": "Restore from latest backup",
+        "ru": "Восстановить из последней копии",
     },
     "settings_db_backups_hint": {
         "en": "Daily backups are created automatically. Import replaces current streak database.",
@@ -319,8 +319,8 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Длительность стрика неверная?",
     },
     "dex_sheet_feature_incorrect_subtitle": {
-        "en": 'This can be fixed! Click the "Force check this chat" button to recalculate the streak length.',
-        "ru": 'Это можно исправить! Нажмите кнопку "Принудительно проверить этот чат", чтобы пересчитать длину стрика.',
+        "en": 'This can be fixed! Tap "Recalculate streak in this chat" to recount the streak length.',
+        "ru": 'Это можно исправить! Нажмите "Пересчитать стрик в этом чате", чтобы заново посчитать его длину.',
     },
     "dex_sheet_title": {
         "en": "You and {name} have been on a streak for {days} days now!",
@@ -331,36 +331,36 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Продолжайте общаться и не прерывайте стрик **:P**",
     },
     "menu_force_check_chat_text": {
-        "en": "Force check this chat",
-        "ru": "Принудительно проверить этот чат",
+        "en": "Recalculate streak in this chat",
+        "ru": "Пересчитать стрик в этом чате",
     },
     "menu_force_check_chat_subtext": {
-        "en": "Rebuild streak for this private chat",
-        "ru": "Пересобрать стрик для этого личного чата",
+        "en": "Check the chat history again and update the streak length",
+        "ru": "Ещё раз проверить историю чата и обновить длину стрика",
     },
     "menu_go_to_streak_start_text": {
-        "en": "Go to streak start",
-        "ru": "Перейти к началу стрика",
+        "en": "Open where the streak began",
+        "ru": "Открыть начало стрика",
     },
     "menu_go_to_streak_start_subtext": {
-        "en": "Jump to the day when this streak started",
-        "ru": "Перейти к дню, когда начался этот стрик",
+        "en": "Jump to the message or day where the current streak started",
+        "ru": "Перейти к сообщению или дню, с которого начался текущий стрик",
     },
     "menu_upgrade_service_messages_text": {
-        "en": "Upgrade service messages",
-        "ru": "Сервисные сообщения об апгрейде",
+        "en": "Messages about streak level-ups",
+        "ru": "Сообщения о повышении уровня стрика",
     },
     "menu_upgrade_service_messages_subtext": {
-        "en": "Disabled by default. Tap to toggle for this chat.",
-        "ru": "По умолчанию выключено. Нажмите, чтобы переключить для этого чата.",
+        "en": "Show or hide service messages in this chat when the streak reaches a new level",
+        "ru": "Показывать или скрывать в этом чате служебные сообщения о новом уровне стрика",
     },
     "menu_restore_streak_text": {
         "en": "Restore streak",
         "ru": "Восстановить стрик",
     },
     "menu_restore_streak_subtext": {
-        "en": "Use this when the death service message button is unavailable",
-        "ru": "Используйте, если кнопка в сервисном сообщении недоступна",
+        "en": "Available only during the first 24 hours after the streak ends",
+        "ru": "Доступно только в течение первых 24 часов после прерывания стрика",
     },
     "menu_debug_create_streak_text": {
         "en": "[DEBUG] Create 3-day streak",
