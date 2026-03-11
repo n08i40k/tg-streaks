@@ -235,6 +235,26 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "This action works only for private user chats",
         "ru": "Это действие работает только в личных чатах с пользователями",
     },
+    "info_private_chat_only": {
+        "en": "This action is available only in a private chat with another person",
+        "ru": "Это действие доступно только в личном чате с другим человеком",
+    },
+    "info_action_not_available_for_saved_messages": {
+        "en": "This action is not available in Saved Messages",
+        "ru": "Это действие недоступно в Избранном",
+    },
+    "info_action_not_available_for_your_other_account": {
+        "en": "This action is not available in chats with your other account",
+        "ru": "Это действие недоступно в чате с вашим другим аккаунтом",
+    },
+    "info_action_not_available_for_bots": {
+        "en": "This action is not available in chats with bots",
+        "ru": "Это действие недоступно в чатах с ботами",
+    },
+    "info_action_not_available_for_deleted_users": {
+        "en": "This action is not available for deleted accounts",
+        "ru": "Это действие недоступно для удалённых аккаунтов",
+    },
     "info_streak_restore_unavailable": {
         "en": "This streak can no longer be restored",
         "ru": "Этот стрик больше нельзя восстановить",
@@ -3595,36 +3615,48 @@ class TgStreaksPlugin(BasePlugin):
             return 0
 
     def _can_force_check_dialog_id(self, dialog_id: int) -> bool:
+        return self._get_force_check_dialog_restriction_key(dialog_id) is None
+
+    def _get_force_check_dialog_restriction_key(self, dialog_id: int) -> Optional[str]:
         if dialog_id <= 0:
-            return False
+            return "info_private_chat_only"
 
         if not DialogObject.isUserDialog(dialog_id):
-            return False
+            return "info_private_chat_only"
 
-        if dialog_id in get_authorized_user_ids() or UserObject.isReplyUser(dialog_id):
-            return False
+        if dialog_id in get_authorized_user_ids():
+            return "info_action_not_available_for_your_other_account"
+
+        if UserObject.isReplyUser(dialog_id):
+            return "info_action_not_available_for_saved_messages"
 
         if UserObject.isService(dialog_id):
-            return False
+            return "info_private_chat_only"
 
         user = self._resolve_dialog_user(get_messages_controller(), dialog_id)
 
         if user is None:
-            return True
+            return None
 
         if UserObject.isUserSelf(user):
-            return False
+            return "info_action_not_available_for_saved_messages"
 
         if UserObject.isDeleted(user):
-            return False
+            return "info_action_not_available_for_deleted_users"
 
         if UserObject.isBot(user):
-            return False
+            return "info_action_not_available_for_bots"
 
         if UserObject.isReplyUser(user):
-            return False
+            return "info_action_not_available_for_saved_messages"
 
-        return True
+        return None
+
+    def _show_force_check_dialog_restriction(self, dialog_id: int):
+        key = self._get_force_check_dialog_restriction_key(dialog_id)
+        if key is None:
+            key = "info_private_chat_only"
+        self._show_info(self._t(key))
 
     def _find_first_message_id_in_range(
         self, peer: TLRPC.InputPeer, start_ts: int, end_ts: int
@@ -3714,7 +3746,7 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         if not self._can_force_check_dialog_id(dialog_id):
-            self._show_info(self._t("info_private_user_only"))
+            self._show_force_check_dialog_restriction(dialog_id)
             return
 
         if not self._try_start_force_check("info_force_check_started_chat"):
@@ -3788,7 +3820,7 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         if not self._can_force_check_dialog_id(dialog_id):
-            self._show_info(self._t("info_private_user_only"))
+            self._show_force_check_dialog_restriction(dialog_id)
             return
 
         record = self.users_db.get_user(dialog_id)
@@ -3852,7 +3884,7 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         if not self._can_force_check_dialog_id(dialog_id):
-            self._show_info(self._t("info_private_user_only"))
+            self._show_force_check_dialog_restriction(dialog_id)
             return
 
         enabled = not self._is_chat_upgrade_service_enabled(dialog_id)
@@ -3934,7 +3966,7 @@ class TgStreaksPlugin(BasePlugin):
             return
 
         if not self._can_force_check_dialog_id(dialog_id):
-            self._show_info(self._t("info_private_user_only"))
+            self._show_force_check_dialog_restriction(dialog_id)
             return
 
         account = self._extract_current_account_from_menu_payload(payload)
@@ -3955,7 +3987,7 @@ class TgStreaksPlugin(BasePlugin):
             return None
 
         if not self._can_force_check_dialog_id(dialog_id):
-            self._show_info(self._t("info_debug_private_user_only"))
+            self._show_force_check_dialog_restriction(dialog_id)
             return None
 
         return dialog_id
