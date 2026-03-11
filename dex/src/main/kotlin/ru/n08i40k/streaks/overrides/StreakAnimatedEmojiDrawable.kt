@@ -213,6 +213,148 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         invalidateSelf()
     }
 
+    private fun whenDocumentReady(documentId: Long, onReady: (TLRPC.Document) -> Unit) {
+        if (documentId <= 0L) {
+            return
+        }
+
+        val account = UserConfig.selectedAccount
+
+        AnimatedEmojiDrawable.findDocument(account, documentId)
+            ?.let {
+                onReady(it)
+                return
+            }
+
+        AnimatedEmojiDrawable
+            .getDocumentFetcher(account)
+            .fetchDocument(documentId) { document ->
+                AndroidUtilities.runOnUIThread {
+                    onReady(document)
+                }
+            }
+    }
+
+    private fun applyMainDocument(
+        document: TLRPC.Document,
+        showParticles: Boolean,
+        cacheType: Int? = null,
+        animated: Boolean = false,
+    ) {
+        if (cacheType != null) {
+            super.set(document, cacheType, animated)
+        } else {
+            super.set(document, animated)
+        }
+
+        super.setParticles(showParticles, false)
+        invalidateSelf()
+    }
+
+    private fun applyMainDocumentId(
+        documentId: Long,
+        showParticles: Boolean,
+        cacheType: Int? = null,
+        animated: Boolean = false,
+        isStillExpected: () -> Boolean,
+    ) {
+        whenDocumentReady(documentId) { document ->
+            if (!isStillExpected()) {
+                return@whenDocumentReady
+            }
+
+            applyMainDocument(document, showParticles, cacheType, animated)
+        }
+    }
+
+    private fun applyStreakState(streakData: StreakData) {
+        applyMainDocumentId(
+            documentId = streakData.documentId,
+            showParticles = true,
+            cacheType = 7,
+            animated = true,
+            isStillExpected = {
+                this.userId != 0L &&
+                    cachedStreakData?.documentId == streakData.documentId
+            }
+        )
+
+        getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
+            val parent = field.get(this) as? StarsReactionsSheet.Particles
+            val child =
+                parent?.let { base ->
+                    StreakParticles(
+                        base,
+                        streakData.accentColor.toArgb()
+                    )
+                }
+
+            field.set(this, child)
+        }
+
+        hasCustomParticles = true
+
+        MessagesController
+            .getInstance(UserConfig.selectedAccount)
+            .getUser(userId)
+            ?.let(::setBadge)
+    }
+
+    private fun applyUserState(user: TLRPC.User) {
+        val documentId = UserObject.getEmojiStatusDocumentId(user.emoji_status)
+
+        when {
+            documentId != null -> {
+                applyMainDocumentId(
+                    documentId = documentId,
+                    showParticles = !hideParticlesOnCollectibles &&
+                        DialogObject.isEmojiStatusCollectible(user.emoji_status),
+                    isStillExpected = {
+                        this.userId == user.id &&
+                            UserObject.getEmojiStatusDocumentId(user.emoji_status) == documentId
+                    }
+                )
+            }
+            user.premium -> {
+                super.set(PremiumGradient.getInstance().premiumStarDrawableMini, false)
+                super.setParticles(false, false)
+            }
+            else -> {
+                super.set(null as Drawable?, false)
+                super.setParticles(false, false)
+            }
+        }
+
+        setBadge(user)
+    }
+
+    private fun applyChatState(chat: TLRPC.Chat) {
+        val documentId = DialogObject.getEmojiStatusDocumentId(chat.emoji_status)
+
+        if (documentId != 0L) {
+            applyMainDocumentId(
+                documentId = documentId,
+                showParticles = DialogObject.isEmojiStatusCollectible(chat.emoji_status),
+                isStillExpected = {
+                    this.userId == chat.id &&
+                        DialogObject.getEmojiStatusDocumentId(chat.emoji_status) == documentId
+                }
+            )
+        } else {
+            val badge = BadgesController.INSTANCE.getBadge(chat)
+
+            if (badge == null) {
+                super.set(null as Drawable?, false)
+                super.setParticles(false, false)
+            } else {
+                super.set(badge.documentId, false)
+                super.setParticles(true, false)
+            }
+        }
+
+        setBadge(null)
+    }
+
     fun setBadge(user: TLRPC.User?) {
         if (!canDrawBadge) return
 
@@ -257,30 +399,7 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
         this.cachedStreakData = Plugin.getInstance()!!.resolveStreakData(userId)
 
         if (cachedStreakData != null && !clearStreak) {
-            super.set(cachedStreakData!!.documentId, 7, true)
-            super.setParticles(true, true)
-
-            getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
-                val parent = field.get(this) as? StarsReactionsSheet.Particles
-                val child =
-                    parent?.let { base ->
-                        StreakParticles(
-                            base,
-                            cachedStreakData!!.accentColor.toArgb()
-                        )
-                    }
-
-                field.set(this, child)
-            }
-
-            hasCustomParticles = true
-
-            MessagesController
-                .getInstance(UserConfig.selectedAccount)
-                .getUser(userId)
-                ?.let {
-                    setBadge(it)
-                }
+            applyStreakState(cachedStreakData!!)
         } else {
             if (hasCustomParticles) {
                 // restore original particles class without custom color or etc.
@@ -292,51 +411,8 @@ class StreakAnimatedEmojiDrawable : SwapAnimatedEmojiDrawable {
                 MessagesController.getInstance(UserConfig.selectedAccount).getUserOrChat(userId)
 
             when (dialog) {
-                is TLRPC.User -> {
-                    val documentId = UserObject.getEmojiStatusDocumentId(dialog.emoji_status)
-
-                    if (documentId != null) {
-                        super.set(documentId, false)
-                        super.setParticles(
-                            !hideParticlesOnCollectibles && DialogObject.isEmojiStatusCollectible(
-                                dialog.emoji_status
-                            ),
-                            false
-                        )
-                    } else if (dialog.premium) {
-                        super.set(PremiumGradient.getInstance().premiumStarDrawableMini, false)
-                        super.setParticles(false, false)
-                    } else {
-                        super.set(null as Drawable?, false)
-                        super.setParticles(false, false)
-                    }
-
-                    setBadge(dialog)
-                }
-
-                is TLRPC.Chat -> {
-                    val documentId = DialogObject.getEmojiStatusDocumentId(dialog.emoji_status)
-
-                    if (documentId != 0L) {
-                        super.set(documentId, false)
-                        super.setParticles(
-                            DialogObject.isEmojiStatusCollectible(dialog.emoji_status),
-                            false
-                        )
-                    } else {
-                        val badge = BadgesController.INSTANCE.getBadge(dialog)
-
-                        if (badge == null) {
-                            super.set(null as Drawable?, false)
-                            super.setParticles(false, false)
-                        } else {
-                            super.set(badge.documentId, false)
-                            super.setParticles(true, false)
-                        }
-                    }
-
-                    setBadge(null)
-                }
+                is TLRPC.User -> applyUserState(dialog)
+                is TLRPC.Chat -> applyChatState(dialog)
             }
         }
 
