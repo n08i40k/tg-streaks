@@ -36,7 +36,6 @@ from client_utils import (
     get_account_instance,
     get_connections_manager,
     get_last_fragment,
-    get_messages_controller,
 )
 from dalvik.system import InMemoryDexClassLoader
 from hook_utils import get_private_field
@@ -58,6 +57,7 @@ from java.util import Calendar, TimeZone
 from java.util.concurrent import ConcurrentHashMap
 from java.util.function import Function
 from org.telegram.messenger import (
+    AccountInstance,
     AndroidUtilities,
     ApplicationLoader,
     DialogObject,
@@ -746,7 +746,7 @@ def _resolve_day_check_messages_table_name(db: Any) -> Optional[str]:
 
 
 def _try_get_cached_day_activity(
-    peer: TLRPC.InputPeer, start_ts: int, end_ts: int
+    peer: TLRPC.InputPeer, start_ts: int, end_ts: int, account: int = -1
 ) -> Optional[bool]:
     try:
         dialog_id = int(getattr(peer, "user_id", 0))
@@ -757,7 +757,7 @@ def _try_get_cached_day_activity(
         return None
 
     try:
-        storage = get_account_instance().getMessagesStorage()
+        storage = get_account_instance_for(account).getMessagesStorage()
         db = storage.getDatabase()
     except Exception:
         return None
@@ -805,13 +805,16 @@ def _try_get_cached_day_activity(
 
 
 def was_chat_active(
-    peer: TLRPC.InputPeer, day_offset: int, fail_on_error: bool = False
+    peer: TLRPC.InputPeer,
+    day_offset: int,
+    account: int = -1,
+    fail_on_error: bool = False,
 ) -> bool:
     start_ts, end_ts = TimeUtils.get_stripped_boundaries(day_offset)
     _, server_end_ts = TimeUtils.get_server_stripped_boundaries(day_offset)
     initial_offset_date = int(max(end_ts, server_end_ts))
 
-    cached_result = _try_get_cached_day_activity(peer, start_ts, end_ts)
+    cached_result = _try_get_cached_day_activity(peer, start_ts, end_ts, account)
     if cached_result is not None:
         return cached_result
 
@@ -879,7 +882,7 @@ def was_chat_active(
                     else:
                         done.set()
 
-            conn_m = get_connections_manager()
+            conn_m = get_connections_manager_for(account)
             conn_m.sendRequest(req, Delegate())
 
         load()
@@ -922,6 +925,7 @@ def find_restore_service_days(
     peer: TLRPC.InputPeer,
     start_ts: int,
     end_ts: int,
+    account: int = -1,
     fail_on_error: bool = False,
 ) -> set[int]:
     done = threading.Event()
@@ -987,7 +991,7 @@ def find_restore_service_days(
                 else:
                     done.set()
 
-        get_connections_manager().sendRequest(req, Delegate())
+        get_connections_manager_for(account).sendRequest(req, Delegate())
 
     load()
 
@@ -1001,13 +1005,26 @@ def find_restore_service_days(
     return restored_days
 
 
-def get_streak_length(peer_id: int):
-    peer = get_messages_controller().getInputPeer(peer_id)  # ty:ignore[no-matching-overload]
+def build_restore_hint_days(event_day: int) -> set[int]:
+    day = TimeUtils.strip_timestamp(event_day)
+
+    if day <= 0:
+        return set()
+
+    restored_days = {day}
+    if day > SECONDS_IN_DAY:
+        restored_days.add(day - SECONDS_IN_DAY)
+
+    return restored_days
+
+
+def get_streak_length(peer_id: int, account: int = -1):
+    peer = get_messages_controller_for(account).getInputPeer(peer_id)  # ty:ignore[no-matching-overload]
 
     streak_days = 0
 
     while True:
-        if not was_chat_active(peer, -streak_days):
+        if not was_chat_active(peer, -streak_days, account):
             break
 
         streak_days += 1
@@ -1015,14 +1032,14 @@ def get_streak_length(peer_id: int):
     return streak_days
 
 
-def get_streak_die_date(peer_id: int, day_offset: int) -> Optional[int]:
+def get_streak_die_date(peer_id: int, day_offset: int, account: int = -1) -> Optional[int]:
     if day_offset > 0:
         raise Exception("Day offset must be negative or zero")
 
-    peer = get_messages_controller().getInputPeer(peer_id)  # ty:ignore[no-matching-overload]
+    peer = get_messages_controller_for(account).getInputPeer(peer_id)  # ty:ignore[no-matching-overload]
 
     while True:
-        if not was_chat_active(peer, day_offset):
+        if not was_chat_active(peer, day_offset, account):
             break
 
         day_offset += 1
@@ -1033,8 +1050,12 @@ def get_streak_die_date(peer_id: int, day_offset: int) -> Optional[int]:
     return day_offset
 
 
-def get_streak_die_date_from_freeze_ts(peer_id: int, freeze_ts: int) -> Optional[int]:
-    return get_streak_die_date(peer_id, TimeUtils.get_local_day_offset(freeze_ts))
+def get_streak_die_date_from_freeze_ts(
+    peer_id: int, freeze_ts: int, account: int = -1
+) -> Optional[int]:
+    return get_streak_die_date(
+        peer_id, TimeUtils.get_local_day_offset(freeze_ts), account
+    )
 
 
 class StreakLevel:
@@ -1147,6 +1168,7 @@ def cache_by_field_value(
 
 @dataclass
 class UserRecord:
+    account_id: int
     user_id: int
 
     started_at: int
@@ -1181,6 +1203,7 @@ class UserRecord:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "account_id": int(self.account_id),
             "user_id": int(self.user_id),
             "started_at": int(self.started_at),
             "freezes_at": int(self.freezes_at),
@@ -1194,15 +1217,24 @@ class UserRecord:
         }
 
     @staticmethod
-    def from_dict(payload: dict[str, Any]) -> Optional["UserRecord"]:
+    def from_dict(
+        payload: dict[str, Any], default_account_id: Optional[int] = None
+    ) -> Optional["UserRecord"]:
         try:
+            account_id_raw = payload.get("account_id")
+            if account_id_raw is None:
+                if default_account_id is None:
+                    return None
+                account_id = int(default_account_id)
+            else:
+                account_id = int(account_id_raw)
             user_id = int(payload["user_id"])
             started_at = int(payload["started_at"])
             freezes_at = int(payload["freezes_at"])
         except Exception:
             return None
 
-        if user_id <= 0:
+        if account_id < 0 or user_id <= 0:
             return None
 
         last_sended_at_raw = payload.get("last_sended_at")
@@ -1212,6 +1244,7 @@ class UserRecord:
         )
 
         return UserRecord(
+            account_id=account_id,
             user_id=user_id,
             started_at=started_at,
             freezes_at=freezes_at,
@@ -1225,7 +1258,12 @@ class UserRecord:
         )
 
     @staticmethod
-    def new(peer_id: int, sender: SenderType, event_day: Optional[int] = None):
+    def new(
+        account_id: int,
+        peer_id: int,
+        sender: SenderType,
+        event_day: Optional[int] = None,
+    ):
         day = (
             TimeUtils.get_stripped_timestamp()
             if event_day is None
@@ -1233,6 +1271,7 @@ class UserRecord:
         )
 
         self = UserRecord(
+            account_id=account_id,
             user_id=peer_id,
             started_at=day,
             freezes_at=(day + SECONDS_IN_DAY),
@@ -1355,7 +1394,9 @@ class UserRecord:
             return True
 
         # History checks are server-day based; freeze timestamp itself is user-day based.
-        death_date = get_streak_die_date_from_freeze_ts(self.user_id, self.freezes_at)
+        death_date = get_streak_die_date_from_freeze_ts(
+            self.user_id, self.freezes_at, self.account_id
+        )
 
         return (
             death_date is None or death_date == 0
@@ -1420,6 +1461,47 @@ def get_authorized_user_ids() -> list[int]:
     return result
 
 
+def get_active_account_ids() -> list[int]:
+    result = []
+    for i in range(UserConfig.MAX_ACCOUNT_COUNT):
+        cfg = UserConfig.getInstance(i)
+        if cfg.isClientActivated():
+            result.append(i)
+    return result
+
+
+def get_selected_account_id() -> int:
+    try:
+        current = int(get_account_instance().getCurrentAccount())
+        if current >= 0:
+            return current
+    except Exception:
+        pass
+
+    try:
+        current = int(UserConfig.selectedAccount)
+        if current >= 0:
+            return current
+    except Exception:
+        pass
+
+    return 0
+
+
+def get_account_instance_for(account: int) -> AccountInstance:
+    if account >= 0:
+        return AccountInstance.getInstance(int(account))
+    return get_account_instance()
+
+
+def get_messages_controller_for(account: int) -> MessagesController:
+    return get_account_instance_for(account).getMessagesController()
+
+
+def get_connections_manager_for(account: int):
+    return get_account_instance_for(account).getConnectionsManager()
+
+
 class UsersDatabase:
     def __init__(
         self,
@@ -1427,7 +1509,7 @@ class UsersDatabase:
         logger: Callable[[str], None],
         storage_path: Optional[str] = None,
     ):
-        self._map: dict[int, UserRecord] = dict()
+        self._map: dict[tuple[int, int], UserRecord] = {}
         self._lock = threading.RLock()
         self._jvm_plugin = jvm_plugin
         self._logger = logger
@@ -1447,7 +1529,7 @@ class UsersDatabase:
 
     def _build_payload_locked(self) -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": 2,
             "saved_at": int(time.time()),
             "users": [record.to_dict() for record in self._map.values()],
         }
@@ -1458,19 +1540,73 @@ class UsersDatabase:
             json.dump(payload, f, ensure_ascii=True, separators=(",", ":"))
         os.replace(tmp_path, target_path)
 
-    def _load_map_from_payload(self, payload: dict[str, Any]) -> dict[int, UserRecord]:
+    def _make_key(self, account_id: int, user_id: int) -> tuple[int, int]:
+        return (int(account_id), int(user_id))
+
+    def _clone_record_for_account(
+        self, record: UserRecord, account_id: int
+    ) -> Optional[UserRecord]:
+        payload = record.to_dict()
+        payload["account_id"] = int(account_id)
+        return UserRecord.from_dict(payload)
+
+    def _resolve_account_for_lookup(self, account_id: int) -> int:
+        if account_id >= 0:
+            return int(account_id)
+        return get_selected_account_id()
+
+    def _find_legacy_record_accounts(self, user_id: int) -> list[int]:
+        accounts: list[int] = []
+
+        for account_id in get_active_account_ids():
+            try:
+                peer = get_messages_controller_for(account_id).getInputPeer(user_id)  # ty:ignore[no-matching-overload]
+            except Exception:
+                peer = None
+
+            if peer is not None:
+                accounts.append(account_id)
+
+        if accounts:
+            return accounts
+
+        current = get_selected_account_id()
+        if current not in accounts:
+            accounts.append(current)
+        return accounts
+
+    def _load_map_from_payload(
+        self, payload: dict[str, Any]
+    ) -> dict[tuple[int, int], UserRecord]:
         users_payload = payload.get("users", [])
-        loaded_map: dict[int, UserRecord] = {}
+        loaded_map: dict[tuple[int, int], UserRecord] = {}
+        version = int(payload.get("version", 1) or 1)
 
         for row in users_payload:
             if not isinstance(row, dict):
                 continue
 
-            record = UserRecord.from_dict(cast("dict[str, Any]", row))
-            if record is None:
+            row_payload = cast("dict[str, Any]", row)
+
+            if version >= 2:
+                record = UserRecord.from_dict(row_payload)
+                if record is None:
+                    continue
+
+                loaded_map[self._make_key(record.account_id, record.user_id)] = record
                 continue
 
-            loaded_map[record.user_id] = record
+            legacy_record = UserRecord.from_dict(
+                row_payload, default_account_id=get_selected_account_id()
+            )
+            if legacy_record is None:
+                continue
+
+            for account_id in self._find_legacy_record_accounts(legacy_record.user_id):
+                migrated = self._clone_record_for_account(legacy_record, account_id)
+                if migrated is None:
+                    continue
+                loaded_map[self._make_key(account_id, migrated.user_id)] = migrated
 
         return loaded_map
 
@@ -1576,9 +1712,12 @@ class UsersDatabase:
             with open(self._storage_path, "r", encoding="utf-8") as f:
                 payload = json.load(f)
             loaded_map = self._load_map_from_payload(cast("dict[str, Any]", payload))
+            version = int(cast("dict[str, Any]", payload).get("version", 1) or 1)
 
             with self._lock:
                 self._map = loaded_map
+                if version < 2 and loaded_map:
+                    self._persist_locked()
 
             self._logger(f"UsersDatabase loaded: {len(loaded_map)} records")
         except Exception as e:
@@ -1593,20 +1732,22 @@ class UsersDatabase:
             self._logger(f"UsersDatabase save failed: {e}")
 
     def get_user(
-        self, user_id: int, include_authorized: bool = False
+        self,
+        user_id: int,
+        account_id: int = -1,
+        include_authorized: bool = False,
     ) -> Optional[UserRecord]:
         if user_id <= 0:
             return None
 
-        if not include_authorized and user_id in get_authorized_user_ids():
-            return None
+        account_id = self._resolve_account_for_lookup(account_id)
 
         with self._lock:
-            return self._map.get(user_id)
+            return self._map.get(self._make_key(account_id, user_id))
 
     def list_user_ids(self) -> list[int]:
         with self._lock:
-            return list(self._map.keys())
+            return [record.user_id for record in self._map.values()]
 
     def list_users(self) -> list[UserRecord]:
         with self._lock:
@@ -1620,10 +1761,10 @@ class UsersDatabase:
     ) -> bool:
         changed = False
         with self._lock:
-            user_id = int(record.user_id)
-            current = self._map.get(user_id)
+            key = self._make_key(record.account_id, record.user_id)
+            current = self._map.get(key)
             if current is None or current.to_dict() != record.to_dict():
-                self._map[user_id] = record
+                self._map[key] = record
                 if persist:
                     self._persist_locked()
                 changed = True
@@ -1636,12 +1777,17 @@ class UsersDatabase:
     def remove_user_record(
         self,
         user_id: int,
+        account_id: int = -1,
         persist: bool = True,
         reset_cache: bool = True,
     ) -> bool:
+        if user_id <= 0:
+            return False
+
         changed = False
+        account_id = self._resolve_account_for_lookup(account_id)
         with self._lock:
-            if self._map.pop(int(user_id), None) is not None:
+            if self._map.pop(self._make_key(account_id, user_id), None) is not None:
                 if persist:
                     self._persist_locked()
                 changed = True
@@ -1665,7 +1811,11 @@ class StreaksController:
         return UserRecord.from_dict(record.to_dict())
 
     def on_dialog_event(
-        self, peer_id: int, sender_type: SenderType, event_day: Optional[int] = None
+        self,
+        account_id: int,
+        peer_id: int,
+        sender_type: SenderType,
+        event_day: Optional[int] = None,
     ):
         if peer_id <= 0:
             return
@@ -1675,7 +1825,7 @@ class StreaksController:
             if event_day is None
             else TimeUtils.strip_timestamp(event_day)
         )
-        current = self._users_db.get_user(peer_id, include_authorized=True)
+        current = self._users_db.get_user(peer_id, account_id, include_authorized=True)
         changed = False
 
         if current is not None and current.should_die():
@@ -1684,55 +1834,61 @@ class StreaksController:
             current = None
 
         if current is None:
-            record = UserRecord.new(peer_id, sender_type, day)
+            record = UserRecord.new(account_id, peer_id, sender_type, day)
             changed = True
         else:
             record = UserRecord.from_dict(current.to_dict())
             if record is None:
-                record = UserRecord.new(peer_id, sender_type, day)
+                record = UserRecord.new(account_id, peer_id, sender_type, day)
                 changed = True
 
         changed = record.update_from(sender_type, day) or changed
         if changed:
             self._users_db.set_user_record(record)
 
-    def _get_rebuild_restored_days(self, user_id: int) -> set[int]:
-        record = self._users_db.get_user(user_id, include_authorized=True)
-        if record is None:
-            return set()
-
-        restored_days = set(record.restored_days)
+    def _get_rebuild_restored_days(self, account_id: int, user_id: int) -> set[int]:
+        record = self._users_db.get_user(user_id, account_id, include_authorized=True)
+        restored_days = set() if record is None else set(record.restored_days)
 
         try:
-            peer = get_messages_controller().getInputPeer(user_id)  # ty:ignore[no-matching-overload]
+            peer = get_messages_controller_for(account_id).getInputPeer(user_id)  # ty:ignore[no-matching-overload]
         except Exception:
             peer = None
 
         if peer is not None:
-            scan_start = max(record.freezes_at, record.started_at)
+            if record is None:
+                scan_start = TimeUtils.get_stripped_timestamp(-2)
+            else:
+                scan_start = max(record.freezes_at, record.started_at)
             scan_end = TimeUtils.get_stripped_timestamp(1)
 
             try:
                 restored_days.update(
-                    find_restore_service_days(peer, scan_start, scan_end)
+                    find_restore_service_days(peer, scan_start, scan_end, account_id)
                 )
             except Exception as e:
                 self._logger(f"restore history scan failed for {user_id}: {e}")
 
-        if record.should_die() and not restored_days and not record.can_restore():
+        if (
+            record is not None
+            and record.should_die()
+            and not restored_days
+            and not record.can_restore()
+        ):
             return set()
 
         return restored_days
 
     def _build_recent_record(
         self,
+        account_id: int,
         user_id: int,
         include_today: bool,
         restored_days: Optional[set[int]] = None,
         on_day_progress: Optional[Callable[[int, bool, bool], None]] = None,
         fail_on_error: bool = False,
     ) -> Optional[UserRecord]:
-        peer = get_messages_controller().getInputPeer(user_id)  # ty:ignore[no-matching-overload]
+        peer = get_messages_controller_for(account_id).getInputPeer(user_id)  # ty:ignore[no-matching-overload]
         if peer is None:
             return None
 
@@ -1747,7 +1903,12 @@ class StreaksController:
                 time.sleep(float(DAY_CHECK_REQUEST_DELAY_SECONDS))
 
             first_day_check = False
-            return was_chat_active(peer, day_offset, fail_on_error=fail_on_error)
+            return was_chat_active(
+                peer,
+                day_offset,
+                account_id,
+                fail_on_error=fail_on_error,
+            )
 
         day_offset = 0 if include_today else -1
         oldest_day: Optional[int] = None
@@ -1781,6 +1942,7 @@ class StreaksController:
         ]
 
         return UserRecord(
+            account_id=account_id,
             user_id=user_id,
             started_at=oldest_day,
             freezes_at=latest_day + SECONDS_IN_DAY,
@@ -1791,12 +1953,16 @@ class StreaksController:
 
     def _build_recent_record_any(
         self,
+        account_id: int,
         user_id: int,
         on_day_progress: Optional[Callable[[int, int, bool, bool], None]] = None,
         fail_on_error: bool = False,
+        extra_restored_days: Optional[set[int]] = None,
     ) -> Optional[UserRecord]:
         checked_days = 0
-        restored_days = self._get_rebuild_restored_days(user_id)
+        restored_days = self._get_rebuild_restored_days(account_id, user_id)
+        if extra_restored_days:
+            restored_days.update(extra_restored_days)
 
         def day_progress(day_offset: int, is_active: bool, include_today: bool):
             nonlocal checked_days
@@ -1806,6 +1972,7 @@ class StreaksController:
                 on_day_progress(checked_days, day_offset, is_active, include_today)
 
         record = self._build_recent_record(
+            account_id,
             user_id,
             include_today=True,
             restored_days=restored_days,
@@ -1817,6 +1984,7 @@ class StreaksController:
             return record
 
         return self._build_recent_record(
+            account_id,
             user_id,
             include_today=False,
             restored_days=restored_days,
@@ -1824,17 +1992,30 @@ class StreaksController:
             fail_on_error=fail_on_error,
         )
 
+    def rebuild_user_record(
+        self,
+        account_id: int,
+        user_id: int,
+        extra_restored_days: Optional[set[int]] = None,
+        fail_on_error: bool = False,
+    ) -> Optional[UserRecord]:
+        return self._build_recent_record_any(
+            account_id,
+            user_id,
+            fail_on_error=fail_on_error,
+            extra_restored_days=extra_restored_days,
+        )
+
     def reconcile_on_plugin_load(self) -> tuple[int, int, int]:
-        user_ids = self._users_db.list_user_ids()
+        records = self._users_db.list_users()
         checked = 0
         updated = 0
         removed = 0
         changed = False
 
-        for user_id in user_ids:
-            record = self._users_db.get_user(user_id, include_authorized=True)
-            if record is None:
-                continue
+        for record in records:
+            user_id = record.user_id
+            account_id = record.account_id
 
             if not record.should_die():
                 continue
@@ -1843,7 +2024,7 @@ class StreaksController:
 
             try:
                 death_date = get_streak_die_date_from_freeze_ts(
-                    user_id, record.freezes_at
+                    user_id, record.freezes_at, account_id
                 )
             except Exception as e:
                 self._logger(f"reconcile failed for {user_id}: {e}")
@@ -1867,15 +2048,17 @@ class StreaksController:
                 continue
 
             rebuilt = self._build_recent_record(
+                account_id,
                 user_id,
                 include_today=True,
-                restored_days=self._get_rebuild_restored_days(user_id),
+                restored_days=self._get_rebuild_restored_days(account_id, user_id),
             )
             if rebuilt is None:
                 rebuilt = self._build_recent_record(
+                    account_id,
                     user_id,
                     include_today=False,
-                    restored_days=self._get_rebuild_restored_days(user_id),
+                    restored_days=self._get_rebuild_restored_days(account_id, user_id),
                 )
 
             if rebuilt is not None:
@@ -1886,7 +2069,7 @@ class StreaksController:
                     changed = True
             else:
                 if self._users_db.remove_user_record(
-                    user_id, persist=False, reset_cache=False
+                    user_id, account_id, persist=False, reset_cache=False
                 ):
                     removed += 1
                     changed = True
@@ -1898,16 +2081,12 @@ class StreaksController:
 
     def force_check_user_ids(
         self,
+        account_id: int,
         user_ids: list[int],
         on_progress: Optional[Callable[[int, int, int, int, int], None]] = None,
         on_day_progress: Optional[Callable[[int, int, int, bool, bool], None]] = None,
     ) -> tuple[int, int, int, int]:
-        authorized_ids = set(get_authorized_user_ids())
-        valid_user_ids = [
-            user_id
-            for user_id in user_ids
-            if user_id > 0 and user_id not in authorized_ids
-        ]
+        valid_user_ids = [user_id for user_id in user_ids if user_id > 0]
         total = len(valid_user_ids)
         checked = 0
         updated = 0
@@ -1923,6 +2102,7 @@ class StreaksController:
 
             try:
                 rebuilt = self._build_recent_record_any(
+                    account_id,
                     user_id,
                     fail_on_error=True,
                     on_day_progress=(
@@ -1947,10 +2127,12 @@ class StreaksController:
                     on_progress(checked, total, updated, removed, unchanged)
                 continue
 
-            current = self._users_db.get_user(user_id, include_authorized=True)
+            current = self._users_db.get_user(
+                user_id, account_id, include_authorized=True
+            )
             if rebuilt is None:
                 if self._users_db.remove_user_record(
-                    user_id, persist=False, reset_cache=False
+                    user_id, account_id, persist=False, reset_cache=False
                 ):
                     removed += 1
                     changed = True
@@ -1980,7 +2162,7 @@ class StreaksController:
 
 
 class TgStreaksPlugin(BasePlugin):
-    _chat_upgrade_service_state_cache: dict[int, bool]
+    _chat_upgrade_service_state_cache: dict[tuple[int, int], bool]
 
     def create_settings(self) -> list[Any]:
         return [
@@ -2044,28 +2226,32 @@ class TgStreaksPlugin(BasePlugin):
         except Exception:
             pass
 
-    def _chat_upgrade_service_setting_key(self, dialog_id: int) -> str:
-        return f"upgrade_service_messages:{dialog_id}"
+    def _chat_upgrade_service_setting_key(self, account: int, dialog_id: int) -> str:
+        return f"upgrade_service_messages:{int(account)}:{int(dialog_id)}"
 
-    def _get_upgrade_service_state_cache(self) -> dict[int, bool]:
+    def _get_upgrade_service_state_cache(self) -> dict[tuple[int, int], bool]:
         cache = getattr(self, "_chat_upgrade_service_state_cache", None)
         if cache is None:
             cache = {}
             self._chat_upgrade_service_state_cache = cache
         return cache
 
-    def _get_chat_upgrade_service_state(self, dialog_id: int) -> Optional[bool]:
+    def _get_chat_upgrade_service_state(
+        self, account: int, dialog_id: int
+    ) -> Optional[bool]:
+        account = int(account)
         dialog_id = int(dialog_id)
 
-        if dialog_id <= 0:
+        if account < 0 or dialog_id <= 0:
             return None
 
         cache = self._get_upgrade_service_state_cache()
-        cached = cache.get(dialog_id)
+        cache_key = (account, dialog_id)
+        cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
-        key = self._chat_upgrade_service_setting_key(dialog_id)
+        key = self._chat_upgrade_service_setting_key(account, dialog_id)
 
         try:
             value = self.get_setting(key, None)
@@ -2090,33 +2276,34 @@ class TgStreaksPlugin(BasePlugin):
                 return None
 
         if lowered in ("1", "true", "yes", "on"):
-            cache[dialog_id] = True
+            cache[cache_key] = True
             return True
 
         if lowered in ("0", "false", "no", "off"):
-            cache[dialog_id] = False
+            cache[cache_key] = False
             return False
 
         return None
 
-    def _is_chat_upgrade_service_enabled(self, dialog_id: int) -> bool:
-        return self._get_chat_upgrade_service_state(dialog_id) is True
+    def _is_chat_upgrade_service_enabled(self, account: int, dialog_id: int) -> bool:
+        return self._get_chat_upgrade_service_state(account, dialog_id) is True
 
-    def _set_chat_upgrade_service_state(self, dialog_id: int, enabled: bool):
+    def _set_chat_upgrade_service_state(self, account: int, dialog_id: int, enabled: bool):
+        account = int(account)
         dialog_id = int(dialog_id)
         enabled = bool(enabled)
 
-        if dialog_id <= 0:
+        if account < 0 or dialog_id <= 0:
             return
 
-        self._get_upgrade_service_state_cache()[dialog_id] = enabled
-        key = self._chat_upgrade_service_setting_key(dialog_id)
+        self._get_upgrade_service_state_cache()[(account, dialog_id)] = enabled
+        key = self._chat_upgrade_service_setting_key(account, dialog_id)
 
         try:
             self.set_setting(key, enabled)
         except Exception as e:
             self.log(
-                f"Failed to persist upgrade service setting for chat {dialog_id}: {e}"
+                f"Failed to persist upgrade service setting for account {account}, chat {dialog_id}: {e}"
             )
 
     def _remember_dialog_account(self, dialog_id: int, account: int):
@@ -2133,6 +2320,9 @@ class TgStreaksPlugin(BasePlugin):
             self._dialog_account_map[dialog_id] = account
 
     def _resolve_dialog_account(self, dialog_id: int, fallback: int = -1) -> int:
+        if fallback >= 0:
+            return int(fallback)
+
         dialog_id = int(dialog_id)
 
         if dialog_id > 0:
@@ -2290,6 +2480,7 @@ class TgStreaksPlugin(BasePlugin):
     ) -> bool:
         try:
             self_user_id = self._get_self_user_id(account)
+            restore_hint_days = build_restore_hint_days(event_day)
             self.log(
                 f"Incoming restore service message: account={account}, peer={peer_id}, from_id={from_id}, self_user_id={self_user_id}, event_day={event_day}"
             )
@@ -2300,43 +2491,67 @@ class TgStreaksPlugin(BasePlugin):
                 )
                 return True
 
-            current = self.users_db.get_user(peer_id, include_authorized=True)
-            if current is None:
+            current = self.users_db.get_user(peer_id, account, include_authorized=True)
+            restored_record: Optional[UserRecord] = None
+
+            if current is not None:
                 self.log(
-                    f"Skip restore service message for chat {peer_id}: no streak record"
+                    f"Current restore candidate for chat {peer_id}: started_at={current.started_at}, freezes_at={current.freezes_at}, should_die={current.should_die()}, can_restore_now={current.can_restore()}, can_restore_event_day={current.can_restore(event_day)}, restored_days={current.restored_days}"
                 )
-                return True
 
-            self.log(
-                f"Current restore candidate for chat {peer_id}: started_at={current.started_at}, freezes_at={current.freezes_at}, should_die={current.should_die()}, can_restore_now={current.can_restore()}, can_restore_event_day={current.can_restore(event_day)}, restored_days={current.restored_days}"
-            )
-
-            restored = UserRecord.from_dict(current.to_dict())
-            if restored is None:
-                self.log(
-                    f"Skip restore service message for chat {peer_id}: failed to clone record"
-                )
-                return True
-
-            if restored.apply_remote_restore(event_day):
-                self._remember_dialog_account(peer_id, account)
-                self.users_db.set_user_record(restored)
-                self._streak_dead_state[peer_id] = restored.should_die()
-
-                try:
-                    self._refresh_streak_emoji_for_peer(peer_id)
-                except Exception as e:
+                restored = UserRecord.from_dict(current.to_dict())
+                if restored is not None and restored.apply_remote_restore(event_day):
+                    restored_record = restored
+                else:
                     self.log(
-                        f"Failed to refresh remotely restored streak emoji for peer {peer_id}: {e}"
+                        f"Remote restore fallback rebuild for chat {peer_id}: direct restore rejected"
                     )
-
-                self.log(
-                    f"Applied remote streak restore for chat {peer_id} on day {event_day}: new_freezes_at={restored.freezes_at}, new_restored_days={restored.restored_days}"
-                )
             else:
                 self.log(
-                    f"Skip restore service message for chat {peer_id}: remote restore rejected (freezes_at={current.freezes_at}, restored_days={current.restored_days})"
+                    f"Remote restore fallback rebuild for chat {peer_id}: no streak record"
                 )
+
+            if restored_record is None:
+                restored_record = self.streaks.rebuild_user_record(
+                    account,
+                    peer_id,
+                    extra_restored_days=restore_hint_days,
+                )
+
+            if restored_record is None:
+                self.log(
+                    f"Skip restore service message for chat {peer_id}: rebuild failed, restore_hint_days={sorted(restore_hint_days)}"
+                )
+                return True
+
+            self._remember_dialog_account(peer_id, account)
+            self.users_db.set_user_record(restored_record)
+            self._streak_dead_state[(account, peer_id)] = restored_record.should_die()
+
+            try:
+                self._reload_user_in_messages_cache(account, peer_id)
+            except Exception as e:
+                self.log(
+                    f"Failed to reload remotely restored streak user cache for peer {peer_id}: {e}"
+                )
+
+            try:
+                self._patch_cached_users_streak_emoji_status(account)
+            except Exception as e:
+                self.log(
+                    f"Failed to patch remotely restored streak cached users for peer {peer_id}: {e}"
+                )
+
+            try:
+                self._refresh_streak_emoji_for_peer(account, peer_id)
+            except Exception as e:
+                self.log(
+                    f"Failed to refresh remotely restored streak emoji for peer {peer_id}: {e}"
+                )
+
+            self.log(
+                f"Applied remote streak restore for chat {peer_id} on day {event_day}: started_at={restored_record.started_at}, new_freezes_at={restored_record.freezes_at}, length={restored_record.get_length()}, should_die={restored_record.should_die()}, restored_days={restored_record.restored_days}"
+            )
         except Exception as e:
             self.log(f"Restore service handling failed for chat {peer_id}: {e}")
 
@@ -2865,9 +3080,11 @@ class TgStreaksPlugin(BasePlugin):
             emoji_document_id=cast("Optional[int]", popup_payload["emoji_document_id"]),
         )
 
-    def _resolve_peer_name(self, peer_id: int) -> str:
+    def _resolve_peer_name(self, account: int, peer_id: int) -> str:
         try:
-            user = self._resolve_dialog_user(get_messages_controller(), int(peer_id))
+            user = self._resolve_dialog_user(
+                get_messages_controller_for(account), int(peer_id)
+            )
             if user is not None:
                 name = cast("str", UserObject.getUserName(user))
                 if name is not None and len(name) > 0:
@@ -2915,14 +3132,18 @@ class TgStreaksPlugin(BasePlugin):
         }
 
     def _enqueue_streak_ended_popup(
-        self, peer_id: int, days: int, name: Optional[str] = None
+        self,
+        peer_id: int,
+        days: int,
+        account: int = -1,
+        name: Optional[str] = None,
     ):
         days = int(days)
         if days < 3:
             return
 
         if name is None:
-            name = self._resolve_peer_name(peer_id)
+            name = self._resolve_peer_name(account, peer_id)
 
         self._enqueue_streak_popup_for_open_chat(
             int(peer_id),
@@ -2984,7 +3205,7 @@ class TgStreaksPlugin(BasePlugin):
     ):
         peer_id = int(peer_id)
 
-        if not self._is_chat_upgrade_service_enabled(peer_id):
+        if not self._is_chat_upgrade_service_enabled(account, peer_id):
             return
 
         if not self._should_send_upgrade_service_message_for_day(event_day):
@@ -2997,7 +3218,7 @@ class TgStreaksPlugin(BasePlugin):
             account,
             peer_id,
             f"{UPGRADE_SERVICE_MESSAGE_PREFIX}{days}",
-            f"upgrade:{peer_id}:{days}:{event_key_day}",
+            f"upgrade:{account}:{peer_id}:{days}:{event_key_day}",
             "upgrade",
         )
 
@@ -3007,13 +3228,13 @@ class TgStreaksPlugin(BasePlugin):
         peer_id = int(peer_id)
         days = int(days)
 
-        if days < 3 or not self._is_chat_upgrade_service_enabled(peer_id):
+        if days < 3 or not self._is_chat_upgrade_service_enabled(account, peer_id):
             return
 
         if not self._should_send_upgrade_service_message_for_day(event_day):
             return
 
-        record = self.users_db.get_user(peer_id, include_authorized=True)
+        record = self.users_db.get_user(peer_id, account, include_authorized=True)
         if record is None or not record.can_restore(event_day):
             return
 
@@ -3024,7 +3245,7 @@ class TgStreaksPlugin(BasePlugin):
             account,
             peer_id,
             DEATH_SERVICE_MESSAGE_TEXT,
-            f"death:{peer_id}:{days}:{event_key_day}",
+            f"death:{account}:{peer_id}:{days}:{event_key_day}",
             "death",
         )
 
@@ -3033,7 +3254,7 @@ class TgStreaksPlugin(BasePlugin):
     ):
         peer_id = int(peer_id)
 
-        if not self._is_chat_upgrade_service_enabled(peer_id):
+        if not self._is_chat_upgrade_service_enabled(account, peer_id):
             return
 
         if not self._should_send_upgrade_service_message_for_day(event_day):
@@ -3046,7 +3267,7 @@ class TgStreaksPlugin(BasePlugin):
             account,
             peer_id,
             RESTORE_SERVICE_MESSAGE_TEXT,
-            f"restore:{peer_id}:{event_key_day}",
+            f"restore:{account}:{peer_id}:{event_key_day}",
             "restore",
         )
 
@@ -3076,7 +3297,7 @@ class TgStreaksPlugin(BasePlugin):
         if after is None:
             return
 
-        name = self._resolve_peer_name(peer_id)
+        name = self._resolve_peer_name(account, peer_id)
         after_length = after["length"]
         after_dead = after["dead"]
         before_length = before["length"] if before is not None else 0
@@ -3084,8 +3305,10 @@ class TgStreaksPlugin(BasePlugin):
 
         if after_dead:
             if before is not None and not before["dead"] and before_length >= 3:
-                self._enqueue_streak_ended_popup(peer_id, before_length, name=name)
-                self._reload_user_in_messages_cache(peer_id)
+                self._enqueue_streak_ended_popup(
+                    peer_id, before_length, account=account, name=name
+                )
+                self._reload_user_in_messages_cache(account, peer_id)
                 self._maybe_send_death_service_message(
                     account, peer_id, before_length, event_day
                 )
@@ -3151,15 +3374,15 @@ class TgStreaksPlugin(BasePlugin):
         event_day: Optional[int] = None,
     ):
         self._remember_dialog_account(peer_id, account)
-        before = self._record_state(self.users_db.get_user(peer_id))
-        self.streaks.on_dialog_event(peer_id, sender_type, event_day)
-        self._repair_record_from_cached_today_activity(peer_id, event_day)
-        after = self._record_state(self.users_db.get_user(peer_id))
+        before = self._record_state(self.users_db.get_user(peer_id, account))
+        self.streaks.on_dialog_event(account, peer_id, sender_type, event_day)
+        self._repair_record_from_cached_today_activity(account, peer_id, event_day)
+        after = self._record_state(self.users_db.get_user(peer_id, account))
         self._maybe_notify_streak_transition(account, peer_id, before, after, event_day)
 
         try:
             if self._should_refresh_streak_emoji(before, after):
-                self._refresh_streak_emoji_for_peer(int(peer_id))
+                self._refresh_streak_emoji_for_peer(account, int(peer_id))
         except Exception as e:
             self.log(f"Failed to refresh streak emoji for peer {peer_id}: {e}")
 
@@ -3191,11 +3414,11 @@ class TgStreaksPlugin(BasePlugin):
 
         return False
 
-    def _refresh_streak_emoji_for_peer(self, peer_id: int):
+    def _refresh_streak_emoji_for_peer(self, account: int, peer_id: int):
         user = None
 
         try:
-            user = get_messages_controller().getUser(Long(int(peer_id)))
+            user = get_messages_controller_for(account).getUser(Long(int(peer_id)))
         except Exception:
             user = None
 
@@ -3203,13 +3426,13 @@ class TgStreaksPlugin(BasePlugin):
             try:
                 users = cast(
                     "ConcurrentHashMap[Long, TLRPC.User]",
-                    get_private_field(get_messages_controller(), "users"),
+                    get_private_field(get_messages_controller_for(account), "users"),
                 )
                 user = users.get(Long(int(peer_id)))
             except Exception:
                 user = None
 
-        record = self.users_db.get_user(int(peer_id))
+        record = self.users_db.get_user(int(peer_id), account)
         has_streak_emoji = (
             record is not None
             and not bool(record.should_die())
@@ -3218,7 +3441,7 @@ class TgStreaksPlugin(BasePlugin):
 
         if user is not None:
             if has_streak_emoji:
-                self._patch_user_streak_emoji_status(user)
+                self._patch_user_streak_emoji_status(user, account)
             else:
                 try:
                     user.emoji_status = None  # ty:ignore[invalid-assignment]
@@ -3232,9 +3455,9 @@ class TgStreaksPlugin(BasePlugin):
         self._post_emoji_loaded_notification()
         self._rerender_dialog_cells()
 
-    def _reload_user_in_messages_cache(self, peer_id: int):
+    def _reload_user_in_messages_cache(self, account: int, peer_id: int):
         try:
-            controller = get_messages_controller()
+            controller = get_messages_controller_for(account)
             controller.reloadUser(int(peer_id))
         except Exception as e:
             self.log(f"Failed to reload user {peer_id} in MessagesController: {e}")
@@ -3254,7 +3477,9 @@ class TgStreaksPlugin(BasePlugin):
         self._streak_dead_state = {}
         try:
             for record in self.users_db.list_users():
-                self._streak_dead_state[int(record.user_id)] = bool(record.should_die())
+                self._streak_dead_state[
+                    (int(record.account_id), int(record.user_id))
+                ] = bool(record.should_die())
         except Exception as e:
             self.log(f"Failed to init dead-state snapshot: {e}")
 
@@ -3269,21 +3494,23 @@ class TgStreaksPlugin(BasePlugin):
         except Exception:
             return
 
-        seen: set[int] = set()
+        seen: set[tuple[int, int]] = set()
         changed = False
 
         for record in records:
+            account_id = int(record.account_id)
             user_id = int(record.user_id)
-            seen.add(user_id)
+            state_key = (account_id, user_id)
+            seen.add(state_key)
             is_dead_now = bool(record.should_die())
-            was_dead = bool(self._streak_dead_state.get(user_id, is_dead_now))
+            was_dead = bool(self._streak_dead_state.get(state_key, is_dead_now))
 
             if not was_dead and is_dead_now:
                 days = int(record.get_length())
-                self._enqueue_streak_ended_popup(user_id, days)
-                self._reload_user_in_messages_cache(user_id)
+                self._enqueue_streak_ended_popup(user_id, days, account=account_id)
+                self._reload_user_in_messages_cache(account_id, user_id)
                 self._maybe_send_death_service_message(
-                    self._resolve_dialog_account(user_id),
+                    account_id,
                     user_id,
                     days,
                     TimeUtils.get_stripped_timestamp(),
@@ -3301,13 +3528,15 @@ class TgStreaksPlugin(BasePlugin):
                     )
                     changed = True
 
-            self._streak_dead_state[user_id] = is_dead_now
+            self._streak_dead_state[state_key] = is_dead_now
 
         missing = [
-            user_id for user_id in self._streak_dead_state.keys() if user_id not in seen
+            state_key
+            for state_key in self._streak_dead_state.keys()
+            if state_key not in seen
         ]
-        for user_id in missing:
-            self._streak_dead_state.pop(user_id, None)
+        for state_key in missing:
+            self._streak_dead_state.pop(state_key, None)
 
         if changed:
             self.users_db.save()
@@ -3321,6 +3550,68 @@ class TgStreaksPlugin(BasePlugin):
                     self._check_dead_state_transitions()
                 except Exception as e:
                     self.log(f"Dead-state monitor error: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _handle_selected_account_changed(self, account: int):
+        account = int(account)
+        self.log(f"Account switch monitor: handling selected account change to {account}")
+        self._dialog_account_map.clear()
+        self.log("Account switch monitor: cleared dialog-account map")
+
+        try:
+            reset_drawable_cache(self.jvm_plugin)
+            self.log("Account switch monitor: streak drawable cache cleared")
+        except Exception as e:
+            self.log(f"Failed to clear streak drawable cache on account switch: {e}")
+
+        try:
+            self.hook_user_emoji_status_assign(True)
+            self.log("Account switch monitor: user emoji hooks refreshed")
+        except Exception as e:
+            self.log(f"Failed to rehook user emoji cache on account switch: {e}")
+
+        try:
+            self._patch_cached_users_streak_emoji_status()
+            self.log("Account switch monitor: cached users patched")
+        except Exception as e:
+            self.log(f"Failed to patch cached users on account switch: {e}")
+
+        try:
+            self._rerender_dialog_cells()
+            self.log("Account switch monitor: dialog cells rerender requested")
+        except Exception as e:
+            self.log(f"Failed to rerender dialogs on account switch: {e}")
+
+        self.log(f"Account switch monitor: selected account change handled for {account}")
+
+    def _start_account_switch_monitor(self):
+        self._account_switch_monitor_stop.clear()
+
+        def worker():
+            last_account = int(getattr(self, "_last_selected_account_id", -1))
+            self.log(
+                f"Account switch monitor started: initial selected account={last_account}"
+            )
+
+            while not self._account_switch_monitor_stop.wait(1.0):
+                try:
+                    current_account = get_selected_account_id()
+                except Exception as e:
+                    self.log(
+                        f"Account switch monitor: failed to read selected account: {e}"
+                    )
+                    continue
+
+                if current_account == last_account:
+                    continue
+
+                self.log(
+                    f"Account switch monitor: selected account changed {last_account} -> {current_account}"
+                )
+                last_account = current_account
+                self._last_selected_account_id = current_account
+                self._handle_selected_account_changed(current_account)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -3588,7 +3879,43 @@ class TgStreaksPlugin(BasePlugin):
         return None
 
     def _extract_current_account_from_menu_payload(self, payload: Any) -> int:
-        candidates = [self._extract_chat_activity_from_menu_payload(payload)]
+        def parse_account(value: Any) -> Optional[int]:
+            if value is None:
+                return None
+
+            try:
+                account = int(value)
+            except Exception:
+                return None
+
+            return account if account >= 0 else None
+
+        candidates = [payload, self._extract_chat_activity_from_menu_payload(payload)]
+
+        if isinstance(payload, dict):
+            payload_getter = payload.get
+        else:
+            try:
+                payload_getter = payload.get
+            except Exception:
+                payload_getter = None
+
+        if payload_getter is not None:
+            for key in (
+                "currentAccount",
+                "current_account",
+                "account",
+                "accountId",
+                "account_id",
+            ):
+                value = payload_getter(key)
+                if value is not None:
+                    candidates.append(value)
+
+            for key in MENU_PAYLOAD_FRAGMENT_KEYS:
+                value = payload_getter(key)
+                if value is not None:
+                    candidates.append(value)
 
         try:
             candidates.append(get_last_fragment())
@@ -3599,33 +3926,48 @@ class TgStreaksPlugin(BasePlugin):
             if candidate is None:
                 continue
 
+            direct = parse_account(candidate)
+            if direct is not None:
+                return direct
+
             try:
-                return int(candidate.getCurrentAccount())
+                account = parse_account(candidate.getCurrentAccount())
+                if account is not None:
+                    return account
             except Exception:
                 pass
 
-            try:
-                return int(getattr(candidate, "currentAccount"))
-            except Exception:
-                pass
+            for attr_name in (
+                "currentAccount",
+                "current_account",
+                "account",
+                "accountId",
+                "account_id",
+            ):
+                try:
+                    account = parse_account(getattr(candidate, attr_name))
+                except Exception:
+                    account = None
+
+                if account is not None:
+                    return account
 
         try:
             return int(get_account_instance().getCurrentAccount())
         except Exception:
             return 0
 
-    def _can_force_check_dialog_id(self, dialog_id: int) -> bool:
-        return self._get_force_check_dialog_restriction_key(dialog_id) is None
+    def _can_force_check_dialog_id(self, dialog_id: int, account: int = -1) -> bool:
+        return self._get_force_check_dialog_restriction_key(dialog_id, account) is None
 
-    def _get_force_check_dialog_restriction_key(self, dialog_id: int) -> Optional[str]:
+    def _get_force_check_dialog_restriction_key(
+        self, dialog_id: int, account: int = -1
+    ) -> Optional[str]:
         if dialog_id <= 0:
             return "info_private_chat_only"
 
         if not DialogObject.isUserDialog(dialog_id):
             return "info_private_chat_only"
-
-        if dialog_id in get_authorized_user_ids():
-            return "info_action_not_available_for_your_other_account"
 
         if UserObject.isReplyUser(dialog_id):
             return "info_action_not_available_for_saved_messages"
@@ -3633,7 +3975,13 @@ class TgStreaksPlugin(BasePlugin):
         if UserObject.isService(dialog_id):
             return "info_private_chat_only"
 
-        user = self._resolve_dialog_user(get_messages_controller(), dialog_id)
+        self_user_id = self._get_self_user_id(account)
+        if self_user_id > 0 and dialog_id == self_user_id:
+            return "info_action_not_available_for_saved_messages"
+
+        user = self._resolve_dialog_user(
+            get_messages_controller_for(account), dialog_id
+        )
 
         if user is None:
             return None
@@ -3652,14 +4000,14 @@ class TgStreaksPlugin(BasePlugin):
 
         return None
 
-    def _show_force_check_dialog_restriction(self, dialog_id: int):
-        key = self._get_force_check_dialog_restriction_key(dialog_id)
+    def _show_force_check_dialog_restriction(self, dialog_id: int, account: int = -1):
+        key = self._get_force_check_dialog_restriction_key(dialog_id, account)
         if key is None:
             key = "info_private_chat_only"
         self._show_info(self._t(key))
 
     def _find_first_message_id_in_range(
-        self, peer: TLRPC.InputPeer, start_ts: int, end_ts: int
+        self, account: int, peer: TLRPC.InputPeer, start_ts: int, end_ts: int
     ) -> Optional[int]:
         done = threading.Event()
         state = {
@@ -3722,7 +4070,7 @@ class TgStreaksPlugin(BasePlugin):
                     else:
                         done.set()
 
-            get_connections_manager().sendRequest(req, Delegate())
+            get_connections_manager_for(account).sendRequest(req, Delegate())
 
         load()
         done.wait(timeout=60)
@@ -3745,8 +4093,10 @@ class TgStreaksPlugin(BasePlugin):
             self._show_error(self._t("err_cannot_detect_current_chat"))
             return
 
-        if not self._can_force_check_dialog_id(dialog_id):
-            self._show_force_check_dialog_restriction(dialog_id)
+        account = self._extract_current_account_from_menu_payload(payload)
+
+        if not self._can_force_check_dialog_id(dialog_id, account):
+            self._show_force_check_dialog_restriction(dialog_id, account)
             return
 
         if not self._try_start_force_check("info_force_check_started_chat"):
@@ -3785,11 +4135,12 @@ class TgStreaksPlugin(BasePlugin):
 
                 checked, updated, removed, unchanged = (
                     self.streaks.force_check_user_ids(
+                        account,
                         [dialog_id],
                         on_day_progress=on_day_progress,
                     )
                 )
-                self._patch_cached_users_streak_emoji_status()
+                self._patch_cached_users_streak_emoji_status(account)
                 summary = self._t(
                     "force_check_summary_chat",
                     checked=checked,
@@ -3819,11 +4170,13 @@ class TgStreaksPlugin(BasePlugin):
             self._show_error(self._t("err_cannot_detect_current_chat"))
             return
 
-        if not self._can_force_check_dialog_id(dialog_id):
-            self._show_force_check_dialog_restriction(dialog_id)
+        account = self._extract_current_account_from_menu_payload(payload)
+
+        if not self._can_force_check_dialog_id(dialog_id, account):
+            self._show_force_check_dialog_restriction(dialog_id, account)
             return
 
-        record = self.users_db.get_user(dialog_id)
+        record = self.users_db.get_user(dialog_id, account)
         if record is None:
             self._show_info(self._t("info_no_streak_record_for_chat"))
             return
@@ -3842,10 +4195,10 @@ class TgStreaksPlugin(BasePlugin):
             message_id: Optional[int] = None
 
             try:
-                peer = get_messages_controller().getInputPeer(dialog_id)  # ty:ignore[no-matching-overload]
+                peer = get_messages_controller_for(account).getInputPeer(dialog_id)  # ty:ignore[no-matching-overload]
                 if peer is not None:
                     message_id = self._find_first_message_id_in_range(
-                        peer, start_date, end_date
+                        account, peer, start_date, end_date
                     )
             except Exception as e:
                 self.log(f"Go-to-streak-start lookup failed for {dialog_id}: {e}")
@@ -3883,12 +4236,14 @@ class TgStreaksPlugin(BasePlugin):
             self._show_error(self._t("err_cannot_detect_current_chat"))
             return
 
-        if not self._can_force_check_dialog_id(dialog_id):
-            self._show_force_check_dialog_restriction(dialog_id)
+        account = self._extract_current_account_from_menu_payload(payload)
+
+        if not self._can_force_check_dialog_id(dialog_id, account):
+            self._show_force_check_dialog_restriction(dialog_id, account)
             return
 
-        enabled = not self._is_chat_upgrade_service_enabled(dialog_id)
-        self._set_chat_upgrade_service_state(dialog_id, enabled)
+        enabled = not self._is_chat_upgrade_service_enabled(account, dialog_id)
+        self._set_chat_upgrade_service_state(account, dialog_id, enabled)
 
         if enabled:
             self._show_success(self._t("ok_upgrade_service_messages_enabled"))
@@ -3902,28 +4257,56 @@ class TgStreaksPlugin(BasePlugin):
         event_day: Optional[int] = None,
         send_service_message: bool = True,
     ) -> bool:
-        current = self.users_db.get_user(dialog_id, include_authorized=True)
-        if current is None:
-            return False
-
+        restore_hint_days = build_restore_hint_days(
+            TimeUtils.get_stripped_timestamp() if event_day is None else event_day
+        )
+        current = self.users_db.get_user(dialog_id, account, include_authorized=True)
+        restored: Optional[UserRecord] = None
         restore_day = event_day
-        if not current.can_restore(restore_day):
-            if not current.can_restore():
-                return False
-            restore_day = None
 
-        restored = UserRecord.from_dict(current.to_dict())
-        if restored is None or not restored.revive(restore_day):
+        if current is not None:
+            if not current.can_restore(restore_day):
+                restore_day = None
+
+            candidate = UserRecord.from_dict(current.to_dict())
+            if candidate is not None and candidate.revive(restore_day):
+                restored = candidate
+
+        if restored is None:
+            restored = self.streaks.rebuild_user_record(
+                account,
+                dialog_id,
+                extra_restored_days=restore_hint_days,
+            )
+
+        if restored is None:
             return False
 
         self._remember_dialog_account(dialog_id, account)
         self.users_db.set_user_record(restored)
-        self._streak_dead_state[dialog_id] = restored.should_die()
+        self._streak_dead_state[(account, dialog_id)] = restored.should_die()
+        self.log(
+            f"Restored streak record for chat {dialog_id}: account={account}, started_at={restored.started_at}, freezes_at={restored.freezes_at}, length={restored.get_length()}, should_die={restored.should_die()}, restored_days={restored.restored_days}"
+        )
         if send_service_message:
             self._maybe_send_restore_service_message(account, dialog_id, restore_day)
 
         try:
-            self._refresh_streak_emoji_for_peer(dialog_id)
+            self._reload_user_in_messages_cache(account, dialog_id)
+        except Exception as e:
+            self.log(
+                f"Failed to reload restored streak user cache for peer {dialog_id}: {e}"
+            )
+
+        try:
+            self._patch_cached_users_streak_emoji_status(account)
+        except Exception as e:
+            self.log(
+                f"Failed to patch restored streak cached users for peer {dialog_id}: {e}"
+            )
+
+        try:
+            self._refresh_streak_emoji_for_peer(account, dialog_id)
         except Exception as e:
             self.log(
                 f"Failed to refresh restored streak emoji for peer {dialog_id}: {e}"
@@ -3965,11 +4348,12 @@ class TgStreaksPlugin(BasePlugin):
             self._show_error(self._t("err_cannot_detect_current_chat"))
             return
 
-        if not self._can_force_check_dialog_id(dialog_id):
-            self._show_force_check_dialog_restriction(dialog_id)
+        account = self._extract_current_account_from_menu_payload(payload)
+
+        if not self._can_force_check_dialog_id(dialog_id, account):
+            self._show_force_check_dialog_restriction(dialog_id, account)
             return
 
-        account = self._extract_current_account_from_menu_payload(payload)
         self._revive_streak_from_dialog_id(dialog_id, account)
 
     def _extract_debug_target_dialog_id(self, payload: Any) -> Optional[int]:
@@ -3986,16 +4370,21 @@ class TgStreaksPlugin(BasePlugin):
             self._show_error(self._t("err_cannot_detect_current_chat"))
             return None
 
-        if not self._can_force_check_dialog_id(dialog_id):
-            self._show_force_check_dialog_restriction(dialog_id)
+        account = self._extract_current_account_from_menu_payload(payload)
+
+        if not self._can_force_check_dialog_id(dialog_id, account):
+            self._show_force_check_dialog_restriction(dialog_id, account)
             return None
 
         return dialog_id
 
-    def _make_alive_record(self, dialog_id: int, target_length: int) -> UserRecord:
+    def _make_alive_record(
+        self, account: int, dialog_id: int, target_length: int
+    ) -> UserRecord:
         target_length = max(int(target_length), 1)
         today = TimeUtils.get_stripped_timestamp()
         return UserRecord(
+            account_id=int(account),
             user_id=int(dialog_id),
             started_at=today - ((target_length - 1) * SECONDS_IN_DAY),
             freezes_at=today + SECONDS_IN_DAY,
@@ -4010,12 +4399,13 @@ class TgStreaksPlugin(BasePlugin):
         before: Optional[dict[str, int]],
         record: UserRecord,
     ):
+        account = self._extract_current_account_from_menu_payload(payload)
         self.users_db.set_user_record(record)
-        self._patch_cached_users_streak_emoji_status()
-        after_record = self.users_db.get_user(record.user_id)
+        self._patch_cached_users_streak_emoji_status(account)
+        after_record = self.users_db.get_user(record.user_id, account)
         after = self._record_state(after_record)
         self._maybe_notify_streak_transition(
-            self._extract_current_account_from_menu_payload(payload),
+            account,
             record.user_id,
             before,
             after,
@@ -4023,7 +4413,7 @@ class TgStreaksPlugin(BasePlugin):
         )
 
         if after_record is not None:
-            self._streak_dead_state[int(record.user_id)] = bool(
+            self._streak_dead_state[(account, int(record.user_id))] = bool(
                 after_record.should_die()
             )
 
@@ -4032,8 +4422,9 @@ class TgStreaksPlugin(BasePlugin):
         if dialog_id is None:
             return
 
-        before = self._record_state(self.users_db.get_user(dialog_id))
-        record = self._make_alive_record(dialog_id, 3)
+        account = self._extract_current_account_from_menu_payload(payload)
+        before = self._record_state(self.users_db.get_user(dialog_id, account))
+        record = self._make_alive_record(account, dialog_id, 3)
         self._persist_debug_record(payload, before, record)
         self._show_success(self._t("ok_debug_streak_set_3"))
 
@@ -4042,13 +4433,15 @@ class TgStreaksPlugin(BasePlugin):
         if dialog_id is None:
             return
 
-        current = self.users_db.get_user(dialog_id)
+        account = self._extract_current_account_from_menu_payload(payload)
+        current = self.users_db.get_user(dialog_id, account)
         if current is None or current.should_die() or current.get_length() < 3:
-            current = self._make_alive_record(dialog_id, 3)
+            current = self._make_alive_record(account, dialog_id, 3)
 
         before = self._record_state(current)
         today = TimeUtils.get_stripped_timestamp()
         dead_record = UserRecord(
+            account_id=int(current.account_id),
             user_id=int(dialog_id),
             started_at=int(current.started_at),
             freezes_at=today - SECONDS_IN_DAY,
@@ -4064,9 +4457,10 @@ class TgStreaksPlugin(BasePlugin):
         if dialog_id is None:
             return
 
-        current = self.users_db.get_user(dialog_id)
+        account = self._extract_current_account_from_menu_payload(payload)
+        current = self.users_db.get_user(dialog_id, account)
         if current is None or current.should_die():
-            current = self._make_alive_record(dialog_id, 3)
+            current = self._make_alive_record(account, dialog_id, 3)
 
         before = self._record_state(current)
         current_length = max(int(current.get_length()), 3)
@@ -4077,7 +4471,7 @@ class TgStreaksPlugin(BasePlugin):
             self._show_info(self._t("info_debug_streak_already_max"))
             return
 
-        upgraded = self._make_alive_record(dialog_id, target_length)
+        upgraded = self._make_alive_record(account, dialog_id, target_length)
         self._persist_debug_record(payload, before, upgraded)
         self._show_success(self._t("ok_debug_streak_upgraded", days=target_length))
 
@@ -4103,9 +4497,9 @@ class TgStreaksPlugin(BasePlugin):
 
         return user
 
-    def _collect_real_private_dialog_user_ids(self) -> list[int]:
+    def _collect_real_private_dialog_user_ids(self, account: int) -> list[int]:
         result: set[int] = set()
-        controller = get_messages_controller()
+        controller = get_messages_controller_for(account)
         dialogs = getattr(controller, "allDialogs", None)
 
         if dialogs is None:
@@ -4114,7 +4508,7 @@ class TgStreaksPlugin(BasePlugin):
         if dialogs is None:
             return []
 
-        self_user_ids = set(get_authorized_user_ids())
+        self_user_id = self._get_self_user_id(account)
 
         for i in range(dialogs.size()):
             dialog = dialogs.get(i)
@@ -4147,7 +4541,7 @@ class TgStreaksPlugin(BasePlugin):
             if not DialogObject.isUserDialog(dialog_id):
                 continue
 
-            if dialog_id in self_user_ids or UserObject.isReplyUser(dialog_id):
+            if (self_user_id > 0 and dialog_id == self_user_id) or UserObject.isReplyUser(dialog_id):
                 continue
 
             if UserObject.isService(dialog_id):
@@ -4182,7 +4576,8 @@ class TgStreaksPlugin(BasePlugin):
 
         def worker():
             try:
-                user_ids = self._collect_real_private_dialog_user_ids()
+                account = get_selected_account_id()
+                user_ids = self._collect_real_private_dialog_user_ids(account)
                 total = len(user_ids)
                 self.log(f"Force check targets: {total}")
 
@@ -4258,7 +4653,7 @@ class TgStreaksPlugin(BasePlugin):
                     peer_name = peer_name_cache.get(progress_user_id)
 
                     if peer_name is None:
-                        peer_name = self._resolve_peer_name(progress_user_id)
+                        peer_name = self._resolve_peer_name(account, progress_user_id)
                         peer_name_cache[progress_user_id] = peer_name
 
                     day_message = self._t(
@@ -4276,12 +4671,13 @@ class TgStreaksPlugin(BasePlugin):
 
                 checked, updated, removed, unchanged = (
                     self.streaks.force_check_user_ids(
+                        account,
                         user_ids,
                         on_progress=on_progress,
                         on_day_progress=on_day_progress,
                     )
                 )
-                self._patch_cached_users_streak_emoji_status()
+                self._patch_cached_users_streak_emoji_status(account)
                 summary = self._t(
                     "force_check_summary_all",
                     checked=checked,
@@ -4382,13 +4778,13 @@ class TgStreaksPlugin(BasePlugin):
         return user_id
 
     def _query_cached_day_activity_flags(
-        self, dialog_id: int, day_start: int, day_end: int
+        self, account: int, dialog_id: int, day_start: int, day_end: int
     ) -> Optional[tuple[bool, bool]]:
         if dialog_id <= 0:
             return None
 
         try:
-            storage = get_account_instance().getMessagesStorage()
+            storage = get_account_instance_for(account).getMessagesStorage()
             db = storage.getDatabase()
         except Exception:
             return None
@@ -4430,9 +4826,9 @@ class TgStreaksPlugin(BasePlugin):
                     pass
 
     def _repair_record_from_cached_today_activity(
-        self, peer_id: int, event_day: Optional[int] = None
+        self, account: int, peer_id: int, event_day: Optional[int] = None
     ):
-        current = self.users_db.get_user(peer_id, include_authorized=True)
+        current = self.users_db.get_user(peer_id, account, include_authorized=True)
         if current is None:
             return
 
@@ -4443,7 +4839,7 @@ class TgStreaksPlugin(BasePlugin):
         )
         day_end = int(day + SECONDS_IN_DAY)
 
-        flags = self._query_cached_day_activity_flags(peer_id, day, day_end)
+        flags = self._query_cached_day_activity_flags(account, peer_id, day, day_end)
         if flags is None:
             return
 
@@ -4919,18 +5315,24 @@ class TgStreaksPlugin(BasePlugin):
                         f"Failed to consume nested update {nested_name} from {update_name}[{i}] on account {account}: {e}"
                     )
 
-    def _patch_cached_users_streak_emoji_status(self):
+    def _patch_cached_users_streak_emoji_status(self, account: int = -1):
+        if account < 0:
+            account = get_selected_account_id()
+
         users = cast(
             "ConcurrentHashMap[Long, TLRPC.User]",
-            get_private_field(get_messages_controller(), "users"),
+            get_private_field(get_messages_controller_for(account), "users"),
         )
         users_iter = users.values().iterator()
 
         for i in range(users.size()):
-            self._patch_user_streak_emoji_status(users_iter.next())
+            self._patch_user_streak_emoji_status(users_iter.next(), account)
 
-    def _patch_user_streak_emoji_status(self, user: TLRPC.User):
-        user_record = self.users_db.get_user(user.id)
+    def _patch_user_streak_emoji_status(self, user: TLRPC.User, account: int = -1):
+        if account < 0:
+            account = get_selected_account_id()
+
+        user_record = self.users_db.get_user(user.id, account)
 
         if user_record is None:
             return
@@ -5019,7 +5421,18 @@ class TgStreaksPlugin(BasePlugin):
         except Exception:
             message_date = 0
 
-        dedupe_key = f"{dialog_id}:{message_id}:{message_date}:{self._safe_log_value(message_text, 96)}"
+        try:
+            account = int(getattr(message, "currentAccount", -1))
+        except Exception:
+            account = -1
+
+        if account < 0:
+            account = get_selected_account_id()
+
+        dedupe_key = (
+            f"{account}:{dialog_id}:{message_id}:{message_date}:"
+            f"{self._safe_log_value(message_text, 96)}"
+        )
         seen = self._consumed_tagged_message_keys
         if dedupe_key in seen:
             return True
@@ -5067,14 +5480,15 @@ class TgStreaksPlugin(BasePlugin):
             self.log(f"Failed to hook MessageObject constructors: {e}")
 
     def hook_user_emoji_status_assign(self, patch_existing: bool):
+        account = get_selected_account_id()
         users = cast(
             "ConcurrentHashMap[Long, TLRPC.User]",
-            get_private_field(get_messages_controller(), "users"),
+            get_private_field(get_messages_controller_for(account), "users"),
         )
         users_hash = System.identityHashCode(users)
 
         def patch_user(user: TLRPC.User):
-            self._patch_user_streak_emoji_status(user)
+            self._patch_user_streak_emoji_status(user, account)
 
         class ConcurrentHashMap_putValHook(MethodHook):
             def __init__(self, plugin: TgStreaksPlugin, target_hash: int):
@@ -5390,7 +5804,10 @@ class TgStreaksPlugin(BasePlugin):
                     if t <= 0:
                         return None
 
-                    record = ref.users_db.get_user(t)
+                    record = ref.users_db.get_user(
+                        t,
+                        ref._resolve_dialog_account(int(t), get_selected_account_id()),
+                    )
 
                     if record is not None:
                         length = record.get_length()
@@ -5459,8 +5876,10 @@ class TgStreaksPlugin(BasePlugin):
         self._streak_popup_queue_lock = threading.Lock()
         self._pending_streak_popups: dict[int, list[dict[str, Any]]] = {}
         self._streak_popup_dispatch_stop = threading.Event()
-        self._streak_dead_state: dict[int, bool] = {}
+        self._streak_dead_state: dict[tuple[int, int], bool] = {}
         self._streak_dead_monitor_stop = threading.Event()
+        self._account_switch_monitor_stop = threading.Event()
+        self._last_selected_account_id = get_selected_account_id()
         self._update_check_stop = threading.Event()
         self._update_check_lock = threading.Lock()
         self._update_check_inflight = False
@@ -5498,6 +5917,7 @@ class TgStreaksPlugin(BasePlugin):
             self._register_chat_action_menu_items()
             self._sync_dead_states_snapshot()
             self._start_dead_state_monitor()
+            self._start_account_switch_monitor()
             self._start_streak_popup_dispatch_monitor()
             self._start_update_check()
         except Exception as e:
@@ -5511,6 +5931,11 @@ class TgStreaksPlugin(BasePlugin):
 
         try:
             self._streak_popup_dispatch_stop.set()
+        except Exception:
+            pass
+
+        try:
+            self._account_switch_monitor_stop.set()
         except Exception:
             pass
 
