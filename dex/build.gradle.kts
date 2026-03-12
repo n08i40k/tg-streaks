@@ -1,11 +1,11 @@
 import com.android.build.api.variant.BuildConfigField
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.Project
 import org.gradle.api.tasks.Sync
 import org.gradle.kotlin.dsl.coreLibraryDesugaring
 import java.io.File
-import java.util.Locale
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 private val COMPILE_SDK = 36
 private val COMPILE_SDK_MINOR = 1
@@ -33,8 +33,53 @@ private val TELEGRAM_COMPILE_STRIP_META_INF_PREFIXES = listOf(
 
 private fun File.isJarFile(): Boolean = isFile && extension.equals("jar", ignoreCase = true)
 
-private fun String.toVariantTitle(): String = replaceFirstChar {
-    if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+private fun File.artifactKey(): String {
+    val pathSegments = absolutePath.split(File.separatorChar)
+    val cacheIndex = pathSegments.indexOf("files-2.1")
+
+    return if (cacheIndex >= 0 && pathSegments.size > cacheIndex + 3) {
+        "${pathSegments[cacheIndex + 1]}:${pathSegments[cacheIndex + 2]}"
+    } else {
+        name.removeSuffix(".jar")
+            .removeSuffix("-api")
+            .removeSuffix("-runtime")
+            .removeSuffix("-R")
+    }
+}
+
+private fun String.toVariantTitle(): String = replaceFirstChar(Char::uppercaseChar)
+
+private fun Project.resolveAndroidSdkDir(): File {
+    val localProperties = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    val sdkDirPath =
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use(localProperties::load)
+            localProperties.getProperty("sdk.dir")
+        } else {
+            null
+        }
+            ?: System.getenv("ANDROID_HOME")
+            ?: System.getenv("ANDROID_SDK_ROOT")
+            ?: throw GradleException(
+                "Android SDK location is not configured. Set sdk.dir in local.properties " +
+                        "or define ANDROID_HOME / ANDROID_SDK_ROOT."
+            )
+
+    return file(sdkDirPath)
+}
+
+private fun Project.resolveAndroidJar(): File {
+    val platformVersion =
+        if (COMPILE_SDK_MINOR > 0) "$COMPILE_SDK.$COMPILE_SDK_MINOR" else COMPILE_SDK.toString()
+    val androidJar =
+        resolveAndroidSdkDir().resolve("platforms/android-$platformVersion/android.jar")
+
+    if (!androidJar.exists()) {
+        throw GradleException("Android platform jar not found: ${androidJar.absolutePath}")
+    }
+
+    return androidJar
 }
 
 private fun shouldStripTelegramCompileEntry(path: String): Boolean {
@@ -48,8 +93,8 @@ private fun shouldStripTelegramCompileEntry(path: String): Boolean {
 }
 
 plugins {
-    id("com.android.library") version "8.13.2"
-    alias(libs.plugins.kotlin.android)
+    id("com.android.library") version "9.0.1"
+    id("com.google.devtools.ksp") version "2.3.5"
 }
 
 android {
@@ -74,14 +119,7 @@ android {
     }
 
     buildTypes {
-        debug {
-            isMinifyEnabled = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                PROGUARD_RULES_FILE
-            )
-        }
-        release {
+        all {
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -147,97 +185,96 @@ val telegramCompileClasspathJar by tasks.registering(Jar::class) {
 val embed by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
-    isVisible = false
 }
 
 dependencies {
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
     implementation(libs.aliuhook)
     compileOnly(libs.jetbrains.kotlin.stdlib)
-    compileOnly(libs.kotlinx.coroutines.core)
     compileOnly(files(telegramCompileClasspathJar))
     add(embed.name, libs.jetbrains.kotlin.stdlib)
-    add(embed.name, libs.kotlinx.coroutines.core)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
 
-fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String) {
+fun resolveJarPaths(configurationName: String): List<String> =
+    configurations.findByName(configurationName)
+        ?.resolve()
+        .orEmpty()
+        .filter(File::isJarFile)
+        .map(File::getAbsolutePath)
+
+fun registerBuildDexTask(variant: String) {
+    val variantTitle = variant.toVariantTitle()
+    val taskName = "buildDex$variantTitle"
+    val assembleTask = "assemble$variantTitle"
+    val sdkDirectory = project.resolveAndroidSdkDir()
+    val androidJar = project.resolveAndroidJar()
+
     tasks.register(taskName) {
         group = "build"
         dependsOn(assembleTask)
 
         doLast {
-            val buildDirPath = layout.buildDirectory.asFile.get().absolutePath
-            val variantTitle = variant.toVariantTitle()
-            val androidLibs = android.bootClasspath.map { it.absolutePath }
-            val proguardRules = file("${project.projectDir.absolutePath}/$PROGUARD_RULES_FILE")
-
-            if (androidLibs.isEmpty()) {
-                throw GradleException("Could not resolve Android boot classpath.")
-            }
+            val buildDirFile = layout.buildDirectory.asFile.get()
+            val proguardRules = file(PROGUARD_RULES_FILE)
             if (!proguardRules.exists()) {
                 throw GradleException("Missing Proguard config: ${proguardRules.absolutePath}")
             }
 
-            val compileJar = file(
-                "$buildDirPath/intermediates/compile_library_classes_jar/$variant/" +
+            val compileJar = buildDirFile.resolve(
+                "intermediates/compile_library_classes_jar/$variant/" +
                         "bundleLibCompileToJar$variantTitle/classes.jar"
             )
             val classInputs = if (compileJar.exists()) {
                 listOf(compileJar.absolutePath)
             } else {
-                val kotlinDir = file("$buildDirPath/tmp/kotlin-classes/$variant")
-                fileTree(kotlinDir)
+                fileTree(buildDirFile.resolve("tmp/kotlin-classes/$variant"))
                     .matching { include("**/*.class") }
                     .files
                     .map { it.absolutePath }
             }
 
-            fun resolveJarPaths(configurationName: String): List<String> =
-                configurations.findByName(configurationName)
-                    ?.resolve()
-                    .orEmpty()
-                    .asSequence()
-                    .filter { it.isJarFile() }
-                    .map { it.absolutePath }
-                    .toList()
-
             val runtimeJars = resolveJarPaths("${variant}RuntimeClasspath")
             val compileJars = resolveJarPaths("${variant}CompileClasspath")
             val embeddedJars = resolveJarPaths(embed.name)
-            val compileTaskJars =
-                (tasks.findByName("compile${variantTitle}Kotlin") as? KotlinCompile)
-                    ?.libraries
-                    ?.files
-                    .orEmpty()
-                    .asSequence()
-                    .filter { it.isJarFile() }
-                    .map { it.absolutePath }
-                    .toList()
 
-            val dexInputs = (classInputs + runtimeJars + embeddedJars).distinct()
+            val embeddedModules = embeddedJars.map { File(it).artifactKey() }.toSet()
+            val filteredRuntimeJars =
+                runtimeJars.filterNot { jarPath ->
+                    File(jarPath).artifactKey() in embeddedModules
+                }
+
+            val dexInputs = (classInputs + filteredRuntimeJars + embeddedJars).distinct()
             if (dexInputs.isEmpty()) {
                 throw GradleException(
                     "No class inputs found for variant '$variant'. Run $assembleTask first."
                 )
             }
 
-            val classpathJars = (compileTaskJars + compileJars)
+            val dexInputKeys = dexInputs.map { File(it).artifactKey() }.toSet()
+            val classpathJars = compileJars
                 .filterNot {
-                    it.toString().contains("Aliuhook") || it in dexInputs || it in androidLibs
+                    val jar = File(it)
+                    it.contains("Aliuhook") ||
+                            it == androidJar.absolutePath ||
+                            jar.artifactKey() in dexInputKeys
                 }
                 .distinct()
 
-            val outputDir = "$buildDirPath/outputs/dex/$variant"
-            val outputDirFile = file(outputDir)
+            val outputDirFile = layout.buildDirectory.dir("outputs/dex/$variant").get().asFile
             if (outputDirFile.exists() && !outputDirFile.isDirectory) {
-                throw GradleException("d8 output path is not a directory: '$outputDir'.")
+                throw GradleException("d8 output path is not a directory: '${outputDirFile.absolutePath}'.")
             }
             if (!outputDirFile.exists() && !outputDirFile.mkdirs()) {
-                throw GradleException("Failed to create d8 output directory: '$outputDir'.")
+                throw GradleException(
+                    "Failed to create d8 output directory: '${outputDirFile.absolutePath}'."
+                )
             }
 
-            val buildToolsDir = "${android.sdkDirectory}/build-tools/$BUILD_TOOLS_VERSION"
-            val r8Jar = "$buildToolsDir/lib/d8.jar"
+            val r8Jar = sdkDirectory.resolve("build-tools/$BUILD_TOOLS_VERSION/lib/d8.jar")
             val javaBin =
                 if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
                     "java.exe"
@@ -245,35 +282,20 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
                     "java"
                 }
 
-            val out = try {
-                providers.exec {
-                    executable = javaBin
-                    isIgnoreExitValue = true
+            val out = providers.exec {
+                executable = javaBin
+                isIgnoreExitValue = true
 
-                    args("-cp", r8Jar, "com.android.tools.r8.R8")
-                    // The addon dex must always be repackaged/obfuscated to avoid host collisions.
-                    args("--release")
-                    args("--dex")
-                    args("--output", outputDirFile.absolutePath)
-                    args("--min-api", MIN_SDK.toString())
-                    args("--pg-conf", proguardRules.absolutePath)
-                    androidLibs.forEach { args("--lib", it) }
-                    classpathJars.forEach { args("--classpath", it) }
-                    args(dexInputs)
-                }
-            } catch (e: Exception) {
-                logger.error(
-                    "Failed to execute r8 for variant '$variant'. " +
-                            "r8Jar='$r8Jar', outputDir='$outputDir', " +
-                            "classInputs=${classInputs.size}, runtimeJars=${runtimeJars.size}, " +
-                            "embeddedJars=${embeddedJars.size}, " +
-                            "dexInputs=${dexInputs.size}.",
-                    e
-                )
-                throw GradleException(
-                    "r8 execution failed for variant '$variant'. See logs above.",
-                    e
-                )
+                args("-cp", r8Jar.absolutePath, "com.android.tools.r8.R8")
+                // The addon dex must always be repackaged/obfuscated to avoid host collisions.
+                args("--release")
+                args("--dex")
+                args("--output", outputDirFile.absolutePath)
+                args("--min-api", MIN_SDK.toString())
+                args("--pg-conf", proguardRules.absolutePath)
+                args("--lib", androidJar.absolutePath)
+                classpathJars.forEach { args("--classpath", it) }
+                args(dexInputs)
             }
 
             val standardOutput = out.standardOutput.asText.get()
@@ -282,21 +304,18 @@ fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String
             if (standardError.isNotBlank()) logger.error(standardError)
 
             val exitCode = out.result.get().exitValue
-            if (exitCode == 0) {
-                logger.lifecycle("Dex created for $variant at: $outputDir/classes.dex")
-            } else {
-                logger.error(
-                    "r8 exited with code $exitCode for variant '$variant'. " +
-                            "r8Jar='$r8Jar', outputDir='$outputDir'."
-                )
+            if (exitCode != 0) {
                 throw GradleException("r8 failed for variant '$variant' with exit code $exitCode.")
             }
+
+            logger.lifecycle(
+                "Dex created for $variant at: ${outputDirFile.absolutePath}/classes.dex"
+            )
         }
     }
 }
 
-registerBuildDexTask("buildDexDebug", "debug", "assembleDebug")
-registerBuildDexTask("buildDexRelease", "release", "assembleRelease")
+listOf("debug", "release").forEach(::registerBuildDexTask)
 
 tasks.register("buildDex") {
     group = "build"
