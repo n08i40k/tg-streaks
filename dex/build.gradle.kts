@@ -1,4 +1,6 @@
 import com.android.build.api.variant.BuildConfigField
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.Sync
 import org.gradle.kotlin.dsl.coreLibraryDesugaring
 import java.io.File
 import java.util.Locale
@@ -12,11 +14,37 @@ private val TARGET_SDK = 36
 private val BUILD_TOOLS_VERSION = "36.1.0"
 private val PROGUARD_RULES_FILE = "proguard-rules.pro"
 private val TELEGRAM_JAR_PATH = "libs/Telegram.jar"
+private val TELEGRAM_COMPILE_STRIP_PREFIXES = listOf(
+    "kotlin/",
+    "kotlinx/",
+    "java/",
+    "javax/",
+    "jdk/",
+    "sun/",
+    "com/android/tools/r8/",
+    "j$/com/android/tools/r8/"
+)
+private val TELEGRAM_COMPILE_STRIP_EXACT_PATHS = setOf("module-info.class")
+private val TELEGRAM_COMPILE_STRIP_META_INF_SUFFIXES = listOf(".kotlin_module")
+private val TELEGRAM_COMPILE_STRIP_META_INF_PREFIXES = listOf(
+    "META-INF/services/kotlin.",
+    "META-INF/services/kotlinx."
+)
 
 private fun File.isJarFile(): Boolean = isFile && extension.equals("jar", ignoreCase = true)
 
 private fun String.toVariantTitle(): String = replaceFirstChar {
     if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+}
+
+private fun shouldStripTelegramCompileEntry(path: String): Boolean {
+    val normalizedPath = path.removePrefix("/")
+
+    return TELEGRAM_COMPILE_STRIP_PREFIXES.any(normalizedPath::startsWith) ||
+            normalizedPath in TELEGRAM_COMPILE_STRIP_EXACT_PATHS ||
+            TELEGRAM_COMPILE_STRIP_META_INF_PREFIXES.any(normalizedPath::startsWith) ||
+            (normalizedPath.startsWith("META-INF/") &&
+                    TELEGRAM_COMPILE_STRIP_META_INF_SUFFIXES.any(normalizedPath::endsWith))
 }
 
 plugins {
@@ -90,21 +118,30 @@ kotlin {
     }
 }
 
+val unpackTelegramCompileClasspath by tasks.registering(Sync::class) {
+    val outputDir = layout.buildDirectory.dir("intermediates/telegram-compile/classes")
+
+    from(zipTree(TELEGRAM_JAR_PATH))
+    into(outputDir)
+    includeEmptyDirs = false
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    eachFile {
+        if (shouldStripTelegramCompileEntry(path)) {
+            exclude()
+        }
+    }
+}
+
 val telegramCompileClasspathJar by tasks.registering(Jar::class) {
+    dependsOn(unpackTelegramCompileClasspath)
     archiveBaseName.set("Telegram-compile")
     archiveVersion.set("1")
     destinationDirectory.set(layout.buildDirectory.dir("generated/compile-jars"))
+    includeEmptyDirs = false
 
-    from(zipTree(TELEGRAM_JAR_PATH)) {
-        // Keep Telegram API classes only; exclude bundled runtime/platform classes.
-        exclude("kotlin/**")
-        exclude("java/**")
-        exclude("javax/**")
-        exclude("sun/**")
-        // Avoid collision with R8's own internal RecordTag aliasing.
-        exclude("com/android/tools/r8/**")
-        exclude("j$/com/android/tools/r8/**")
-    }
+    // Keep Telegram API classes only; strip bundled runtime/platform namespaces first.
+    from(layout.buildDirectory.dir("intermediates/telegram-compile/classes"))
 }
 
 val embed by configurations.creating {
@@ -116,8 +153,10 @@ val embed by configurations.creating {
 dependencies {
     implementation(libs.aliuhook)
     compileOnly(libs.jetbrains.kotlin.stdlib)
+    compileOnly(libs.kotlinx.coroutines.core)
     compileOnly(files(telegramCompileClasspathJar))
     add(embed.name, libs.jetbrains.kotlin.stdlib)
+    add(embed.name, libs.kotlinx.coroutines.core)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
 
