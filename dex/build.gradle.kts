@@ -1,4 +1,5 @@
 import com.android.build.api.variant.BuildConfigField
+import org.gradle.kotlin.dsl.coreLibraryDesugaring
 import java.io.File
 import java.util.Locale
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -38,7 +39,10 @@ android {
 
     defaultConfig {
         minSdk = MIN_SDK
-        targetSdk = TARGET_SDK
+
+        lint {
+            targetSdk = TARGET_SDK
+        }
     }
 
     buildTypes {
@@ -61,6 +65,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+
+        isCoreLibraryDesugaringEnabled = true
     }
 }
 
@@ -112,6 +118,7 @@ dependencies {
     compileOnly(libs.jetbrains.kotlin.stdlib)
     compileOnly(files(telegramCompileClasspathJar))
     add(embed.name, libs.jetbrains.kotlin.stdlib)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
 
 fun registerBuildDexTask(taskName: String, variant: String, assembleTask: String) {
