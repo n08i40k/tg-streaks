@@ -1,6 +1,6 @@
 [project]
 name = "tg-streaks"
-version = "1.6.0"
+version = "1.7.0"
 description = "Exteragram plugin for streaks with your friends"
 requires-python = ">=3.14"
 dependencies = [

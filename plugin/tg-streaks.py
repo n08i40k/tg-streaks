@@ -81,7 +81,7 @@ __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Analog for TikTok streaks for Telegram"
 __author__ = "@n08i40k"
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 __icon__ = "exteraPlugins/0"
 __min_version__ = "12.2.10"
 
@@ -101,7 +101,7 @@ DEATH_SERVICE_MESSAGE_TEXT = "tg-streaks:death"
 RESTORE_SERVICE_MESSAGE_TEXT = "tg-streaks:restore"
 
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
-DEX_SHA256 = "208b5a6059e4289431b8dd7c41cc473b6e267492f38e9087f288b8aa61f706dc"
+DEX_SHA256 = "b4a2c4b0ee16d52f1833420ae265caceba8cb57f0a6ab94954f87c94e9b81978"
 
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
