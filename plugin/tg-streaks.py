@@ -1,3 +1,4 @@
+import fcntl
 import hashlib
 import os
 import shutil
@@ -36,6 +37,7 @@ __icon__ = "exteraPlugins/0"
 __min_version__ = "12.2.10"
 
 DEBUG_MODE = False
+
 
 REPO_OWNER = "n08i40k"
 REPO_NAME = __id__
@@ -648,34 +650,103 @@ class ZipResourcesBridge:
         os.makedirs(self.cache_dir, exist_ok=True)
         self.zip_path = os.path.join(self.cache_dir, f"{__id__}-resources.zip")
         self.resources_root = os.path.join(self.cache_dir, "resources")
-        self._download_lock = threading.Lock()
+        self.lock_path = f"{self.zip_path}.lock"
 
     def load(self) -> Optional[str]:
         if DEBUG_MODE:
-            self.plugin.log("Debug mode enabled. Downloading resources ZIP without SHA256 checks...")
-            zip_data = self._download_bytes(show_bulletins=True)
-            if zip_data is not None:
-                self._write_zip_file(zip_data)
-                self._extract_zip()
-                return self.resources_root if os.path.isdir(self.resources_root) else None
+            return self._load_debug()
 
-            self.plugin.log("Resources ZIP download failed in debug mode. Falling back to current extracted resources if available...")
+        expected_sha256 = str(RESOURCES_SHA256).strip().lower()
+        cached_sha256 = self._compute_file_sha256(self.zip_path)
+
+        if cached_sha256 == expected_sha256 and os.path.isdir(self.resources_root):
+            return self.resources_root
+
+        if cached_sha256 is not None and os.path.isdir(self.resources_root):
+            self.plugin.log(
+                f"Cached resources ZIP SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Using current resources and refreshing in background..."
+            )
+            self._refresh_async()
+            return self.resources_root
+
+        return self._load_release_slow_path(expected_sha256)
+
+    def _load_debug(self) -> Optional[str]:
+        lock_fd = self._acquire_download_lock(blocking=False)
+        if lock_fd is not None:
+            try:
+                self.plugin.log("Debug mode enabled. Downloading resources ZIP without SHA256 checks...")
+                zip_data = self._download_bytes(show_bulletins=True)
+                if zip_data is not None:
+                    self._write_zip_file(zip_data)
+                    self._extract_zip()
+                    return self.resources_root if os.path.isdir(self.resources_root) else None
+            finally:
+                self._release_download_lock(lock_fd)
+        else:
+            self.plugin.log("Resources ZIP download is already in progress. Waiting for the existing run to finish...")
+            wait_lock_fd = self._acquire_download_lock(blocking=True)
+            try:
+                pass
+            finally:
+                self._release_download_lock(wait_lock_fd)
+
+        if os.path.isdir(self.resources_root):
+            return self.resources_root
+
+        if os.path.exists(self.zip_path):
+            extract_lock_fd = self._acquire_download_lock(blocking=True)
+            try:
+                if not os.path.isdir(self.resources_root):
+                    self._extract_zip()
+            finally:
+                self._release_download_lock(extract_lock_fd)
             if os.path.isdir(self.resources_root):
                 return self.resources_root
 
-            if os.path.exists(self.zip_path):
-                self._extract_zip()
+        self.plugin.log("Resources ZIP download failed in debug mode. Falling back to current extracted resources if available...")
+        return self.resources_root if os.path.isdir(self.resources_root) else None
 
-            return self.resources_root if os.path.isdir(self.resources_root) else None
+    def _load_release_slow_path(self, expected_sha256: str) -> Optional[str]:
+        refresh_needed = False
 
-        expected_sha256 = str(RESOURCES_SHA256).strip().lower()
+        lock_fd = self._acquire_download_lock(blocking=False)
+        if lock_fd is not None:
+            try:
+                result_path, refresh_needed = self._load_release_slow_path_locked(
+                    expected_sha256,
+                    allow_download=True,
+                )
+            finally:
+                self._release_download_lock(lock_fd)
+        else:
+            self.plugin.log("Resources ZIP update is already in progress. Waiting for the existing run to finish...")
+            wait_lock_fd = self._acquire_download_lock(blocking=True)
+            try:
+                result_path, refresh_needed = self._load_release_slow_path_locked(
+                    expected_sha256,
+                    allow_download=False,
+                )
+            finally:
+                self._release_download_lock(wait_lock_fd)
+
+        if refresh_needed:
+            self._refresh_async()
+
+        return result_path
+
+    def _load_release_slow_path_locked(
+        self,
+        expected_sha256: str,
+        allow_download: bool,
+    ) -> tuple[Optional[str], bool]:
         cached_sha256 = self._compute_file_sha256(self.zip_path)
 
         if cached_sha256 == expected_sha256:
             if not os.path.isdir(self.resources_root):
                 self.plugin.log("Resources ZIP is cached, but unpacked files are missing. Extracting...")
                 self._extract_zip()
-            return self.resources_root if os.path.isdir(self.resources_root) else None
+            return self.resources_root if os.path.isdir(self.resources_root) else None, False
 
         if cached_sha256 is not None:
             if not os.path.isdir(self.resources_root):
@@ -686,16 +757,21 @@ class ZipResourcesBridge:
                 self.plugin.log(
                     f"Cached resources ZIP SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Using current resources and refreshing in background..."
                 )
-                self._refresh_async()
-                return self.resources_root
+                return self.resources_root, allow_download
+
+            if not allow_download:
+                return None, False
 
             self.plugin.log("Cached resources ZIP exists but there are no usable extracted files. Downloading replacement synchronously...")
         else:
+            if not allow_download:
+                return None, False
+
             self.plugin.log("Cached resources ZIP not found. Downloading new file...")
 
         zip_data = self._download_bytes(show_bulletins=True)
         if zip_data is None:
-            return self.resources_root if os.path.isdir(self.resources_root) else None
+            return self.resources_root if os.path.isdir(self.resources_root) else None, False
 
         downloaded_sha256 = self._compute_sha256(zip_data)
         if downloaded_sha256 != expected_sha256:
@@ -704,7 +780,7 @@ class ZipResourcesBridge:
         self._write_zip_file(zip_data)
         self._extract_zip()
 
-        return self.resources_root if os.path.isdir(self.resources_root) else None
+        return self.resources_root if os.path.isdir(self.resources_root) else None, False
 
     def _compute_sha256(self, data: bytes) -> str:
         return hashlib.sha256(data).hexdigest().lower()
@@ -724,6 +800,28 @@ class ZipResourcesBridge:
         with open(self.zip_path, "wb") as f:
             f.write(zip_data)
 
+    def _acquire_download_lock(self, blocking: bool) -> Optional[int]:
+        lock_fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o666)
+        lock_flags = fcntl.LOCK_EX
+        if not blocking:
+            lock_flags |= fcntl.LOCK_NB
+
+        try:
+            fcntl.flock(lock_fd, lock_flags)
+            return lock_fd
+        except BlockingIOError:
+            os.close(lock_fd)
+            return None
+        except Exception:
+            os.close(lock_fd)
+            raise
+
+    def _release_download_lock(self, lock_fd: int):
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
+
     def _download_bytes(self, show_bulletins: bool) -> Optional[bytes]:
         try:
             return self.plugin._download_with_progress(
@@ -738,16 +836,22 @@ class ZipResourcesBridge:
 
     def _refresh_async(self):
         def worker():
-            if not self._download_lock.acquire(blocking=False):
+            lock_fd = self._acquire_download_lock(blocking=False)
+            if lock_fd is None:
                 return
 
             try:
+                expected_sha256 = str(RESOURCES_SHA256).strip().lower()
+                cached_sha256 = self._compute_file_sha256(self.zip_path)
+                if cached_sha256 == expected_sha256 and os.path.isdir(self.resources_root):
+                    return
+
                 zip_data = self._download_bytes(show_bulletins=True)
                 if zip_data is None:
                     return
 
                 downloaded_sha256 = self._compute_sha256(zip_data)
-                if downloaded_sha256 != str(RESOURCES_SHA256).strip().lower():
+                if downloaded_sha256 != expected_sha256:
                     raise RuntimeError("Downloaded resources ZIP SHA256 mismatch")
 
                 self._write_zip_file(zip_data)
@@ -755,7 +859,7 @@ class ZipResourcesBridge:
             except Exception as e:
                 self.plugin.log_exception("Failed to refresh resources ZIP", e)
             finally:
-                self._download_lock.release()
+                self._release_download_lock(lock_fd)
 
         threading.Thread(target=worker, name="tg-streaks-resources-refresh", daemon=True).start()
 
