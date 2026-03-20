@@ -261,8 +261,6 @@ class StreaksController(
         if (revives.contains(day))
             return Action.REVIVE
 
-        Plugin.getInstance()?.log("not cached reviveNow")
-
         if (!untilRevive && cachedFetcher.fetch(
                 accountId,
                 peer.id,
@@ -270,8 +268,6 @@ class StreaksController(
             ) is ChatHistoryFetcher.Status.FromBoth
         )
             return Action.GROW
-
-        Plugin.getInstance()?.log("not cached history")
 
         return when (val status = remoteFetcher.fetch(accountId, peer.id, day, untilRevive)) {
             is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) Action.REVIVE else Action.GROW
@@ -308,8 +304,6 @@ class StreaksController(
             var startDayIsFrozen = false
 
             while (true) {
-                Plugin.getInstance()?.log("cycle on $currentDay")
-
                 val checkedDay = currentDay
                 val action = fetchStreakActionForDay(accountId, peer, checkedDay, revives, false)
                 val progress = RebuildProgress(
@@ -362,9 +356,6 @@ class StreaksController(
             ) {
                 Plugin.getInstance()?.log("Rebuild service messages policy is unexpectedly enabled")
             }
-
-            Plugin.getInstance()?.log("rebuild from $rebuildFrom")
-            Plugin.getInstance()?.log("rebuild to $rebuildTo")
 
             db.withTransaction {
                 dao.deleteByRelation(ownerUserId, peerUserId)

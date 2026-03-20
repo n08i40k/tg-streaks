@@ -7,7 +7,6 @@ import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
@@ -40,7 +39,6 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         val connectionsManager = ConnectionsManager.getInstance(accountId)
 
         reqLoop@ while ((!fromOwner || !fromPeer) || (untilRevive && !wasRevived)) {
-            Plugin.getInstance()?.log("loop on $lastMessageId")
             val req = TLRPC.TL_messages_getHistory().apply {
                 this.peer = peer
                 offset_id = lastMessageId
@@ -51,8 +49,6 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             val deferred = CompletableDeferred<MyResult<TLObject, TLRPC.TL_error>>()
 
             connectionsManager.sendRequest(req) { response, error ->
-                Plugin.getInstance()?.log("loop probably ok")
-
                 deferred.complete(
                     when {
                         error == null -> MyResult.Ok(response)
