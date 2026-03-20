@@ -6,6 +6,7 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
@@ -106,6 +107,9 @@ class StreaksController(
     private val dao = db.streakDao()
     private val reviveDao = db.streakReviveDao()
 
+    fun isRebuildRunning(): Boolean =
+        rebuildLock.get()
+
     private fun buildStreak(
         ownerUserId: Long,
         peerUserId: Long,
@@ -137,6 +141,105 @@ class StreaksController(
 
     private fun isVisibleLength(length: Int): Boolean =
         length >= MIN_VISIBLE_STREAK_LENGTH
+
+    private fun resolveDialogId(dialog: TLRPC.Dialog): Long {
+        var dialogId = dialog.id
+
+        if (dialogId == 0L) {
+            try {
+                DialogObject.initDialog(dialog)
+                dialogId = dialog.id
+            } catch (_: Throwable) {
+                dialogId = 0L
+            }
+        }
+
+        if (dialogId == 0L) {
+            dialogId = dialog.peer?.let { peer ->
+                try {
+                    DialogObject.getPeerDialogId(peer)
+                } catch (_: Throwable) {
+                    0L
+                }
+            } ?: 0L
+        }
+
+        return dialogId
+    }
+
+    private fun collectEligiblePrivateUsers(accountId: Int): List<TLRPC.User> {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val messagesController = MessagesController.getInstance(accountId)
+        val usersById = LinkedHashMap<Long, TLRPC.User>()
+        val dialogs = messagesController.getDialogs(0)
+
+        dialogs?.forEach { dialog ->
+            if (dialog == null)
+                return@forEach
+
+            val dialogId = resolveDialogId(dialog)
+
+            if (dialogId <= 0L || !DialogObject.isUserDialog(dialogId))
+                return@forEach
+
+            if (
+                dialogId == ownerUserId
+                || UserObject.isReplyUser(dialogId)
+                || UserObject.isService(dialogId)
+            ) {
+                return@forEach
+            }
+
+            val user = messagesController.getUser(dialogId) ?: return@forEach
+
+            if (
+                UserObject.isUserSelf(user)
+                || UserObject.isDeleted(user)
+                || UserObject.isBot(user)
+                || UserObject.isReplyUser(user)
+            ) {
+                return@forEach
+            }
+
+            usersById[user.id] = user
+        }
+
+        if (usersById.isNotEmpty())
+            return usersById.values.toList()
+
+        val dialogsDict = messagesController.dialogs_dict
+
+        for (index in 0 until dialogsDict.size()) {
+            val dialog = dialogsDict.valueAt(index) as? TLRPC.Dialog ?: continue
+            val dialogId = resolveDialogId(dialog)
+
+            if (dialogId <= 0L || !DialogObject.isUserDialog(dialogId))
+                continue
+
+            if (
+                dialogId == ownerUserId
+                || UserObject.isReplyUser(dialogId)
+                || UserObject.isService(dialogId)
+            ) {
+                continue
+            }
+
+            val user = messagesController.getUser(dialogId) ?: continue
+
+            if (
+                UserObject.isUserSelf(user)
+                || UserObject.isDeleted(user)
+                || UserObject.isBot(user)
+                || UserObject.isReplyUser(user)
+            ) {
+                continue
+            }
+
+            usersById[user.id] = user
+        }
+
+        return usersById.values.toList()
+    }
 
     // I consider streak as living entity in plugin code;
     // it would be better if I considered only streak-pet this way, but why not
@@ -186,14 +289,11 @@ class StreaksController(
         serviceMessagePolicy: ServiceMessagePolicy = ServiceMessagePolicy.REBUILD,
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
-        if (!ignoreLock && rebuildLock.get()) {
+        if (!ignoreLock && !rebuildLock.compareAndSet(false, true)) {
             Plugin.getInstance()
                 ?.log("Unable to rebuild peer $accountId:${peer.id} because another rebuild is already running")
             return
         }
-
-        if (!ignoreLock)
-            rebuildLock.set(true)
 
         try {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
@@ -300,50 +400,37 @@ class StreaksController(
     suspend fun rebuildAll(
         accountId: Int,
         serviceMessagePolicy: ServiceMessagePolicy = ServiceMessagePolicy.REBUILD,
-        onProgressUpdate: (index: Int, progress: RebuildProgress) -> Unit
-    ) {
-        if (rebuildLock.get()) {
+        onProgressUpdate: (index: Int, total: Int, peer: TLRPC.User, progress: RebuildProgress) -> Unit
+    ): Int {
+        if (!rebuildLock.compareAndSet(false, true)) {
             Plugin.getInstance()
                 ?.log("Unable to rebuild all peers for $accountId because another rebuild is already running")
-            return
+            return 0
         }
 
-        rebuildLock.set(true)
+        try {
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+            val revives = reviveDao.findAllByOwnerUserId(ownerUserId).toSet()
+            val peers = collectEligiblePrivateUsers(accountId)
 
-        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val revives = reviveDao.findAllByOwnerUserId(ownerUserId).toSet()
+            for ((index, user) in peers.withIndex()) {
+                val peerRevives =
+                    revives.filter { it.peerUserId == user.id }.map { it.revivedAt }.toSet()
 
-        val messagesController = MessagesController.getInstance(accountId)
+                rebuild(accountId, user, peerRevives, true, serviceMessagePolicy) {
+                    onProgressUpdate(index, peers.size, user, it)
+                }
 
-        var currentIndex = -1
-
-        for (dialog in messagesController.dialogsUsersOnly) {
-            currentIndex += 1
-
-            val peerUserId = dialog.peer.user_id
-
-            if (peerUserId == 0L || peerUserId == ownerUserId)
-                continue
-
-            val user = messagesController.getUser(peerUserId) ?: continue
-
-            if (
-                UserObject.isUserSelf(user)
-                || UserObject.isDeleted(user)
-                || UserObject.isBot(user)
-                || UserObject.isReplyUser(user)
-            )
-                continue
-
-            val peerRevives =
-                revives.filter { it.peerUserId == peerUserId }.map { it.revivedAt }.toSet()
-
-            rebuild(accountId, user, peerRevives, true, serviceMessagePolicy) {
-                onProgressUpdate(currentIndex, it)
             }
-        }
 
-        rebuildLock.set(false)
+            for (user in peers) {
+                syncUserState(accountId, user.id)
+            }
+
+            return peers.size
+        } finally {
+            rebuildLock.set(false)
+        }
     }
 
     private suspend fun checkForUpdates(

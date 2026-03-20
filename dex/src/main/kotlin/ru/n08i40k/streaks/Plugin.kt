@@ -46,6 +46,7 @@ import org.telegram.ui.DialogsActivity
 import org.telegram.ui.LaunchActivity
 import org.telegram.ui.ProfileActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
+import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.StreaksController
@@ -57,6 +58,7 @@ import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
+import ru.n08i40k.streaks.registry.LockableActionRegistry
 import ru.n08i40k.streaks.registry.LockableCallbackRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
 import ru.n08i40k.streaks.registry.StreakLevelRegistry
@@ -106,6 +108,14 @@ class Plugin {
         }
 
         @JvmStatic
+        fun invokeSettingsActionCallback(key: String) {
+            if (INSTANCE == null)
+                throw NullPointerException("Plugin is not injected")
+
+            INSTANCE!!.settingsActionCallbackRegistry.get(key).run()
+        }
+
+        @JvmStatic
         fun registerStreakLevel(
             length: Int,
             color: Color,
@@ -138,6 +148,7 @@ class Plugin {
     val resourcesProvider: ResourcesProvider
 
     private val chatContextMenuCallbackRegistry = LockableCallbackRegistry()
+    private val settingsActionCallbackRegistry = LockableActionRegistry()
     private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     val streakEmojiRegistry = StreakEmojiRegistry()
 
@@ -292,6 +303,7 @@ class Plugin {
         }
 
         chatContextMenuCallbackRegistry.clear()
+        settingsActionCallbackRegistry.clear()
 
         log("Ejected!")
     }
@@ -304,6 +316,17 @@ class Plugin {
                     callback(it)
                 } catch (e: Throwable) {
                     logException("An exception occurred while handling context menu entry touch", e)
+                    eject()
+                }
+            }
+        }
+
+        fun addSettingAction(key: String, callback: () -> Unit) {
+            settingsActionCallbackRegistry.register(key) {
+                try {
+                    callback()
+                } catch (e: Throwable) {
+                    logException("An exception occurred while handling settings action", e)
                     eject()
                 }
             }
@@ -545,7 +568,48 @@ class Plugin {
             log("[Context Menu] Debug-delete clicked on ${peer.id}")
         }
 
+        addSettingAction(SettingsActionButton.REBUILD_ALL) {
+            val accountId = UserConfig.selectedAccount
+
+            if (streaksController.isRebuildRunning()) {
+                showTranslatedBulletin(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
+                return@addSettingAction
+            }
+
+            showTranslatedBulletin(TranslationKey.INFO_FORCE_CHECK_STARTED_ALL, "msg_retry")
+
+            backgroundScope.launch {
+                try {
+                    val totalChats =
+                        streaksController.rebuildAll(accountId) { index, total, _, progress ->
+                            showTranslatedBulletin(
+                                TranslationKey.FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE,
+                                mapOf(
+                                    "peer_name" to progress.peerLabel,
+                                    "days_checked" to progress.daysChecked.toString(),
+                                    "checked_chats" to (index + 1).toString(),
+                                    "total_chats" to total.toString(),
+                                ),
+                                "msg_retry"
+                            )
+                        }
+
+                    AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshAll() }
+
+                    showTranslatedBulletin(
+                        TranslationKey.FORCE_CHECK_SUMMARY_ALL_SIMPLE,
+                        mapOf("checked" to totalChats.toString()),
+                        "msg_retry"
+                    )
+                } catch (e: Throwable) {
+                    logException("Failed to rebuild all private chats for account $accountId", e)
+                    showTranslatedBulletin(TranslationKey.ERR_FORCE_CHECK_FAILED_LOGS)
+                }
+            }
+        }
+
         chatContextMenuCallbackRegistry.freeze()
+        settingsActionCallbackRegistry.freeze()
     }
 
 

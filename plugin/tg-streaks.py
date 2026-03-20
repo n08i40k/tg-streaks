@@ -25,7 +25,7 @@ from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
-from ui.settings import Header, Switch
+from ui.settings import Divider, Header, Switch, Text
 
 __id__ = "tg-streaks"
 __name__ = "Streaks"
@@ -350,6 +350,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Force check day progress: {days_checked} days for {peer_name} [{checked_chats}/{total_chats}] (offset={day_offset}, {state}, {mode})",
         "ru": "Прогресс проверки по дням: {days_checked} дней для {peer_name} [{checked_chats}/{total_chats}] (смещение={day_offset}, {state}, {mode})",
     },
+    "force_check.day_progress_all_simple": {
+        "en": "Recalculating streaks: {peer_name} [{checked_chats}/{total_chats}], checked {days_checked} d.",
+        "ru": "Пересчитываю стрики: {peer_name} [{checked_chats}/{total_chats}], проверено {days_checked} д.",
+    },
     "force_check.progress_zero": {
         "en": "Force check progress: 0/0",
         "ru": "Прогресс проверки: 0/0",
@@ -365,6 +369,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "force_check.summary_all": {
         "en": "Force check done: checked={checked}, updated={updated}, removed={removed}, unchanged={unchanged}",
         "ru": "Проверка завершена: проверено={checked}, обновлено={updated}, удалено={removed}, без изменений={unchanged}",
+    },
+    "force_check.summary_all_simple": {
+        "en": "Rebuild completed for {checked} private chats",
+        "ru": "Ребилд завершён для {checked} личных чатов",
     },
     "db.err.no_backups_found": {"en": "No backups found", "ru": "Бэкапы не найдены"},
     "db.err.failed_list_backups": {
@@ -1015,6 +1023,51 @@ class ChatContextMenu:
             return None
 
 
+class SettingsActions:
+    REBUILD_ALL = "rebuildAllPrivateChats"
+
+    def __init__(self, plugin: "TgStreaksPlugin"):
+        self.plugin = plugin
+
+    def build_settings(self) -> list[Any]:
+        return [
+            Header(text=self.plugin._t("settings.streak_tools")),
+            Text(
+                text=self.plugin._t("settings.force_check_all_private_chats"),
+                icon="msg_retry",
+                on_click=lambda _: self._on_click(self.REBUILD_ALL),
+            ),
+            Divider(text=self.plugin._t("settings.only_private.hint")),
+        ]
+
+    def _on_click(self, key: str):
+        try:
+            self._invoke_callback(String(key))
+        except Exception as e:
+            self.plugin.log_exception(
+                f"Failed to execute settings callback {key}",
+                e,
+            )
+
+    def _invoke_callback(self, key: String):
+        if self.plugin.jvm_plugin.klass is None:
+            self.plugin.log(
+                f"Settings callback {key} is unavailable: JVM plugin is not loaded"
+            )
+            return
+
+        try:
+            self.plugin.jvm_plugin.klass.getDeclaredMethod(
+                String("invokeSettingsActionCallback"),
+                String.getClass(),
+            ).invoke(None, key)  # ty:ignore[no-matching-overload]
+        except Exception as e:
+            self.plugin.log_exception(
+                f"Failed to resolve settings callback {key}",
+                e,
+            )
+
+
 class PluginUpdateChecker:
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
@@ -1154,6 +1207,8 @@ class PluginUpdateChecker:
 
 
 class TgStreaksPlugin(BasePlugin):
+    settings_actions: SettingsActions
+
     def log_exception(self, message: str, exception: BaseException):
         self.log(f"{message}: {exception}")
 
@@ -1167,6 +1222,9 @@ class TgStreaksPlugin(BasePlugin):
                     self.log(line)
 
     def create_settings(self) -> list[Any]:
+        if not hasattr(self, "settings_actions"):
+            self.settings_actions = SettingsActions(self)
+
         return [
             Header(text=self._t("settings.updates")),
             Switch(
@@ -1177,6 +1235,7 @@ class TgStreaksPlugin(BasePlugin):
                 icon="msg_retry",
                 on_change=lambda value: self._on_update_check_setting_changed(value),
             ),
+            *self.settings_actions.build_settings(),
         ]
 
     def _show_info(self, message: str):
@@ -1508,6 +1567,7 @@ class TgStreaksPlugin(BasePlugin):
 
         self._register_streak_levels()
 
+        self.settings_actions = SettingsActions(self)
         self.chat_context_menu = ChatContextMenu(self)
         self.chat_context_menu.register()
 

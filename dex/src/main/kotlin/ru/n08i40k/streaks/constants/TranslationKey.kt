@@ -2,9 +2,14 @@ package ru.n08i40k.streaks.constants
 
 object TranslationKey {
     const val FORCE_CHECK_DAY_PROGRESS_CHAT = "force_check.day_progress_chat"
+    const val FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE = "force_check.day_progress_all_simple"
+    const val FORCE_CHECK_SUMMARY_ALL_SIMPLE = "force_check.summary_all_simple"
     const val OK_UPGRADE_SERVICE_MESSAGES_ENABLED = "ok.upgrade_service_messages_enabled"
     const val OK_UPGRADE_SERVICE_MESSAGES_DISABLED = "ok.upgrade_service_messages_disabled"
     const val OK_STREAK_RESTORED = "ok.streak_restored"
+    const val ERR_FORCE_CHECK_FAILED_LOGS = "err.force_check_failed_logs"
+    const val INFO_FORCE_CHECK_ALREADY_RUNNING = "info.force_check_already_running"
+    const val INFO_FORCE_CHECK_STARTED_ALL = "info.force_check_started_all"
     const val INFO_PRIVATE_USER_ONLY = "info.private_user_only"
     const val INFO_ACTION_NOT_AVAILABLE_FOR_BOTS = "info.action_not_available_for_bots"
     const val INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS = "info.action_not_available_for_deleted_users"
