@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+path="plugin/tg-streaks.py"
+
+if ! git diff --cached --name-only --diff-filter=ACMR -- "$path" | grep -qx "$path"; then
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+script="$repo_root/scripts/transform_plugin_urls.py"
+index_entry=$(git ls-files -s -- "$path")
+mode=$(printf '%s\n' "$index_entry" | awk '{print $1}')
+
+staged_file=$(mktemp)
+release_file=$(mktemp)
+trap 'rm -f "$staged_file" "$release_file"' EXIT HUP INT TERM
+
+git show ":$path" >"$staged_file"
+python "$script" --mode clean <"$staged_file" >"$release_file"
+
+if ! cmp -s "$staged_file" "$release_file"; then
+  blob_oid=$(git hash-object -w "$release_file")
+  git update-index --cacheinfo "$mode","$blob_oid","$path"
+fi
+
+python "$script" --mode check-release <"$release_file" >/dev/null
