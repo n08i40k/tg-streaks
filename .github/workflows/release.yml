@@ -1,0 +1,212 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Plugin version in x.x.x format
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-dex:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "build-tools;36.1.0" "platforms;android-36.1"
+
+      - name: Point Gradle to runner Android SDK
+        run: |
+          printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > dex/local.properties
+
+      - name: Validate release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must match x.x.x" >&2
+            exit 1
+          fi
+
+      - name: Ensure Telegram JAR exists
+        run: |
+          if [[ ! -s dex/libs/Telegram.jar ]]; then
+            echo "dex/libs/Telegram.jar is missing. Commit the host JAR to dex/libs/Telegram.jar." >&2
+            exit 1
+          fi
+
+      - name: Build release DEX
+        run: |
+          chmod +x dex/gradlew
+          (
+            cd dex
+            ./gradlew --no-daemon -Dorg.gradle.java.home="$JAVA_HOME" buildDexRelease
+          )
+
+      - name: Upload classes.dex artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: classes-dex
+          path: dex/build/outputs/dex/release/classes.dex
+          if-no-files-found: error
+
+  compress-resources:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Prepare resources cache metadata
+        id: resources_meta
+        run: |
+          resources_commit="$(git log -1 --format=%H -- resources || true)"
+          if [[ -z "$resources_commit" ]]; then
+            resources_commit="no-resources-history"
+          fi
+          echo "cache_key=${resources_commit}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached resources ZIP
+        id: cache_resources
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/resources.zip
+          key: resources-zip-${{ runner.os }}-${{ steps.resources_meta.outputs.cache_key }}
+
+      - name: Build resources ZIP
+        if: steps.cache_resources.outputs.cache-hit != 'true'
+        run: |
+          resources_zip="$RUNNER_TEMP/resources.zip"
+          rm -f "$resources_zip"
+          (
+            cd "$GITHUB_WORKSPACE"
+            find resources -type f | LC_ALL=C sort | zip -9 -X "$resources_zip" -@
+          )
+
+      - name: Upload resources.zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: resources-zip
+          path: ${{ runner.temp }}/resources.zip
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - build-dex
+      - compress-resources
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Validate release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must match x.x.x" >&2
+            exit 1
+          fi
+
+      - name: Download classes.dex artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: classes-dex
+          path: ${{ runner.temp }}/release-inputs
+
+      - name: Download resources.zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: resources-zip
+          path: ${{ runner.temp }}/release-inputs
+
+      - name: Prepare plugin metadata for release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python scripts/prepare_release.py \
+            --version "$VERSION" \
+            --dex "$RUNNER_TEMP/release-inputs/classes.dex" \
+            --resources "$RUNNER_TEMP/release-inputs/resources.zip" \
+            --plugin-file plugin/tg-streaks.py \
+            --pyproject-file plugin/pyproject.toml
+
+          release_dir="$RUNNER_TEMP/release"
+          rm -rf "$release_dir"
+          mkdir -p "$release_dir"
+          cp plugin/tg-streaks.py "$release_dir/tg-streaks.plugin"
+          cp "$RUNNER_TEMP/release-inputs/classes.dex" "$release_dir/classes.dex"
+          cp "$RUNNER_TEMP/release-inputs/resources.zip" "$release_dir/resources.zip"
+
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit release metadata
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git add plugin/tg-streaks.py plugin/pyproject.toml
+          git diff --cached --quiet && {
+            echo "No plugin metadata changes to commit" >&2
+            exit 1
+          }
+          git commit -m "release: ${VERSION}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Create and push tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git rev-parse "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} already exists" >&2
+            exit 1
+          fi
+          git tag "${VERSION}"
+          git push origin "refs/tags/${VERSION}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          gh release create "$VERSION" \
+            "$release_dir/tg-streaks.plugin#tg-streaks.plugin" \
+            "$release_dir/classes.dex#classes.dex" \
+            "$release_dir/resources.zip#resources.zip" \
+            --title "$VERSION" \
+            --notes ""
