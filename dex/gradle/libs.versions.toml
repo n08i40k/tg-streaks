@@ -1,7 +1,9 @@
 [versions]
 aliuhook = "1.1.3"
 desugar_jdk_libs = "2.1.5"
-kotlin = "2.3.10"
+#noinspection GradleDependency
+kotlin = "2.2.0"
+kotlinxCoroutinesCore = "1.10.2"
 roomRuntime = "2.8.4"
 
 [libraries]
@@ -9,5 +11,6 @@ aliuhook = { module = "com.aliucord:Aliuhook", version.ref = "aliuhook" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomRuntime" }
 desugar_jdk_libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar_jdk_libs" }
 jetbrains-kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutinesCore" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomRuntime" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }

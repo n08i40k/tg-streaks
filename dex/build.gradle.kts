@@ -4,6 +4,7 @@ import org.gradle.api.Project
 import org.gradle.api.tasks.Sync
 import org.gradle.kotlin.dsl.coreLibraryDesugaring
 import java.io.File
+import java.util.zip.ZipFile
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -14,21 +15,11 @@ private val TARGET_SDK = 36
 private val BUILD_TOOLS_VERSION = "36.1.0"
 private val PROGUARD_RULES_FILE = "proguard-rules.pro"
 private val TELEGRAM_JAR_PATH = "libs/Telegram.jar"
-private val TELEGRAM_COMPILE_STRIP_PREFIXES = listOf(
-    "kotlin/",
-    "kotlinx/",
+private val TELEGRAM_COMPILE_PACKAGE_PREFIXES = listOf(
+    "org/telegram/",
+    "com/exteragram/",
+    "androidx/recyclerview/",
     "java/",
-    "javax/",
-    "jdk/",
-    "sun/",
-    "com/android/tools/r8/",
-    "j$/com/android/tools/r8/"
-)
-private val TELEGRAM_COMPILE_STRIP_EXACT_PATHS = setOf("module-info.class")
-private val TELEGRAM_COMPILE_STRIP_META_INF_SUFFIXES = listOf(".kotlin_module")
-private val TELEGRAM_COMPILE_STRIP_META_INF_PREFIXES = listOf(
-    "META-INF/services/kotlin.",
-    "META-INF/services/kotlinx."
 )
 
 private fun File.isJarFile(): Boolean = isFile && extension.equals("jar", ignoreCase = true)
@@ -48,6 +39,45 @@ private fun File.artifactKey(): String {
 }
 
 private fun String.toVariantTitle(): String = replaceFirstChar(Char::uppercaseChar)
+
+private fun File.extractAarJars(outputDir: File): List<String> {
+    if (!outputDir.exists()) {
+        outputDir.mkdirs()
+    }
+
+    val artifactDir = outputDir.resolve("${artifactKey()}-${absolutePath.hashCode().toUInt().toString(16)}")
+    if (artifactDir.exists()) {
+        artifactDir.deleteRecursively()
+    }
+    artifactDir.mkdirs()
+
+    return ZipFile(this).use { zip ->
+        zip.entries().asSequence()
+            .filter { !it.isDirectory && (it.name == "classes.jar" || it.name.startsWith("libs/")) && it.name.endsWith(".jar") }
+            .map { entry ->
+                val outputFile = artifactDir.resolve(entry.name.removePrefix("libs/"))
+                outputFile.parentFile?.mkdirs()
+                zip.getInputStream(entry).use { input ->
+                    outputFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                outputFile.absolutePath
+            }
+            .toList()
+    }
+}
+
+private fun Project.resolveClasspathArtifactPaths(configurationName: String, extractionRoot: File): List<String> =
+    configurations.findByName(configurationName)
+        ?.resolve()
+        .orEmpty()
+        .flatMap { artifact ->
+            when {
+                artifact.isJarFile() -> listOf(artifact.absolutePath)
+                artifact.extension.equals("aar", ignoreCase = true) ->
+                    artifact.extractAarJars(extractionRoot.resolve(configurationName))
+                else -> emptyList()
+            }
+        }
 
 private fun Project.resolveAndroidSdkDir(): File {
     val localProperties = Properties()
@@ -80,16 +110,6 @@ private fun Project.resolveAndroidJar(): File {
     }
 
     return androidJar
-}
-
-private fun shouldStripTelegramCompileEntry(path: String): Boolean {
-    val normalizedPath = path.removePrefix("/")
-
-    return TELEGRAM_COMPILE_STRIP_PREFIXES.any(normalizedPath::startsWith) ||
-            normalizedPath in TELEGRAM_COMPILE_STRIP_EXACT_PATHS ||
-            TELEGRAM_COMPILE_STRIP_META_INF_PREFIXES.any(normalizedPath::startsWith) ||
-            (normalizedPath.startsWith("META-INF/") &&
-                    TELEGRAM_COMPILE_STRIP_META_INF_SUFFIXES.any(normalizedPath::endsWith))
 }
 
 plugins {
@@ -157,29 +177,24 @@ kotlin {
 }
 
 val unpackTelegramCompileClasspath by tasks.registering(Sync::class) {
-    val outputDir = layout.buildDirectory.dir("intermediates/telegram-compile/classes")
+    val outputDir = layout.buildDirectory.dir("intermediates/telegram-compile-host-java/classes")
 
     from(zipTree(TELEGRAM_JAR_PATH))
     into(outputDir)
     includeEmptyDirs = false
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    eachFile {
-        if (shouldStripTelegramCompileEntry(path)) {
-            exclude()
-        }
-    }
+    TELEGRAM_COMPILE_PACKAGE_PREFIXES.forEach { include("${it}**/*.class") }
 }
 
 val telegramCompileClasspathJar by tasks.registering(Jar::class) {
     dependsOn(unpackTelegramCompileClasspath)
     archiveBaseName.set("Telegram-compile")
-    archiveVersion.set("1")
+    archiveVersion.set("host-api-java")
     destinationDirectory.set(layout.buildDirectory.dir("generated/compile-jars"))
     includeEmptyDirs = false
 
     // Keep Telegram API classes only; strip bundled runtime/platform namespaces first.
-    from(layout.buildDirectory.dir("intermediates/telegram-compile/classes"))
+    from(layout.buildDirectory.dir("intermediates/telegram-compile-host-java/classes"))
 }
 
 val embed by configurations.creating {
@@ -192,30 +207,26 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    implementation(libs.aliuhook)
+    compileOnly(libs.aliuhook)
     compileOnly(libs.jetbrains.kotlin.stdlib)
+    compileOnly(libs.kotlinx.coroutines.core)
     compileOnly(files(telegramCompileClasspathJar))
     add(embed.name, libs.jetbrains.kotlin.stdlib)
+    add(embed.name, libs.kotlinx.coroutines.core)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
-
-fun resolveJarPaths(configurationName: String): List<String> =
-    configurations.findByName(configurationName)
-        ?.resolve()
-        .orEmpty()
-        .filter(File::isJarFile)
-        .map(File::getAbsolutePath)
 
 fun registerBuildDexTask(variant: String) {
     val variantTitle = variant.toVariantTitle()
     val taskName = "buildDex$variantTitle"
-    val assembleTask = "assemble$variantTitle"
+    val compileKotlinTask = "compile${variantTitle}Kotlin"
+    val compileJavaTask = "compile${variantTitle}JavaWithJavac"
     val sdkDirectory = project.resolveAndroidSdkDir()
     val androidJar = project.resolveAndroidJar()
 
     tasks.register(taskName) {
         group = "build"
-        dependsOn(assembleTask)
+        dependsOn(compileKotlinTask, compileJavaTask)
 
         doLast {
             val buildDirFile = layout.buildDirectory.asFile.get()
@@ -224,22 +235,37 @@ fun registerBuildDexTask(variant: String) {
                 throw GradleException("Missing Proguard config: ${proguardRules.absolutePath}")
             }
 
-            val compileJar = buildDirFile.resolve(
-                "intermediates/compile_library_classes_jar/$variant/" +
-                        "bundleLibCompileToJar$variantTitle/classes.jar"
+            val classInputCandidates = listOf(
+                buildDirFile.resolve("intermediates/built_in_kotlinc/$variant/compile${variantTitle}Kotlin/classes"),
+                buildDirFile.resolve("intermediates/javac/$variant/compile${variantTitle}JavaWithJavac/classes"),
+                buildDirFile.resolve(
+                    "intermediates/compile_library_classes_jar/$variant/" +
+                            "bundleLibCompileToJar$variantTitle/classes.jar"
+                )
             )
-            val classInputs = if (compileJar.exists()) {
-                listOf(compileJar.absolutePath)
-            } else {
-                fileTree(buildDirFile.resolve("tmp/kotlin-classes/$variant"))
-                    .matching { include("**/*.class") }
-                    .files
-                    .map { it.absolutePath }
-            }
+            val classInputs = classInputCandidates
+                .filter(File::exists)
+                .flatMap { input ->
+                    if (input.isDirectory) {
+                        fileTree(input)
+                            .matching { include("**/*.class") }
+                            .files
+                            .map(File::getAbsolutePath)
+                    } else {
+                        listOf(input.absolutePath)
+                    }
+                }
+                .ifEmpty {
+                    fileTree(buildDirFile.resolve("tmp/kotlin-classes/$variant"))
+                        .matching { include("**/*.class") }
+                        .files
+                        .map(File::getAbsolutePath)
+                }
 
-            val runtimeJars = resolveJarPaths("${variant}RuntimeClasspath")
-            val compileJars = resolveJarPaths("${variant}CompileClasspath")
-            val embeddedJars = resolveJarPaths(embed.name)
+            val extractedArtifactRoot = buildDirFile.resolve("intermediates/extracted-classpath-artifacts")
+            val runtimeJars = resolveClasspathArtifactPaths("${variant}RuntimeClasspath", extractedArtifactRoot)
+            val compileJars = resolveClasspathArtifactPaths("${variant}CompileClasspath", extractedArtifactRoot)
+            val embeddedJars = resolveClasspathArtifactPaths(embed.name, extractedArtifactRoot)
 
             val embeddedModules = embeddedJars.map { File(it).artifactKey() }.toSet()
             val filteredRuntimeJars =
@@ -250,7 +276,7 @@ fun registerBuildDexTask(variant: String) {
             val dexInputs = (classInputs + filteredRuntimeJars + embeddedJars).distinct()
             if (dexInputs.isEmpty()) {
                 throw GradleException(
-                    "No class inputs found for variant '$variant'. Run $assembleTask first."
+                    "No class inputs found for variant '$variant'. Run $compileKotlinTask first."
                 )
             }
 
@@ -258,8 +284,7 @@ fun registerBuildDexTask(variant: String) {
             val classpathJars = compileJars
                 .filterNot {
                     val jar = File(it)
-                    it.contains("Aliuhook") ||
-                            it == androidJar.absolutePath ||
+                    it == androidJar.absolutePath ||
                             jar.artifactKey() in dexInputKeys
                 }
                 .distinct()
@@ -273,6 +298,16 @@ fun registerBuildDexTask(variant: String) {
                     "Failed to create d8 output directory: '${outputDirFile.absolutePath}'."
                 )
             }
+
+            val buildDexRules = buildDirFile.resolve("intermediates/build-dex/$variant/proguard-rules.pro")
+            buildDexRules.parentFile.mkdirs()
+            buildDexRules.writeText(
+                """
+                # The host Telegram classpath is intentionally partial here; only the plugin and
+                # embedded runtime jars are packaged into the output dex.
+                -ignorewarnings
+                """.trimIndent()
+            )
 
             val r8Jar = sdkDirectory.resolve("build-tools/$BUILD_TOOLS_VERSION/lib/d8.jar")
             val javaBin =
@@ -293,6 +328,7 @@ fun registerBuildDexTask(variant: String) {
                 args("--output", outputDirFile.absolutePath)
                 args("--min-api", MIN_SDK.toString())
                 args("--pg-conf", proguardRules.absolutePath)
+                args("--pg-conf", buildDexRules.absolutePath)
                 args("--lib", androidJar.absolutePath)
                 classpathJars.forEach { args("--classpath", it) }
                 args(dexInputs)

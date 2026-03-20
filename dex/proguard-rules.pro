@@ -1,10 +1,11 @@
--keep class ru.n08i40k.streaks.Plugin {
+-keep class ru.n08i40k.streaks.** {
     *;
 }
 
--keep class ru.n08i40k.streaks.Plugin$Companion {
-    *;
-}
+-keepnames class android.util.LongSparseArray
+-keepnames class androidx.collection.LongSparseArray
+-keepnames class java.**
+-keeppackagenames java.**
 
--repackageclasses 'ru.n08i40k.streaks.shaded'
+-repackageclasses 'ru.n08i40k.streaks_shaded'
 -keepattributes *Annotation*,InnerClasses,EnclosingMethod,Signature

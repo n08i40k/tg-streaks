@@ -9,15 +9,27 @@ package ru.n08i40k.streaks
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.view.View
 import android.webkit.ValueCallback
-import androidx.collection.LongSparseArray
+import androidx.room.Room
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.ApplicationLoader
+import org.telegram.messenger.BaseController
 import org.telegram.messenger.ImageReceiver
 import org.telegram.messenger.MessageObject
+import org.telegram.messenger.MessageSuggestionParams
 import org.telegram.messenger.MessagesController
+import org.telegram.messenger.SendMessagesHelper
+import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
@@ -27,22 +39,35 @@ import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.Cells.UserCell
 import org.telegram.ui.ChatActivity
-import org.telegram.ui.Components.AnimatedEmojiDrawable
+import org.telegram.ui.Components.BulletinFactory
 import org.telegram.ui.Components.ChatAvatarContainer
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.DialogsActivity
+import org.telegram.ui.LaunchActivity
 import org.telegram.ui.ProfileActivity
-import org.telegram.ui.Stars.StarsReactionsSheet
-import ru.n08i40k.streaks.data.StreakData
-import ru.n08i40k.streaks.overrides.StreakAnimatedEmojiDrawable
-import ru.n08i40k.streaks.overrides.StreakBottomSheet
-import ru.n08i40k.streaks.overrides.StreakParticles
+import ru.n08i40k.streaks.constants.ChatContextMenuButton
+import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.controller.StreaksController
+import ru.n08i40k.streaks.data.StreakLevel
+import ru.n08i40k.streaks.database.LegacyUsersDbImporter
+import ru.n08i40k.streaks.database.MIGRATION_1_2
+import ru.n08i40k.streaks.database.MIGRATION_2_3
+import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
+import ru.n08i40k.streaks.override.StreakEmoji
+import ru.n08i40k.streaks.override.StreakInfoBottomSheet
+import ru.n08i40k.streaks.registry.LockableCallbackRegistry
+import ru.n08i40k.streaks.registry.StreakEmojiRegistry
+import ru.n08i40k.streaks.registry.StreakLevelRegistry
+import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.util.cloneFields
+import ru.n08i40k.streaks.util.getField
+import ru.n08i40k.streaks.util.getFieldValue
 import java.lang.reflect.Member
 
 private typealias Logger = ValueCallback<String>
-private typealias StreakResolver = java.util.function.Function<Long, Array<Any>?>
 private typealias TranslationResolver = java.util.function.Function<String, String?>
-private typealias ReviveResolver = java.util.function.Function<Long, Boolean>
 
 class Plugin {
     @Suppress("unused")
@@ -50,17 +75,51 @@ class Plugin {
         private var INSTANCE: Plugin? = null
 
         @JvmStatic
+        fun getInstance(): Plugin? = INSTANCE
+
+        @JvmStatic
+        fun getBuildDate(): String = Integer.toHexString(BuildConfig.BUILD_TIME.hashCode())
+
+        @JvmStatic
         fun inject(
             logger: Logger,
-            streakResolver: StreakResolver,
             translationResolver: TranslationResolver,
-            reviveResolver: ReviveResolver
+            resourcesRootPath: String,
         ) {
             if (INSTANCE != null)
                 return
 
-            INSTANCE = Plugin(logger, streakResolver, translationResolver, reviveResolver)
+            INSTANCE = Plugin(
+                logger,
+                translationResolver,
+                ResourcesProvider(resourcesRootPath),
+            )
             INSTANCE!!.onInject()
+        }
+
+        @JvmStatic
+        fun invokeChatContextMenuCallback(key: String, id: Long) {
+            if (INSTANCE == null)
+                throw NullPointerException("Plugin is not injected")
+
+            INSTANCE!!.chatContextMenuCallbackRegistry.get(key).accept(id)
+        }
+
+        @JvmStatic
+        fun registerStreakLevel(
+            length: Int,
+            color: Color,
+            documentId: Long,
+            popupResourceName: String,
+        ) {
+            INSTANCE?.streakLevelRegistry?.register(
+                StreakLevel(length, color, documentId, popupResourceName)
+            )
+        }
+
+        @JvmStatic
+        fun finalizeInject() {
+            INSTANCE?.onFinalizeInject()
         }
 
         @JvmStatic
@@ -68,45 +127,24 @@ class Plugin {
             INSTANCE?.onEject()
             INSTANCE = null
         }
-
-        @JvmStatic
-        fun getBuildDate(): String = Integer.toHexString(BuildConfig.BUILD_TIME.hashCode())
-
-        @JvmStatic
-        fun getInstance(): Plugin? = INSTANCE
-
-        @JvmStatic
-        fun clearCaches() {
-            INSTANCE?.streakDrawableEjectData?.forEach { it.drawable.get()?.resetCache() }
-        }
-
-        @JvmStatic
-        fun enableParticles(
-            drawable: AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable,
-            color: Int
-        ) {
-            drawable.setParticles(true, true)
-
-            val field =
-                getField(AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable::class.java, "particles")
-            val particles = field.get(drawable)!! as StarsReactionsSheet.Particles
-
-            field.set(drawable, StreakParticles(particles, color))
-        }
     }
 
+
+    private val db: PluginDatabase
+    private val legacyUsersDbImporter: LegacyUsersDbImporter
+
     private val logger: Logger
-    private val streakResolver: StreakResolver
     private val translationResolver: TranslationResolver
-    private val reviveResolver: ReviveResolver
+    val resourcesProvider: ResourcesProvider
 
-    private val upgradeMessageRegex = Regex("^tg-streaks:upgrade:(\\d+)$")
-    private val deathMessageText = "tg-streaks:death"
-    private val restoreMessageText = "tg-streaks:restore"
+    private val chatContextMenuCallbackRegistry = LockableCallbackRegistry()
+    private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
+    val streakEmojiRegistry = StreakEmojiRegistry()
 
-    private var hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
-    private var streakDrawableEjectData: ArrayList<StreakAnimatedEmojiDrawable.EjectData> =
-        arrayListOf()
+    val streaksController: StreaksController
+    val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
+
+    val backgroundScope = CoroutineScope(Dispatchers.IO)
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
@@ -124,50 +162,122 @@ class Plugin {
 
     constructor(
         logger: Logger,
-        streakResolver: StreakResolver,
         translationResolver: TranslationResolver,
-        reviveResolver: ReviveResolver
+        resourcesProvider: ResourcesProvider,
     ) {
         this.logger = logger
-        this.streakResolver = streakResolver
         this.translationResolver = translationResolver
-        this.reviveResolver = reviveResolver
+        this.resourcesProvider = resourcesProvider
+
+        this.db = Room.databaseBuilder(
+            ApplicationLoader.applicationContext,
+            PluginDatabase::class.java,
+            "tg-streaks"
+        )
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .build()
+
+        this.legacyUsersDbImporter = LegacyUsersDbImporter(this.db, this::log)
+        this.streaksController = StreaksController(this.db, resourcesProvider)
     }
 
     fun log(message: String) =
         logger.onReceiveValue(message)
 
-    fun logException(message: String, exception: Exception) {
-        logger.onReceiveValue(message)
-        logger.onReceiveValue(exception.toString())
-        logger.onReceiveValue(exception.stackTrace.joinToString("\n"))
-    }
+    fun logException(message: String, exception: Throwable) {
+        val e = exception as? Exception ?: Exception(exception)
 
-    fun resolveStreakData(userId: Long): StreakData? =
-        this.streakResolver.apply(userId)
-            ?.let { StreakData.fromArray(it) }
+        logger.onReceiveValue(message)
+        logger.onReceiveValue(e.toString())
+        logger.onReceiveValue(e.stackTrace.joinToString("\n"))
+    }
 
     fun translate(key: String): String =
         translationResolver.apply(key) ?: key
 
-    fun reviveStreak(dialogId: Long): Boolean =
-        reviveResolver.apply(dialogId)
+    fun translate(key: String, replacements: Map<String, String>): String {
+        var value = translate(key)
 
-    fun addStreakDrawableEjectData(ejectData: StreakAnimatedEmojiDrawable.EjectData) =
-        streakDrawableEjectData.add(ejectData)
+        replacements.forEach { (name, replacement) ->
+            value = value.replace("{$name}", replacement)
+        }
+
+        return value
+    }
+
+    fun showBulletin(icon: String?, message: String) {
+        AndroidUtilities.runOnUIThread {
+            val fragment = LaunchActivity.getSafeLastFragment()
+                ?.takeIf { BulletinFactory.canShowBulletin(it) }
+                ?: return@runOnUIThread
+
+            val bulletin = BulletinFactory.of(fragment).let { factory ->
+                if (icon.isNullOrBlank()) {
+                    factory.createSimpleBulletin(message, "")
+                } else {
+                    val drawableId = ApplicationLoader.applicationContext.resources
+                        .getIdentifier(
+                            icon,
+                            "drawable",
+                            ApplicationLoader.applicationContext.packageName
+                        )
+
+                    if (drawableId != 0) {
+                        factory.createSimpleBulletin(drawableId, message)
+                    } else {
+                        factory.createEmojiBulletin(icon, message)
+                    }
+                }
+            }
+
+            bulletin.show()
+        }
+    }
+
+    fun showTranslatedBulletin(key: String, icon: String? = null) {
+        showBulletin(icon, translate(key))
+    }
+
+    fun showTranslatedBulletin(
+        key: String,
+        replacements: Map<String, String>,
+        icon: String? = null
+    ) {
+        showBulletin(icon, translate(key, replacements))
+    }
 
     private fun onInject() {
-        try {
-            hookMethods()
-        } catch (e: Exception) {
-            logException("Failed to hook methods!", e)
-            onEject()
-        }
+        registerCallbacks()
 
         log("Injected!")
     }
 
+    private fun onFinalizeInject() {
+        runBlocking {
+            legacyUsersDbImporter.importIfNeeded()
+            userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
+        }
+
+        try {
+            hookMethods()
+        } catch (e: Exception) {
+            logException("Failed to hook methods!", e)
+            return onEject()
+        }
+
+        backgroundScope.launch {
+            streaksController.checkAllForUpdates()
+            streaksController.flushCurrentChatPopup()
+
+            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+        }
+
+        log("Inject finalized!")
+    }
+
     private fun onEject() {
+        backgroundScope.cancel()
+
         try {
             hooks.forEach { it.unhook() }
             hooks.clear()
@@ -176,60 +286,314 @@ class Plugin {
         }
 
         try {
-            streakDrawableEjectData.forEach { it.restore() }
-            streakDrawableEjectData.clear()
+            streakEmojiRegistry.restoreAll()
         } catch (e: Exception) {
             logException("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
 
+        chatContextMenuCallbackRegistry.clear()
+
         log("Ejected!")
     }
 
-    private fun hookMethod(method: Member, hook: XC_MethodHook) {
-        hooks.add(XposedBridge.hookMethod(method, hook))
-    }
-
-    private fun hookBefore(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
-        hookMethod(
-            method,
-            object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    try {
-                        callback(param)
-                    } catch (e: Throwable) {
-                        logException(
-                            "An exception occurred in $method before-call hook!",
-                            e as? Exception ?: Exception(e)
-                        )
-                        eject()
-                    }
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun registerCallbacks() {
+        fun add(key: String, callback: (Long) -> Unit) {
+            chatContextMenuCallbackRegistry.register(key) {
+                try {
+                    callback(it)
+                } catch (e: Throwable) {
+                    logException("An exception occurred while handling context menu entry touch", e)
+                    eject()
                 }
             }
-        )
-    }
+        }
 
-    private fun hookAfter(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
-        hookMethod(
-            method,
-            object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    try {
-                        callback(param)
-                    } catch (e: Throwable) {
-                        logException(
-                            "An exception occurred in $method after-call hook!",
-                            e as? Exception ?: Exception(e)
-                        )
-                        eject()
-                    }
+        fun validateDebugPeer(accountId: Int, peerUserId: Long): TLRPC.User? {
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+            if (peerUserId <= 0L || peerUserId == ownerUserId) {
+                showTranslatedBulletin(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
+                return null
+            }
+
+            val peer = MessagesController.getInstance(accountId).getUser(peerUserId)
+
+            if (
+                peer == null
+                || UserObject.isBot(peer)
+                || UserObject.isDeleted(peer)
+                || UserObject.isReplyUser(peer)
+                || UserObject.isUserSelf(peer)
+            ) {
+                showTranslatedBulletin(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
+                return null
+            }
+
+            return peer
+        }
+
+        suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
+            streaksController.syncUserState(accountId, peerUserId)
+
+            AndroidUtilities.runOnUIThread {
+                streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+                streakEmojiRegistry.refreshDialogCells()
+            }
+        }
+
+        add(ChatContextMenuButton.REBUILD) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                val revives = db
+                    .streakReviveDao()
+                    .findByRelation(ownerUserId, peerUserId)
+                    .map { it.revivedAt }
+                    .toSet()
+
+                streaksController.rebuild(accountId, peer, revives) { progress ->
+                    progress.showBulletin()
                 }
             }
-        )
+
+            log("[Context Menu] Rebuild clicked on $peerUserId")
+        }
+
+        add(ChatContextMenuButton.TOGGLE_SERVICE_MESSAGES) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+            if (peerUserId <= 0L || peerUserId == ownerUserId) {
+                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return@add
+            }
+
+            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
+                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return@add
+            }
+
+            if (UserObject.isBot(peer)) {
+                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
+                return@add
+            }
+
+            if (UserObject.isDeleted(peer)) {
+                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
+                return@add
+            }
+
+            val enabled = streaksController.toggleServiceMessages(accountId, peerUserId)
+
+            showTranslatedBulletin(
+                if (enabled) {
+                    TranslationKey.OK_UPGRADE_SERVICE_MESSAGES_ENABLED
+                } else {
+                    TranslationKey.OK_UPGRADE_SERVICE_MESSAGES_DISABLED
+                },
+                "msg_reactions"
+            )
+
+            log("[Context Menu] Toggle service messages clicked on $peerUserId; enabled=$enabled")
+        }
+
+        add(ChatContextMenuButton.REVIVE) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+            if (peerUserId <= 0L || peerUserId == ownerUserId) {
+                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return@add
+            }
+
+            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
+                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return@add
+            }
+
+            if (UserObject.isBot(peer)) {
+                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
+                return@add
+            }
+
+            if (UserObject.isDeleted(peer)) {
+                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
+                return@add
+            }
+
+            backgroundScope.launch {
+                val streak = streaksController.get(accountId, peerUserId)
+
+                if (streak == null) {
+                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    return@launch
+                }
+
+                if (!streak.dead) {
+                    showTranslatedBulletin(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
+                    return@launch
+                }
+
+                if (!streak.canRevive) {
+                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    return@launch
+                }
+
+                if (!streaksController.reviveNow(accountId, peerUserId)) {
+                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    return@launch
+                }
+
+                streaksController.patchUser(accountId, peer)
+                MessagesController.getInstance(accountId).putUser(peer, false, true)
+                streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+                AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+                showTranslatedBulletin(TranslationKey.OK_STREAK_RESTORED, "msg_reactions")
+            }
+        }
+
+        add(ChatContextMenuButton.DEBUG_CREATE) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                streaksController.debugSetThreeDayStreak(accountId, peerUserId)
+                syncPeerUi(accountId, peerUserId)
+                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_SET_3, "msg_reactions")
+            }
+
+            log("[Context Menu] Debug-create clicked on ${peer.id}")
+        }
+
+        add(ChatContextMenuButton.DEBUG_UPGRADE) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                val streak = streaksController.get(accountId, peerUserId)
+
+                if (streak == null) {
+                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    return@launch
+                }
+
+                val nextLevel = streakLevelRegistry
+                    .levels()
+                    .firstOrNull { level -> level.length > streak.level.length }
+
+                if (nextLevel == null) {
+                    showTranslatedBulletin(TranslationKey.INFO_DEBUG_STREAK_ALREADY_MAX)
+                    return@launch
+                }
+
+                val newLength =
+                    streaksController.debugUpgradeStreak(accountId, peerUserId) ?: return@launch
+                syncPeerUi(accountId, peerUserId)
+                showTranslatedBulletin(
+                    TranslationKey.OK_DEBUG_STREAK_UPGRADED,
+                    mapOf("days" to newLength.toString()),
+                    "msg_reactions"
+                )
+            }
+
+            log("[Context Menu] Debug-upgrade clicked on ${peer.id}")
+        }
+
+        add(ChatContextMenuButton.DEBUG_FREEZE) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                streaksController.debugFreezeStreak(accountId, peerUserId)
+                syncPeerUi(accountId, peerUserId)
+                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_FROZEN, "msg_reactions")
+            }
+
+            log("[Context Menu] Debug-freeze clicked on ${peer.id}")
+        }
+
+        add(ChatContextMenuButton.DEBUG_KILL) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                streaksController.debugMarkDead(accountId, peerUserId)
+                syncPeerUi(accountId, peerUserId)
+                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_MARKED_DEAD, "msg_reactions")
+            }
+
+            log("[Context Menu] Debug-kill clicked on ${peer.id}")
+        }
+
+        add(ChatContextMenuButton.DEBUG_DELETE) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
+                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    return@launch
+                }
+
+                syncPeerUi(accountId, peerUserId)
+                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_DELETED, "msg_reactions")
+            }
+
+            log("[Context Menu] Debug-delete clicked on ${peer.id}")
+        }
+
+        chatContextMenuCallbackRegistry.freeze()
     }
+
 
     private fun hookMethods() {
+        fun add(method: Member, hook: XC_MethodHook) {
+            hooks.add(XposedBridge.hookMethod(method, hook))
+        }
+
+        fun before(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
+            add(
+                method,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        try {
+                            callback(param)
+                        } catch (e: Throwable) {
+                            logException(
+                                "An exception occurred in $method before-call hook!",
+                                e
+                            )
+                            eject()
+                        }
+                    }
+                }
+            )
+        }
+
+        fun after(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
+            add(
+                method,
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        try {
+                            callback(param)
+                        } catch (e: Throwable) {
+                            logException(
+                                "An exception occurred in $method after-call hook!",
+                                e
+                            )
+                            eject()
+                        }
+                    }
+                }
+            )
+        }
+
         // Чат в списке, нужно ещё увеличить bounds по x, иначе текста не будет
-        hookAfter(
+        after(
             DialogCell::class.java.getConstructor(
                 DialogsActivity::class.java,
                 Context::class.java,
@@ -243,7 +607,7 @@ class Plugin {
             val thisObject = param.thisObject as DialogCell
             val thisClass = DialogCell::class.java
 
-            StreakAnimatedEmojiDrawable.encapsulate(
+            StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatus"),
                 null,
@@ -252,9 +616,8 @@ class Plugin {
             )
         }
 
-
         // Конструктор чата в списке не имеет его в качестве аргумента, он задаётся после
-        hookAfter(
+        after(
             DialogCell::class.java.getDeclaredMethod(
                 "buildLayout",
             )
@@ -265,17 +628,17 @@ class Plugin {
             val currentDialogId =
                 getFieldValue<Long>(thisClass, thisObject, "currentDialogId")!!
 
-            getFieldValue<StreakAnimatedEmojiDrawable>(
+            getFieldValue<StreakEmoji>(
                 thisClass,
                 thisObject,
                 "emojiStatus"
-            )?.setUserId(currentDialogId)
+            )?.setPeerUserId(currentDialogId)
         }
 
         // Фикс отрисовки текста в местах, где размер view ограничен по x.
         // Например, в списке чатов, где у SwapAnimatedEmojiDrawable есть обёртка в виде View,
         // который жёстко ограничен по x.
-        hookAfter(
+        after(
             DialogCell::class.java.getDeclaredMethod(
                 "onLayout",
                 Boolean::class.java,
@@ -296,7 +659,7 @@ class Plugin {
         }
 
         // Сообщение в группе
-        hookAfter(
+        after(
             ChatMessageCell::class.java.getDeclaredMethod(
                 "setMessageObjectInternal",
                 MessageObject::class.java
@@ -307,9 +670,9 @@ class Plugin {
 
             val currentUser =
                 getFieldValue<TLRPC.User>(thisClass, thisObject, "currentUser")
-                    ?: return@hookAfter
+                    ?: return@after
 
-            StreakAnimatedEmojiDrawable.encapsulate(
+            StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "currentNameStatusDrawable"),
                 null,
@@ -320,15 +683,15 @@ class Plugin {
 
         // каким блять хуем я не могу кастануть child в parent?
         @Suppress("CAST_NEVER_SUCCEEDS")
-        hookBefore(
+        before(
             MessageObject::class.java.getDeclaredConstructor(
                 Int::class.java,
                 TLRPC.Message::class.java,
                 MessageObject::class.java,
                 java.util.AbstractMap::class.java,
                 java.util.AbstractMap::class.java,
-                LongSparseArray::class.java,
-                LongSparseArray::class.java,
+                androidx.collection.LongSparseArray::class.java,
+                androidx.collection.LongSparseArray::class.java,
                 Boolean::class.java,
                 Boolean::class.java,
                 Long::class.java,
@@ -339,14 +702,24 @@ class Plugin {
             )
 
         ) { param ->
-            val message = param.args[1] as? TLRPC.Message ?: return@hookBefore
+            val message = param.args[1] as? TLRPC.Message ?: return@before
             val currentAccount = param.args[0] as? Int ?: 0
 
             if (message.message == null)
-                return@hookBefore
+                return@before
+
+            val tryStreakCreate = streakCreate@{
+                if (message.message != ServiceMessage.CREATE_TEXT)
+                    return@streakCreate null
+
+                TLRPC.TL_messageActionCustomAction().apply {
+                    val messageText = translate(TranslationKey.SERVICE_MESSAGE_CREATE_TEXT)
+                    (this as TLRPC.MessageAction).message = messageText
+                }
+            }
 
             val tryStreakUpgrade = streakUpgrade@{
-                val days = upgradeMessageRegex
+                val days = ServiceMessage.UPGRADE_REGEX
                     .matchEntire(message.message)
                     ?.groupValues
                     ?.getOrNull(1)
@@ -354,7 +727,7 @@ class Plugin {
                     ?.takeIf { it > 0 } ?: return@streakUpgrade null
 
                 TLRPC.TL_messageActionCustomAction().apply {
-                    val messageText = translate("service_message_upgrade_text")
+                    val messageText = translate(TranslationKey.SERVICE_MESSAGE_UPGRADE_TEXT)
                         .replace("{days}", days.toString())
 
                     (this as TLRPC.MessageAction).message = messageText
@@ -362,7 +735,7 @@ class Plugin {
             }
 
             val tryStreakDeath = streakDeath@{
-                if (message.message != deathMessageText)
+                if (message.message != ServiceMessage.DEATH_TEXT)
                     return@streakDeath null
 
                 TLRPC.TL_messageActionPrizeStars().apply {
@@ -370,13 +743,13 @@ class Plugin {
                     flags = 0
                     giveaway_msg_id = 0
                     stars = 0
-                    transaction_id = deathMessageText
+                    transaction_id = ServiceMessage.DEATH_TEXT
                     unclaimed = false
                 }
             }
 
             val tryStreakRestore = streakRestore@{
-                if (message.message != restoreMessageText)
+                if (message.message != ServiceMessage.RESTORE_TEXT)
                     return@streakRestore null
 
                 val peerId = message.peer_id?.user_id
@@ -387,7 +760,7 @@ class Plugin {
 
                 val messageText =
                     if (!restoredByPeer) {
-                        translate("service_message_restore_text_self")
+                        translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_SELF)
                     } else {
                         val peerName =
                             peerId
@@ -397,7 +770,7 @@ class Plugin {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translate("service_message_restore_text_peer")
+                        translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_PEER)
                             .replace("{name}", peerName)
                     }
 
@@ -407,10 +780,11 @@ class Plugin {
             }
 
             val action: TLRPC.MessageAction =
-                (tryStreakUpgrade() as? TLRPC.MessageAction)
+                (tryStreakCreate() as? TLRPC.MessageAction)
+                    ?: (tryStreakUpgrade() as? TLRPC.MessageAction)
                     ?: (tryStreakDeath() as? TLRPC.MessageAction)
                     ?: (tryStreakRestore() as? TLRPC.MessageAction)
-                    ?: return@hookBefore
+                    ?: return@before
 
             param.args[1] = TLRPC.TL_messageService().apply {
                 cloneFields(message as Object, this as Object, TLRPC.Message::class.java)
@@ -421,7 +795,7 @@ class Plugin {
         }
 
         @Suppress("CAST_NEVER_SUCCEEDS")
-        hookBefore(
+        before(
             ChatActionCell::class.java.getDeclaredMethod(
                 "openStarsGiftTransaction",
             )
@@ -430,22 +804,47 @@ class Plugin {
                 ChatActionCell::class.java,
                 param.thisObject,
                 "currentMessageObject"
-            ) ?: return@hookBefore
+            ) ?: return@before
 
             val prizeStars =
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@hookBefore
+                    ?: return@before
 
-            if (prizeStars.transaction_id != deathMessageText)
-                return@hookBefore
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+                return@before
 
-            this@Plugin.reviveStreak(messageObject.dialogId)
+            backgroundScope.launch {
+                val accountId = UserConfig.selectedAccount
+                val peerUserId = messageObject.dialogId
+
+                val streak = streaksController.get(accountId, peerUserId)
+
+                if (streak == null) {
+                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    return@launch
+                }
+
+                if (!streak.dead) {
+                    showTranslatedBulletin(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
+                    return@launch
+                }
+
+                if (!streak.canRevive) {
+                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    return@launch
+                }
+
+                if (!streaksController.reviveNow(accountId, peerUserId)) {
+                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    return@launch
+                }
+            }
 
             param.result = null
         }
 
         @Suppress("CAST_NEVER_SUCCEEDS")
-        hookBefore(
+        before(
             ChatActionCell::class.java.getDeclaredMethod(
                 "createGiftPremiumLayouts",
                 CharSequence::class.java,
@@ -465,25 +864,25 @@ class Plugin {
                 ChatActionCell::class.java,
                 param.thisObject,
                 "currentMessageObject"
-            ) ?: return@hookBefore
+            ) ?: return@before
 
             val prizeStars =
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@hookBefore
+                    ?: return@before
 
-            if (prizeStars.transaction_id != deathMessageText)
-                return@hookBefore
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+                return@before
 
-            param.args[0] = translate("service_message_death_title")
-            param.args[1] = translate("service_message_death_subtitle")
-            param.args[3] = translate("service_message_death_hint")
-            param.args[5] = translate("service_message_death_button")
+            param.args[0] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_TITLE)
+            param.args[1] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_SUBTITLE)
+            param.args[3] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_HINT)
+            param.args[5] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_BUTTON)
             param.args[9] = false
             param.args[10] = true
         }
 
         @Suppress("CAST_NEVER_SUCCEEDS")
-        hookAfter(
+        after(
             ChatActionCell::class.java.getDeclaredMethod(
                 "isNewStyleButtonLayout",
             )
@@ -492,20 +891,20 @@ class Plugin {
                 ChatActionCell::class.java,
                 param.thisObject,
                 "currentMessageObject"
-            ) ?: return@hookAfter
+            ) ?: return@after
 
             val prizeStars =
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@hookAfter
+                    ?: return@after
 
-            if (prizeStars.transaction_id != deathMessageText)
-                return@hookAfter
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+                return@after
 
             param.result = true
         }
 
         @Suppress("CAST_NEVER_SUCCEEDS")
-        hookAfter(
+        after(
             ChatActionCell::class.java.getDeclaredMethod(
                 "getImageSize",
                 MessageObject::class.java
@@ -515,34 +914,34 @@ class Plugin {
                 ChatActionCell::class.java,
                 param.thisObject,
                 "currentMessageObject"
-            ) ?: return@hookAfter
+            ) ?: return@after
 
             val prizeStars =
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@hookAfter
+                    ?: return@after
 
-            if (prizeStars.transaction_id != deathMessageText)
-                return@hookAfter
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+                return@after
 
             param.result = -AndroidUtilities.dp(19.5f)
         }
 
         @Suppress("CAST_NEVER_SUCCEEDS")
-        hookAfter(
+        after(
             ChatActionCell::class.java.getDeclaredMethod(
                 "setMessageObject",
                 MessageObject::class.java,
                 Boolean::class.java,
             )
         ) { param ->
-            val messageObject = param.args[0] as? MessageObject ?: return@hookAfter
+            val messageObject = param.args[0] as? MessageObject ?: return@after
 
             val prizeStars =
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@hookAfter
+                    ?: return@after
 
-            if (prizeStars.transaction_id != deathMessageText)
-                return@hookAfter
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+                return@after
 
             val thisObject = param.thisObject as ChatActionCell
             val thisClass = ChatActionCell::class.java
@@ -557,7 +956,7 @@ class Plugin {
             imageReceiver.setVisible(false, true)
         }
 
-        hookAfter(
+        after(
             ChatMessageCell::class.java.getDeclaredMethod(
                 "setMessageContent",
                 MessageObject::class.java,
@@ -571,11 +970,11 @@ class Plugin {
             val thisObject = param.thisObject as ChatMessageCell
             val thisClass = ChatMessageCell::class.java
 
-            val streakEmoji = getFieldValue<StreakAnimatedEmojiDrawable>(
+            val streakEmoji = getFieldValue<StreakEmoji>(
                 thisClass,
                 thisObject,
                 "currentNameStatusDrawable"
-            ) ?: return@hookAfter
+            ) ?: return@after
 
             val hash = System.identityHashCode(thisObject)
 
@@ -586,7 +985,7 @@ class Plugin {
         }
 
         // Пользователь в списке участников группы
-        hookAfter(
+        after(
             UserCell::class.java.getDeclaredMethod(
                 "update",
                 Int::class.java
@@ -598,9 +997,9 @@ class Plugin {
             val dialogId = getFieldValue<Long>(thisClass, thisObject, "dialogId")!!
 
             if (dialogId < 0)
-                return@hookAfter
+                return@after
 
-            StreakAnimatedEmojiDrawable.encapsulate(
+            StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatus"),
                 null,
@@ -610,7 +1009,7 @@ class Plugin {
         }
 
         // Профиль пользователя
-        hookAfter(
+        after(
             ProfileActivity::class.java.getDeclaredMethod(
                 "getEmojiStatusDrawable",
                 TLRPC.EmojiStatus::class.java,
@@ -625,9 +1024,9 @@ class Plugin {
             val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
 
             if (userId < 0)
-                return@hookAfter
+                return@after
 
-            StreakAnimatedEmojiDrawable.encapsulate(
+            StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatusDrawable"),
                 param.args[3] as Int,
@@ -636,7 +1035,7 @@ class Plugin {
         }
 
         // Заголовок открытого лс с пользователем
-        hookAfter(
+        after(
             ChatAvatarContainer::class.java
                 .getDeclaredMethods()
                 .filter { it.name == "setTitle" }
@@ -649,33 +1048,156 @@ class Plugin {
                 thisClass,
                 thisObject,
                 "parentFragment"
-            )?.dialogId ?: return@hookAfter
+            )?.dialogId ?: return@after
 
             if (dialogId < 0)
-                return@hookAfter
+                return@after
 
-            StreakAnimatedEmojiDrawable.encapsulate(
+            StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatusDrawable"),
                 null,
                 dialogId
             )
+
+            backgroundScope.launch {
+                streaksController.flushCurrentChatPopup()
+            }
         }
 
         // Хук отображения диалоговых окон для замены PremiumPreviewBottomSheet
-        hookBefore(
+        before(
             BaseFragment::class.java.getDeclaredMethod("showDialog", Dialog::class.java)
         ) { param ->
-            val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return@hookBefore
+            val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return@before
             val user = getFieldValue<TLRPC.User>(
                 PremiumPreviewBottomSheet::class.java,
                 dialog,
                 "user"
             )!!
 
-            val streakData = this@Plugin.resolveStreakData(user.id) ?: return@hookBefore
+            val streakViewData = runBlocking {
+                this@Plugin.streaksController.getViewData(
+                    UserConfig.selectedAccount,
+                    user.id
+                )
+            } ?: return@before
 
-            param.args[0] = StreakBottomSheet(dialog, user, streakData)
+            param.args[0] = StreakInfoBottomSheet(dialog, user, streakViewData)
+        }
+
+        // Патч пользователя со стриком
+        before(
+            MessagesController::class.java.getDeclaredMethod(
+                "putUser",
+                TLRPC.User::class.java,
+                Boolean::class.java,
+                Boolean::class.java,
+            )
+        ) { param ->
+            val user = param.args[0] as? TLRPC.User ?: return@before
+
+            runBlocking {
+                streaksController.patchUser(UserConfig.selectedAccount, user)
+            }
+        }
+
+        fun handleUpdates(accountId: Int, updates: TLRPC.Updates) {
+            data class Update(val peerUserId: Long, val out: Boolean, val message: String?)
+
+            @Suppress("IMPOSSIBLE_IS_CHECK_WARNING", "KotlinConstantConditions")
+            val entries = when (updates) {
+                is TLRPC.TL_updateShortMessage -> {
+                    setOf(Update(updates.user_id, updates.out, updates.message))
+                }
+
+                is TLRPC.TL_updates -> {
+                    updates.updates.mapNotNull {
+                        when (it) {
+                            is TLRPC.TL_updateNewMessage -> Update(
+                                it.message.peer_id.user_id,
+                                it.message.out,
+                                it.message.message
+                            )
+
+                            else -> null
+                        }
+                    }
+                }
+
+                is TLRPC.TL_updatesCombined -> {
+                    updates.updates.mapNotNull {
+                        when (it) {
+                            is TLRPC.TL_updateNewMessage -> Update(
+                                it.message.peer_id.user_id,
+                                it.message.out,
+                                it.message.message
+                            )
+
+                            else -> null
+                        }
+                    }
+                }
+
+                else -> setOf()
+            }
+
+            backgroundScope.launch {
+                @Suppress("KotlinConstantConditions")
+                for ((peerUserId, out, message) in entries) {
+                    val result = streaksController.handleUpdate(accountId, peerUserId, out, message)
+
+                    if (!out && result.changed) {
+                        streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+
+                        if (result.created) {
+                            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Обработка входящих сообщений
+        before(
+            MessagesController::class.java.getDeclaredMethod(
+                "processUpdates",
+                TLRPC.Updates::class.java,
+                Boolean::class.java
+            )
+        ) { param ->
+            val thisObject = param.thisObject as? BaseController ?: return@before
+            val thisClass = BaseController::class.java
+
+            val accountId =
+                getFieldValue<Int>(thisClass, thisObject, "currentAccount") ?: return@before
+
+            val updates = param.args[0] as TLRPC.Updates
+
+            handleUpdates(accountId, updates)
+        }
+
+        // Обработка исходящих сообщений
+        before(
+            SendMessagesHelper::class.java.getDeclaredMethod(
+                "sendMessage",
+                SendMessagesHelper.SendMessageParams::class.java
+            )
+        ) { param ->
+            val sendMessageParams = param.args[0] as SendMessagesHelper.SendMessageParams
+
+            backgroundScope.launch {
+                val result = streaksController.handleUpdate(
+                    UserConfig.selectedAccount,
+                    sendMessageParams.peer,
+                    true,
+                    sendMessageParams.message
+                )
+
+                if (result.created) {
+                    AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+                }
+            }
         }
     }
 }
