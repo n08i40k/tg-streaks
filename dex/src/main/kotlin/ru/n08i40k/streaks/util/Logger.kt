@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.util
 
+import org.telegram.messenger.AndroidUtilities
 import ru.n08i40k.streaks.LogReceiver
 import ru.n08i40k.streaks.Plugin
 
@@ -14,7 +15,9 @@ class Logger(private val logReceiver: LogReceiver) {
         logReceiver.onReceiveValue(e.toString())
         logReceiver.onReceiveValue(e.stackTrace.joinToString("\n"))
 
-        if (!preventEject)
+        if (!preventEject) {
+            AndroidUtilities.addToClipboard("```\n${e.toString()}\n${e.stackTrace.joinToString("\n")}\n```")
             Plugin.eject()
+        }
     }
 }
