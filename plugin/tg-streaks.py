@@ -329,6 +329,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Rebuild completed for {checked} private chats",
         "ru": "Ребилд завершён для {checked} личных чатов",
     },
+    "force_check.retry_delay": {
+        "en": "Telegram did not respond. Next attempt in {seconds} s.",
+        "ru": "Telegram не ответил. Следующая попытка через {seconds} сек.",
+    },
     "db.err.no_backups_found": {"en": "No backups found", "ru": "Бэкапы не найдены"},
     "db.err.failed_apply_backup": {
         "en": "Failed to apply backup: {reason}",
