@@ -897,6 +897,7 @@ class ChatContextMenu:
                 "key": cls.TOGGLE_SERVICE_MESSAGES,
                 "text_key": "menu.upgrade_service_messages.text",
                 "subtext_key": "menu.upgrade_service_messages.subtext",
+                "icon": "msg_settings",
                 "priority": 998,
             },
             {
