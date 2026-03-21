@@ -16,7 +16,13 @@ class Logger(private val logReceiver: LogReceiver) {
         logReceiver.onReceiveValue(e.stackTrace.joinToString("\n"))
 
         if (!preventEject) {
-            AndroidUtilities.addToClipboard("```\n${e.toString()}\n${e.stackTrace.joinToString("\n")}\n```")
+            AndroidUtilities.addToClipboard(
+                "```\n"
+                        + "${message}\n"
+                        + "${e.toString()}\n"
+                        + "${e.stackTrace.joinToString("\n")}\n"
+                        + "```"
+            )
             Plugin.eject()
         }
     }
