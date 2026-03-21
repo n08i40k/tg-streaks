@@ -45,7 +45,8 @@ private fun File.extractAarJars(outputDir: File): List<String> {
         outputDir.mkdirs()
     }
 
-    val artifactDir = outputDir.resolve("${artifactKey()}-${absolutePath.hashCode().toUInt().toString(16)}")
+    val artifactDir =
+        outputDir.resolve("${artifactKey()}-${absolutePath.hashCode().toUInt().toString(16)}")
     if (artifactDir.exists()) {
         artifactDir.deleteRecursively()
     }
@@ -53,7 +54,11 @@ private fun File.extractAarJars(outputDir: File): List<String> {
 
     return ZipFile(this).use { zip ->
         zip.entries().asSequence()
-            .filter { !it.isDirectory && (it.name == "classes.jar" || it.name.startsWith("libs/")) && it.name.endsWith(".jar") }
+            .filter {
+                !it.isDirectory && (it.name == "classes.jar" || it.name.startsWith("libs/")) && it.name.endsWith(
+                    ".jar"
+                )
+            }
             .map { entry ->
                 val outputFile = artifactDir.resolve(entry.name.removePrefix("libs/"))
                 outputFile.parentFile?.mkdirs()
@@ -66,7 +71,10 @@ private fun File.extractAarJars(outputDir: File): List<String> {
     }
 }
 
-private fun Project.resolveClasspathArtifactPaths(configurationName: String, extractionRoot: File): List<String> =
+private fun Project.resolveClasspathArtifactPaths(
+    configurationName: String,
+    extractionRoot: File
+): List<String> =
     configurations.findByName(configurationName)
         ?.resolve()
         .orEmpty()
@@ -75,6 +83,7 @@ private fun Project.resolveClasspathArtifactPaths(configurationName: String, ext
                 artifact.isJarFile() -> listOf(artifact.absolutePath)
                 artifact.extension.equals("aar", ignoreCase = true) ->
                     artifact.extractAarJars(extractionRoot.resolve(configurationName))
+
                 else -> emptyList()
             }
         }
@@ -173,6 +182,7 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_11)
         freeCompilerArgs.add("-Xmetadata-version=2.2.0")
+        freeCompilerArgs.add("-Xdont-warn-on-error-suppression")
     }
 }
 
@@ -262,9 +272,12 @@ fun registerBuildDexTask(variant: String) {
                         .map(File::getAbsolutePath)
                 }
 
-            val extractedArtifactRoot = buildDirFile.resolve("intermediates/extracted-classpath-artifacts")
-            val runtimeJars = resolveClasspathArtifactPaths("${variant}RuntimeClasspath", extractedArtifactRoot)
-            val compileJars = resolveClasspathArtifactPaths("${variant}CompileClasspath", extractedArtifactRoot)
+            val extractedArtifactRoot =
+                buildDirFile.resolve("intermediates/extracted-classpath-artifacts")
+            val runtimeJars =
+                resolveClasspathArtifactPaths("${variant}RuntimeClasspath", extractedArtifactRoot)
+            val compileJars =
+                resolveClasspathArtifactPaths("${variant}CompileClasspath", extractedArtifactRoot)
             val embeddedJars = resolveClasspathArtifactPaths(embed.name, extractedArtifactRoot)
 
             val embeddedModules = embeddedJars.map { File(it).artifactKey() }.toSet()
@@ -299,7 +312,8 @@ fun registerBuildDexTask(variant: String) {
                 )
             }
 
-            val buildDexRules = buildDirFile.resolve("intermediates/build-dex/$variant/proguard-rules.pro")
+            val buildDexRules =
+                buildDirFile.resolve("intermediates/build-dex/$variant/proguard-rules.pro")
             buildDexRules.parentFile.mkdirs()
             buildDexRules.writeText(
                 """
