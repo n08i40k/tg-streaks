@@ -15,7 +15,7 @@ class Logger(private val logReceiver: LogReceiver) {
         logReceiver.onReceiveValue(e.toString())
         logReceiver.onReceiveValue(e.stackTrace.joinToString("\n"))
 
-        if (!preventEject) {
+        if (!preventEject && Plugin.isInjected()) {
             AndroidUtilities.addToClipboard(
                 "```\n"
                         + "${message}\n"

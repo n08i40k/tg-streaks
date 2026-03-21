@@ -81,6 +81,8 @@ class Plugin {
     companion object {
         private var INSTANCE: Plugin? = null
 
+        fun isInjected(): Boolean = INSTANCE != null
+
         // should not be called from python
         @JvmStatic
         fun getInstance(): Plugin = INSTANCE!!
