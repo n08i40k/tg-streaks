@@ -54,6 +54,11 @@ PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
 
+
+def get_plugin_cache_dir(*parts: str) -> str:
+    cache_root = ApplicationLoader.applicationContext.getCacheDir().getAbsolutePath()
+    return os.path.join(cache_root, __id__, *parts)
+
 I18N_STRINGS: dict[str, dict[str, str]] = {
     "settings.updates": {"en": "Updates", "ru": "Обновления"},
     "settings.check_updates": {
@@ -451,12 +456,7 @@ class JvmPluginBridge:
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
         self.klass = None
-        self.cache_dir = os.path.join(
-            ApplicationLoader.applicationContext.getExternalFilesDir(
-                None  # ty:ignore[invalid-argument-type]
-            ).getAbsolutePath(),
-            "plugins_dex_cache",
-        )
+        self.cache_dir = get_plugin_cache_dir("plugins_dex_cache")
         os.makedirs(self.cache_dir, exist_ok=True)
         self.dex_path = os.path.join(self.cache_dir, f"{__id__}.dex")
         self._download_lock = threading.Lock()
@@ -581,12 +581,7 @@ class JvmPluginBridge:
 class ZipResourcesBridge:
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
-        self.cache_dir = os.path.join(
-            ApplicationLoader.applicationContext.getExternalFilesDir(
-                None  # ty:ignore[invalid-argument-type]
-            ).getAbsolutePath(),
-            "plugins_resources_cache",
-        )
+        self.cache_dir = get_plugin_cache_dir("plugins_resources_cache")
         os.makedirs(self.cache_dir, exist_ok=True)
         self.zip_path = os.path.join(self.cache_dir, f"{__id__}-resources.zip")
         self.resources_root = os.path.join(self.cache_dir, "resources")
