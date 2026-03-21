@@ -410,26 +410,28 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 else
                     plugin.streaksController.getViewData(UserConfig.selectedAccount, peerUserId)
 
-            if (cachedStreakViewData != null)
-                applyStreakState(cachedStreakViewData!!)
-            else {
-                if (hasCustomParticles) {
-                    // restore original particles class without custom color or etc.
-                    super.setParticles(false, false)
-                    hasCustomParticles = false
+            AndroidUtilities.runOnUIThread {
+                if (cachedStreakViewData != null)
+                    applyStreakState(cachedStreakViewData!!)
+                else {
+                    if (hasCustomParticles) {
+                        // restore original particles class without custom color or etc.
+                        super.setParticles(false, false)
+                        hasCustomParticles = false
+                    }
+
+                    val dialog =
+                        MessagesController.getInstance(UserConfig.selectedAccount)
+                            .getUserOrChat(peerUserId)
+
+                    when (dialog) {
+                        is TLRPC.User -> applyUserState(dialog)
+                        is TLRPC.Chat -> applyChatState(dialog)
+                    }
                 }
 
-                val dialog =
-                    MessagesController.getInstance(UserConfig.selectedAccount)
-                        .getUserOrChat(peerUserId)
-
-                when (dialog) {
-                    is TLRPC.User -> applyUserState(dialog)
-                    is TLRPC.Chat -> applyChatState(dialog)
-                }
+                this@StreakEmoji.invalidateSelf()
             }
-
-            this@StreakEmoji.invalidateSelf()
         }
     }
 
