@@ -271,7 +271,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     private fun applyStreakState(streakViewData: StreakViewData) {
         applyMainDocumentId(
             documentId = streakViewData.documentId,
-            showParticles = true,
+            showParticles = !hideParticlesOnCollectibles,
             cacheType = 7,
             animated = true,
             isStillExpected = {
@@ -337,7 +337,9 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         if (documentId != 0L) {
             applyMainDocumentId(
                 documentId = documentId,
-                showParticles = DialogObject.isEmojiStatusCollectible(chat.emoji_status),
+                showParticles = !hideParticlesOnCollectibles && DialogObject.isEmojiStatusCollectible(
+                    chat.emoji_status
+                ),
                 isStillExpected = {
                     this.peerUserId == chat.id &&
                             DialogObject.getEmojiStatusDocumentId(chat.emoji_status) == documentId
