@@ -45,6 +45,9 @@ class ServiceMessagesController {
     }
 
     fun sendCreation(accountId: Int, peerUserId: Long) {
+        if (!isEnabled(accountId, peerUserId))
+            return
+
         send(accountId, peerUserId, ServiceMessage.CREATE_TEXT)
     }
 
