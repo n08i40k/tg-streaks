@@ -358,8 +358,7 @@ class StreakPopupController(
         return try {
             fragment?.parentActivity
                 ?: fragment?.context
-                ?: Plugin.getInstance()
-                    ?.let { org.telegram.messenger.ApplicationLoader.applicationContext }
+                ?: org.telegram.messenger.ApplicationLoader.applicationContext
         } catch (_: Throwable) {
             null
         }
