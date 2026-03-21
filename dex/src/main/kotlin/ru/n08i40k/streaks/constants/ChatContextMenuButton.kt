@@ -10,4 +10,5 @@ object ChatContextMenuButton {
     const val DEBUG_FREEZE = "debug.freeze"
     const val DEBUG_KILL = "debug.kill"
     const val DEBUG_DELETE = "debug.delete"
+    const val DEBUG_CRASH = "debug.crash"
 }

@@ -244,6 +244,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Set current chat streak to 3 days",
         "ru": "Установить стрик текущего чата на 3 дня",
     },
+    "menu.debug_crash_plugin.text": {
+        "en": "[DEBUG] Crash plugin",
+        "ru": "[DEBUG] Крашнуть плагин",
+    },
+    "menu.debug_crash_plugin.subtext": {
+        "en": ":)",
+        "ru": ":)",
+    },
     "menu.debug_kill_streak.text": {
         "en": "[DEBUG] Kill streak",
         "ru": "[DEBUG] Убить стрик",
@@ -814,6 +822,7 @@ class ChatContextMenu:
     DEBUG_FREEZE = "debug.freeze"
     DEBUG_KILL = "debug.kill"
     DEBUG_DELETE = "debug.delete"
+    DEBUG_CRASH = "debug.crash"
 
     MENU_PAYLOAD_DIALOG_KEYS = (
         "dialog_id",
@@ -894,6 +903,13 @@ class ChatContextMenu:
                 "text_key": "menu.debug_delete_streak.text",
                 "subtext_key": "menu.debug_delete_streak.subtext",
                 "priority": 993,
+                "debug_only": True,
+            },
+            {
+                "key": cls.DEBUG_CRASH,
+                "text_key": "menu.debug_crash_plugin.text",
+                "subtext_key": "menu.debug_crash_plugin.subtext",
+                "priority": 992,
                 "debug_only": True,
             },
         )

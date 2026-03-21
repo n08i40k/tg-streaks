@@ -144,10 +144,13 @@ class Plugin {
 
         @JvmStatic
         fun eject() {
-            INSTANCE?.onEject()
+            val instance = INSTANCE
             INSTANCE = null
 
-            BulletinHelper.show(null, "Streaks plugin has been ejected!")
+            instance?.let {
+                it.onEject()
+                BulletinHelper.show(null, "Streaks plugin has been ejected!")
+            }
         }
     }
 
@@ -233,7 +236,11 @@ class Plugin {
 
 
     private fun onInject() {
-        registerCallbacks()
+        try {
+            registerCallbacks()
+        } catch (e: Throwable) {
+            logger.fatal("Failed to register callbacks", e)
+        }
 
         logger.info("Injected!")
     }
@@ -606,6 +613,10 @@ class Plugin {
             }
 
             logger.info("[Context Menu] Debug-delete clicked on ${peer.id}")
+        }
+
+        add(ChatContextMenuButton.DEBUG_CRASH) { _ ->
+            throw RuntimeException("Crash button was pressed")
         }
 
         addSettingAction(SettingsActionButton.REBUILD_ALL) {
