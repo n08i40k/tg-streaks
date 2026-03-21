@@ -90,6 +90,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Cannot detect current chat",
         "ru": "Не удалось определить текущий чат",
     },
+    "err.cannot_open_chat_context": {
+        "en": "Cannot open chat context for jump",
+        "ru": "Не удалось открыть контекст чата для перехода",
+    },
+    "err.failed_jump_to_streak_start": {
+        "en": "Failed to jump to streak start",
+        "ru": "Не удалось перейти к началу стрика",
+    },
     "err.backup_export_failed": {
         "en": "Backup export failed",
         "ru": "Ошибка экспорта бэкапа",
@@ -105,6 +113,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "ok.backup_imported": {
         "en": "Backup imported: {name}",
         "ru": "Бэкап импортирован: {name}",
+    },
+    "ok.jumped_to_streak_start_message": {
+        "en": "Jumped to streak start message",
+        "ru": "Переход к сообщению начала стрика выполнен",
     },
     "ok.debug_streak_set_3": {
         "en": "Debug: streak set to 3 days",
@@ -162,6 +174,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "info.force_check_started_all": {
         "en": "Force check started",
         "ru": "Принудительная проверка запущена",
+    },
+    "info.searching_streak_start_message": {
+        "en": "Searching streak start message...",
+        "ru": "Ищу сообщение начала стрика...",
+    },
+    "info.exact_start_message_not_found": {
+        "en": "Exact start message not found, jumped to streak start day",
+        "ru": "Точное сообщение начала не найдено, выполнен переход к дню начала стрика",
     },
     "info.no_streak_record_for_chat": {
         "en": "No streak record for this chat",
@@ -222,6 +242,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "menu.force_check_chat.subtext": {
         "en": "Check the chat history again and update the streak length",
         "ru": "Ещё раз проверить историю чата и обновить длину стрика",
+    },
+    "menu.go_to_streak_start.text": {
+        "en": "Open where the streak began",
+        "ru": "Открыть начало стрика",
+    },
+    "menu.go_to_streak_start.subtext": {
+        "en": "Jump to the message or day where the current streak started",
+        "ru": "Перейти к сообщению или дню, с которого начался текущий стрик",
     },
     "menu.upgrade_service_messages.text": {
         "en": "Toggle service messages",
@@ -815,6 +843,7 @@ class ZipResourcesBridge:
 class ChatContextMenu:
     REBUILD = "rebuild"
     TOGGLE_SERVICE_MESSAGES = "serviceMessages.toggle"
+    GO_TO_STREAK_START = "goToStreakStart"
     REVIVE_NOW = "reviveNow"
 
     DEBUG_CREATE = "debug.create"
@@ -858,58 +887,65 @@ class ChatContextMenu:
                 "priority": 1000,
             },
             {
+                "key": cls.GO_TO_STREAK_START,
+                "text_key": "menu.go_to_streak_start.text",
+                "subtext_key": "menu.go_to_streak_start.subtext",
+                "icon": "other_chats",
+                "priority": 999,
+            },
+            {
                 "key": cls.TOGGLE_SERVICE_MESSAGES,
                 "text_key": "menu.upgrade_service_messages.text",
                 "subtext_key": "menu.upgrade_service_messages.subtext",
-                "priority": 999,
+                "priority": 998,
             },
             {
                 "key": cls.REVIVE_NOW,
                 "text_key": "menu.restore_streak.text",
                 "subtext_key": "menu.restore_streak.subtext",
                 "icon": "msg_reactions",
-                "priority": 998,
+                "priority": 997,
             },
             {
                 "key": cls.DEBUG_CREATE,
                 "text_key": "menu.debug_create_streak.text",
                 "subtext_key": "menu.debug_create_streak.subtext",
-                "priority": 997,
+                "priority": 996,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_UPGRADE,
                 "text_key": "menu.debug_upgrade_streak.text",
                 "subtext_key": "menu.debug_upgrade_streak.subtext",
-                "priority": 996,
+                "priority": 995,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_FREEZE,
                 "text_key": "menu.debug_freeze_streak.text",
                 "subtext_key": "menu.debug_freeze_streak.subtext",
-                "priority": 995,
+                "priority": 994,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_KILL,
                 "text_key": "menu.debug_kill_streak.text",
                 "subtext_key": "menu.debug_kill_streak.subtext",
-                "priority": 994,
+                "priority": 993,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_DELETE,
                 "text_key": "menu.debug_delete_streak.text",
                 "subtext_key": "menu.debug_delete_streak.subtext",
-                "priority": 993,
+                "priority": 992,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_CRASH,
                 "text_key": "menu.debug_crash_plugin.text",
                 "subtext_key": "menu.debug_crash_plugin.subtext",
-                "priority": 992,
+                "priority": 991,
                 "debug_only": True,
             },
         )

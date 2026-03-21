@@ -44,6 +44,7 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.ChatAvatarContainer
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.DialogsActivity
+import org.telegram.ui.LaunchActivity
 import org.telegram.ui.ProfileActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
 import ru.n08i40k.streaks.constants.ServiceMessage
@@ -56,6 +57,7 @@ import ru.n08i40k.streaks.database.LegacyUsersDbImporter
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
@@ -415,6 +417,77 @@ class Plugin {
             }
 
             logger.info("[Context Menu] Rebuild clicked on $peerUserId")
+        }
+
+        add(ChatContextMenuButton.GO_TO_STREAK_START) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+            if (peerUserId <= 0L || peerUserId == ownerUserId) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return@add
+            }
+
+            val chatActivity = (LaunchActivity.getSafeLastFragment() as? ChatActivity)
+                ?.takeIf { it.dialogId == peerUserId }
+
+            if (chatActivity == null) {
+                bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
+                logger.info("[Context Menu] Go-to-streak-start failed: no chat context for $peerUserId")
+                return@add
+            }
+
+            bulletinHelper.showTranslated(TranslationKey.INFO_SEARCHING_STREAK_START_MESSAGE)
+
+            backgroundScope.launch {
+                try {
+                    val streak = streaksController.get(accountId, peerUserId)
+
+                    if (streak == null) {
+                        bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                        return@launch
+                    }
+
+                    val jumpTs = streak.createdAt.toEpochSecondSystem().toInt()
+                    val messageId = streaksController.findStartMessageId(accountId, peerUserId)
+
+                    AndroidUtilities.runOnUIThread {
+                        try {
+                            if (messageId != null && messageId > 0) {
+                                try {
+                                    chatActivity.scrollToMessageId(messageId, 0, true, 0, true, 0)
+                                    bulletinHelper.showTranslated(
+                                        TranslationKey.OK_JUMPED_TO_STREAK_START_MESSAGE
+                                    )
+                                    return@runOnUIThread
+                                } catch (e: Throwable) {
+                                    logger.info(
+                                        "[Context Menu] Go-to-streak-start scroll failed for $peerUserId: ${e.message}"
+                                    )
+                                }
+                            }
+
+                            chatActivity.jumpToDate(jumpTs)
+                            bulletinHelper.showTranslated(
+                                TranslationKey.INFO_EXACT_START_MESSAGE_NOT_FOUND
+                            )
+                        } catch (e: Throwable) {
+                            logger.fatal(
+                                "Go-to-streak-start failed for peer $peerUserId",
+                                e
+                            )
+                            bulletinHelper.showTranslated(
+                                TranslationKey.ERR_FAILED_JUMP_TO_STREAK_START
+                            )
+                        }
+                    }
+                } catch (e: Throwable) {
+                    logger.fatal("Go-to-streak-start lookup failed for peer $peerUserId", e)
+                    bulletinHelper.showTranslated(TranslationKey.ERR_FAILED_JUMP_TO_STREAK_START)
+                }
+            }
+
+            logger.info("[Context Menu] Go-to-streak-start clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.TOGGLE_SERVICE_MESSAGES) { peerUserId ->

@@ -25,6 +25,7 @@ import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
+import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.MyResult
@@ -669,6 +670,76 @@ class StreaksController(
 
     suspend fun get(accountId: Int, peerUserId: Long): Streak? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
+
+    suspend fun findStartMessageId(accountId: Int, peerUserId: Long): Int? {
+        val streak = get(accountId, peerUserId) ?: return null
+        val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId) ?: return null
+        val connectionsManager = ConnectionsManager.getInstance(accountId)
+
+        val startTs = streak.createdAt.toEpochSecondUtc().toInt()
+        val endTs = streak.createdAt.plusDays(1).toEpochSecondUtc().toInt()
+
+        var offsetId = 0
+        var offsetDate = endTs
+        var firstId = 0
+        var firstDate = 0
+
+        while (true) {
+            val req = TLRPC.TL_messages_getHistory().apply {
+                this.peer = peer
+                offset_id = offsetId
+                offset_date = offsetDate
+                limit = 100
+            }
+
+            val deferred = CompletableDeferred<Result<TLObject>>()
+
+            connectionsManager.sendRequest(req) { response, error ->
+                if (error != null) {
+                    deferred.complete(
+                        Result.failure(RuntimeException(error.text ?: error.toString()))
+                    )
+                } else {
+                    deferred.complete(
+                        Result.success(response ?: throw NullPointerException("History response is null"))
+                    )
+                }
+            }
+
+            val response = deferred.await().getOrElse { throw it } as? TLRPC.messages_Messages
+                ?: throw RuntimeException("Unexpected history response type")
+            val messages = response.messages
+
+            if (messages.isEmpty())
+                break
+
+            for (messageAny in messages) {
+                val message = messageAny as? TLRPC.Message ?: continue
+                val messageDate = message.date
+
+                if (messageDate !in startTs until endTs)
+                    continue
+
+                if (
+                    firstId == 0
+                    || messageDate < firstDate
+                    || (messageDate == firstDate && message.id < firstId)
+                ) {
+                    firstId = message.id
+                    firstDate = messageDate
+                }
+            }
+
+            val oldest = messages.lastOrNull() as? TLRPC.Message ?: break
+            offsetId = oldest.id
+            offsetDate = oldest.date
+
+            if (oldest.date < startTs)
+                break
+        }
+
+        return firstId.takeIf { it > 0 }
+    }
 
     suspend fun getAlive(accountId: Int, peerUserId: Long): Streak? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
