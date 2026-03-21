@@ -72,6 +72,7 @@ import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.isClientVersionBelow
 import java.lang.reflect.Member
 import java.lang.Runnable
 
@@ -871,24 +872,26 @@ class Plugin {
         // Фикс отрисовки текста в местах, где размер view ограничен по x.
         // Например, в списке чатов, где у SwapAnimatedEmojiDrawable есть обёртка в виде View,
         // который жёстко ограничен по x.
-        after(
-            DialogCell::class.java.getDeclaredMethod(
-                "onLayout",
-                Boolean::class.java,
-                Int::class.java,
-                Int::class.java,
-                Int::class.java,
-                Int::class.java,
-            )
-        ) { param ->
-            val thisObject = param.thisObject as DialogCell
-            val thisClass = DialogCell::class.java
+        if (!isClientVersionBelow("12.2.6")) {
+            after(
+                DialogCell::class.java.getDeclaredMethod(
+                    "onLayout",
+                    Boolean::class.java,
+                    Int::class.java,
+                    Int::class.java,
+                    Int::class.java,
+                    Int::class.java,
+                )
+            ) { param ->
+                val thisObject = param.thisObject as DialogCell
+                val thisClass = DialogCell::class.java
 
-            val emojiStatusView =
-                getFieldValue<View>(thisClass, thisObject, "emojiStatusView")!!
+                val emojiStatusView =
+                    getFieldValue<View>(thisClass, thisObject, "emojiStatusView")!!
 
-            val height = AndroidUtilities.dp(22f)
-            emojiStatusView.layout(0, 0, height * 3, height)
+                val height = AndroidUtilities.dp(22f)
+                emojiStatusView.layout(0, 0, height * 3, height)
+            }
         }
 
         // Сообщение в группе

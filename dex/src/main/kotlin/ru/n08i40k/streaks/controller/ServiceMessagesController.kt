@@ -7,6 +7,7 @@ import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.AccountInstance
 import org.telegram.messenger.SendMessagesHelper
 import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.util.isClientVersionBelow
 
 class ServiceMessagesController {
     companion object {
@@ -69,14 +70,44 @@ class ServiceMessagesController {
     }
 
     private fun send(accountId: Int, peerUserId: Long, message: String) {
-        SendMessagesHelper.prepareSendingText(
-            AccountInstance.getInstance(accountId),
-            message,
-            peerUserId,
-            false,
-            0,
-            0,
-            0L
-        )
+        if (isClientVersionBelow("12.2.0")) {
+            SendMessagesHelper::class.java.getDeclaredMethod(
+                "prepareSendingText",
+                AccountInstance::class.java,
+                String::class.java,
+                Long::class.java,
+                Boolean::class.java,
+                Int::class.java,
+                Long::class.java
+            ).invoke(
+                null,
+                AccountInstance.getInstance(accountId),
+                message,
+                peerUserId,
+                false,
+                0,
+                0L
+            )
+        } else {
+            SendMessagesHelper::class.java.getDeclaredMethod(
+                "prepareSendingText",
+                AccountInstance::class.java,
+                String::class.java,
+                Long::class.java,
+                Boolean::class.java,
+                Int::class.java,
+                Int::class.java,
+                Long::class.java
+            ).invoke(
+                null,
+                AccountInstance.getInstance(accountId),
+                message,
+                peerUserId,
+                false,
+                0,
+                0,
+                0L
+            )
+        }
     }
 }

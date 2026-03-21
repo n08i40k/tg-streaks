@@ -34,7 +34,7 @@ __description__ = "Analog for TikTok streaks for Telegram"
 __author__ = "@n08i40k"
 __version__ = "2.0.0"
 __icon__ = "exteraPlugins/0"
-__min_version__ = "12.2.10"
+__min_version__ = "12.1.1"
 
 DEBUG_MODE = False
 
