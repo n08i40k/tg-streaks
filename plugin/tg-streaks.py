@@ -1129,6 +1129,8 @@ class ChatContextMenu:
 
 class SettingsActions:
     REBUILD_ALL = "rebuildAllPrivateChats"
+    EXPORT_BACKUP_NOW = "exportBackupNow"
+    IMPORT_LATEST_BACKUP = "importLatestBackup"
 
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
@@ -1142,6 +1144,18 @@ class SettingsActions:
                 on_click=lambda _: self._on_click(self.REBUILD_ALL),
             ),
             Divider(text=self.plugin._t("settings.only_private.hint")),
+            Header(text=self.plugin._t("settings.db_backups")),
+            Text(
+                text=self.plugin._t("settings.export_backup_now"),
+                icon="msg_save",
+                on_click=lambda _: self._on_click(self.EXPORT_BACKUP_NOW),
+            ),
+            Text(
+                text=self.plugin._t("settings.import_latest_backup"),
+                icon="msg_reset",
+                on_click=lambda _: self._on_click(self.IMPORT_LATEST_BACKUP),
+            ),
+            Divider(text=self.plugin._t("settings.db_backups.hint")),
         ]
 
     def _on_click(self, key: str):

@@ -54,6 +54,7 @@ import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.LegacyUsersDbImporter
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
+import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.override.StreakEmoji
@@ -142,6 +143,7 @@ class Plugin {
 
     private val db: PluginDatabase
     private val legacyUsersDbImporter: LegacyUsersDbImporter
+    private val databaseBackupManager: DatabaseBackupManager
 
     private val logger: Logger
     private val translationResolver: TranslationResolver
@@ -189,6 +191,7 @@ class Plugin {
             .build()
 
         this.legacyUsersDbImporter = LegacyUsersDbImporter(this.db, this::log)
+        this.databaseBackupManager = DatabaseBackupManager(this.db, this::log)
         this.streaksController = StreaksController(this.db, resourcesProvider)
     }
 
@@ -281,6 +284,14 @@ class Plugin {
             streaksController.flushCurrentChatPopup()
 
             AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+        }
+
+        backgroundScope.launch {
+            try {
+                databaseBackupManager.runAutoBackupLoop()
+            } catch (e: Throwable) {
+                logException("Automatic database backup loop failed", e)
+            }
         }
 
         log("Inject finalized!")
@@ -635,6 +646,54 @@ class Plugin {
                 } catch (e: Throwable) {
                     logException("Failed to rebuild all private chats for account $accountId", e)
                     showTranslatedBulletin(TranslationKey.ERR_FORCE_CHECK_FAILED_LOGS)
+                }
+            }
+        }
+
+        addSettingAction(SettingsActionButton.EXPORT_BACKUP_NOW) {
+            backgroundScope.launch {
+                try {
+                    val backup = databaseBackupManager.exportNow()
+                    showTranslatedBulletin(
+                        TranslationKey.OK_BACKUP_EXPORTED,
+                        mapOf("name" to backup.name),
+                        "msg_save"
+                    )
+                } catch (e: Throwable) {
+                    logException("Failed to export database backup", e)
+                    showTranslatedBulletin(TranslationKey.ERR_BACKUP_EXPORT_FAILED)
+                }
+            }
+        }
+
+        addSettingAction(SettingsActionButton.IMPORT_LATEST_BACKUP) {
+            backgroundScope.launch {
+                try {
+                    val backup = databaseBackupManager.restoreLatest()
+                    syncPeersUi(streaksController.checkAllForUpdates(), refreshAll = true)
+                    showTranslatedBulletin(
+                        TranslationKey.OK_BACKUP_IMPORTED,
+                        mapOf("name" to backup.name),
+                        "msg_reset"
+                    )
+                } catch (e: IllegalStateException) {
+                    if (e.message == TranslationKey.DB_ERR_NO_BACKUPS_FOUND) {
+                        showTranslatedBulletin(TranslationKey.DB_ERR_NO_BACKUPS_FOUND)
+                    } else {
+                        logException("Failed to restore latest database backup", e)
+                        showTranslatedBulletin(
+                            TranslationKey.DB_ERR_FAILED_APPLY_BACKUP,
+                            mapOf("reason" to (e.message ?: e.javaClass.simpleName)),
+                            "msg_reset"
+                        )
+                    }
+                } catch (e: Throwable) {
+                    logException("Failed to restore latest database backup", e)
+                    showTranslatedBulletin(
+                        TranslationKey.DB_ERR_FAILED_APPLY_BACKUP,
+                        mapOf("reason" to (e.message ?: e.javaClass.simpleName)),
+                        "msg_reset"
+                    )
                 }
             }
         }
