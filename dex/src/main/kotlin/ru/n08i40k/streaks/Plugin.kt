@@ -277,7 +277,7 @@ class Plugin {
         }
 
         backgroundScope.launch {
-            streaksController.checkAllForUpdates()
+            syncPeersUi(streaksController.checkAllForUpdates(), refreshAll = true)
             streaksController.flushCurrentChatPopup()
 
             AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
@@ -306,6 +306,39 @@ class Plugin {
         settingsActionCallbackRegistry.clear()
 
         log("Ejected!")
+    }
+
+    private suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
+        streaksController.syncUserState(accountId, peerUserId)
+
+        AndroidUtilities.runOnUIThread {
+            streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+            streakEmojiRegistry.refreshDialogCells()
+        }
+    }
+
+    private suspend fun syncPeersUi(
+        targets: Iterable<StreaksController.UiSyncTarget>,
+        refreshAll: Boolean = false,
+    ) {
+        val syncTargets = targets.distinct()
+
+        syncTargets.forEach { streaksController.syncUserState(it.accountId, it.peerUserId) }
+
+        AndroidUtilities.runOnUIThread {
+            if (refreshAll) {
+                streakEmojiRegistry.refreshAll()
+                return@runOnUIThread
+            }
+
+            syncTargets
+                .asSequence()
+                .map { it.peerUserId }
+                .toSet()
+                .forEach(streakEmojiRegistry::refreshByPeerUserId)
+
+            streakEmojiRegistry.refreshDialogCells()
+        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -356,15 +389,6 @@ class Plugin {
             return peer
         }
 
-        suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
-            streaksController.syncUserState(accountId, peerUserId)
-
-            AndroidUtilities.runOnUIThread {
-                streakEmojiRegistry.refreshByPeerUserId(peerUserId)
-                streakEmojiRegistry.refreshDialogCells()
-            }
-        }
-
         add(ChatContextMenuButton.REBUILD) { peerUserId ->
             val accountId = UserConfig.selectedAccount
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
@@ -379,6 +403,13 @@ class Plugin {
 
                 streaksController.rebuild(accountId, peer, revives) { progress ->
                     progress.showBulletin()
+                }
+
+                streaksController.syncUserState(accountId, peerUserId)
+
+                AndroidUtilities.runOnUIThread {
+                    streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+                    streakEmojiRegistry.refreshDialogCells()
                 }
             }
 
@@ -580,7 +611,7 @@ class Plugin {
 
             backgroundScope.launch {
                 try {
-                    val totalChats =
+                    val result =
                         streaksController.rebuildAll(accountId) { index, total, _, progress ->
                             showTranslatedBulletin(
                                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE,
@@ -594,11 +625,11 @@ class Plugin {
                             )
                         }
 
-                    AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshAll() }
+                    syncPeersUi(result.uiSyncTargets, refreshAll = true)
 
                     showTranslatedBulletin(
                         TranslationKey.FORCE_CHECK_SUMMARY_ALL_SIMPLE,
-                        mapOf("checked" to totalChats.toString()),
+                        mapOf("checked" to result.totalChats.toString()),
                         "msg_retry"
                     )
                 } catch (e: Throwable) {
@@ -1206,19 +1237,25 @@ class Plugin {
                 else -> setOf()
             }
 
+            @Suppress("KotlinConstantConditions")
             backgroundScope.launch {
-                @Suppress("KotlinConstantConditions")
+                var changed = false
+
                 for ((peerUserId, out, message) in entries) {
                     val result = streaksController.handleUpdate(accountId, peerUserId, out, message)
 
-                    if (!out && result.changed) {
-                        streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+                    if (result.changed) {
+                        changed = true
+                        streaksController.syncUserState(accountId, peerUserId)
 
-                        if (result.created) {
-                            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+                        AndroidUtilities.runOnUIThread {
+                            streakEmojiRegistry.refreshByPeerUserId(peerUserId)
                         }
                     }
                 }
+
+                if (changed)
+                    AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
             }
         }
 
@@ -1251,15 +1288,23 @@ class Plugin {
             val sendMessageParams = param.args[0] as SendMessagesHelper.SendMessageParams
 
             backgroundScope.launch {
+                val accountId = UserConfig.selectedAccount
+                val peerUserId = sendMessageParams.peer
+
                 val result = streaksController.handleUpdate(
-                    UserConfig.selectedAccount,
-                    sendMessageParams.peer,
+                    accountId,
+                    peerUserId,
                     true,
                     sendMessageParams.message
                 )
 
-                if (result.created) {
-                    AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+                if (result.changed) {
+                    streaksController.syncUserState(accountId, peerUserId)
+
+                    AndroidUtilities.runOnUIThread {
+                        streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+                        streakEmojiRegistry.refreshDialogCells()
+                    }
                 }
             }
         }

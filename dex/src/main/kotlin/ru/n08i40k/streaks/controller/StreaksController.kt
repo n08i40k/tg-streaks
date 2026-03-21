@@ -46,6 +46,16 @@ class StreaksController(
         val created: Boolean,
     )
 
+    data class UiSyncTarget(
+        val accountId: Int,
+        val peerUserId: Long,
+    )
+
+    data class RebuildAllResult(
+        val totalChats: Int,
+        val uiSyncTargets: List<UiSyncTarget>,
+    )
+
     data class ServiceMessagePolicy(
         val sendCreation: Boolean,
         val sendUpgrade: Boolean,
@@ -392,11 +402,11 @@ class StreaksController(
         accountId: Int,
         serviceMessagePolicy: ServiceMessagePolicy = ServiceMessagePolicy.REBUILD,
         onProgressUpdate: (index: Int, total: Int, peer: TLRPC.User, progress: RebuildProgress) -> Unit
-    ): Int {
+    ): RebuildAllResult {
         if (!rebuildLock.compareAndSet(false, true)) {
             Plugin.getInstance()
                 ?.log("Unable to rebuild all peers for $accountId because another rebuild is already running")
-            return 0
+            return RebuildAllResult(0, emptyList())
         }
 
         try {
@@ -414,11 +424,10 @@ class StreaksController(
 
             }
 
-            for (user in peers) {
-                syncUserState(accountId, user.id)
-            }
-
-            return peers.size
+            return RebuildAllResult(
+                totalChats = peers.size,
+                uiSyncTargets = peers.map { UiSyncTarget(accountId, it.id) },
+            )
         } finally {
             rebuildLock.set(false)
         }
@@ -639,17 +648,20 @@ class StreaksController(
         )
     }
 
-    suspend fun checkAllForUpdates() {
+    suspend fun checkAllForUpdates(): List<UiSyncTarget> {
+        val uiSyncTargets = mutableListOf<UiSyncTarget>()
+
         for (accountId in userConfigAuthorizedIds) {
             val streaks =
                 dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
-            streaks.forEach { checkForUpdates(accountId, it, ServiceMessagePolicy.UPDATE_CHECK) }
+            streaks.forEach {
+                checkForUpdates(accountId, it, ServiceMessagePolicy.UPDATE_CHECK)
+                uiSyncTargets.add(UiSyncTarget(accountId, it.peerUserId))
+            }
         }
 
-        AndroidUtilities.runOnUIThread {
-            Plugin.getInstance()?.streakEmojiRegistry?.refreshAll()
-        }
+        return uiSyncTargets
     }
 
     fun toggleServiceMessages(accountId: Int, peerUserId: Long): Boolean =
