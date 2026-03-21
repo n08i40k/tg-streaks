@@ -61,15 +61,15 @@ class LegacyUsersDbImporter(
 
         val sourceFile = resolveSourceFile() ?: return false
 
+        preferences.edit()
+            .putBoolean(IMPORTED_KEY, true)
+            .apply()
+
         try {
             val payload = JSONObject(sourceFile.readText())
             val version = payload.optInt("version", 1).coerceAtLeast(1)
             val users = payload.optJSONArray("users") ?: JSONArray()
             val importedCount = importPayload(version, users)
-
-            preferences.edit()
-                .putBoolean(IMPORTED_KEY, true)
-                .apply()
 
             logger(
                 "Legacy users_db import completed: imported=$importedCount, version=$version, source=${sourceFile.absolutePath}"
