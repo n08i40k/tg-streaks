@@ -18,6 +18,7 @@ import de.robv.android.xposed.XposedBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -26,7 +27,6 @@ import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.BaseController
 import org.telegram.messenger.ImageReceiver
 import org.telegram.messenger.MessageObject
-import org.telegram.messenger.MessageSuggestionParams
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.SendMessagesHelper
 import org.telegram.messenger.UserConfig
@@ -46,15 +46,15 @@ import org.telegram.ui.DialogsActivity
 import org.telegram.ui.LaunchActivity
 import org.telegram.ui.ProfileActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
-import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.data.StreakLevel
+import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.LegacyUsersDbImporter
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
-import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.override.StreakEmoji
@@ -141,9 +141,9 @@ class Plugin {
     }
 
 
-    private val db: PluginDatabase
-    private val legacyUsersDbImporter: LegacyUsersDbImporter
-    private val databaseBackupManager: DatabaseBackupManager
+    private var db: PluginDatabase
+    private var legacyUsersDbImporter: LegacyUsersDbImporter
+    private var databaseBackupManager: DatabaseBackupManager
 
     private val logger: Logger
     private val translationResolver: TranslationResolver
@@ -154,10 +154,10 @@ class Plugin {
     private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     val streakEmojiRegistry = StreakEmojiRegistry()
 
-    val streaksController: StreaksController
+    var streaksController: StreaksController
     val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
 
-    val backgroundScope = CoroutineScope(Dispatchers.IO)
+    val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
@@ -182,7 +182,14 @@ class Plugin {
         this.translationResolver = translationResolver
         this.resourcesProvider = resourcesProvider
 
-        this.db = Room.databaseBuilder(
+        this.db = buildDatabase()
+        this.legacyUsersDbImporter = LegacyUsersDbImporter(this.db, this::log)
+        this.databaseBackupManager = DatabaseBackupManager(this.db, this::log)
+        this.streaksController = StreaksController(this.db, resourcesProvider)
+    }
+
+    private fun buildDatabase(): PluginDatabase =
+        Room.databaseBuilder(
             ApplicationLoader.applicationContext,
             PluginDatabase::class.java,
             "tg-streaks"
@@ -190,9 +197,11 @@ class Plugin {
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
-        this.legacyUsersDbImporter = LegacyUsersDbImporter(this.db, this::log)
-        this.databaseBackupManager = DatabaseBackupManager(this.db, this::log)
-        this.streaksController = StreaksController(this.db, resourcesProvider)
+    private fun recreateDatabaseBindings() {
+        db = buildDatabase()
+        legacyUsersDbImporter = LegacyUsersDbImporter(db, this::log)
+        databaseBackupManager = DatabaseBackupManager(db, this::log)
+        streaksController = StreaksController(db, resourcesProvider)
     }
 
     fun log(message: String) =
@@ -670,6 +679,7 @@ class Plugin {
             backgroundScope.launch {
                 try {
                     val backup = databaseBackupManager.restoreLatest()
+                    recreateDatabaseBindings()
                     syncPeersUi(streaksController.checkAllForUpdates(), refreshAll = true)
                     showTranslatedBulletin(
                         TranslationKey.OK_BACKUP_IMPORTED,

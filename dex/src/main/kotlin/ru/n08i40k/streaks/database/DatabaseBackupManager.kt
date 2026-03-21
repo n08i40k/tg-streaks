@@ -50,9 +50,6 @@ class DatabaseBackupManager(
         db.close()
         replaceDatabaseFile(target, backup)
 
-        // Force Room to reopen the restored database before next user action.
-        db.openHelper.writableDatabase
-
         logger("Database backup restored: ${backup.absolutePath}")
         backup
     }
@@ -119,13 +116,21 @@ class DatabaseBackupManager(
             backupsDir,
             "tg-streaks-${BACKUP_NAME_FORMATTER.format(Instant.now())}-$source.$BACKUP_EXTENSION"
         )
-        val escapedPath = backup.absolutePath.replace("'", "''")
+        val target = context.getDatabasePath(DATABASE_NAME)
+        val sqliteDb = db.openHelper.writableDatabase
 
-        db.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(FULL)")
-        db.openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
-        pruneOldBackups(backupsDir, keep = MAX_BACKUPS)
+        sqliteDb.query("PRAGMA wal_checkpoint(FULL)").close()
 
-        return backup
+        db.close()
+
+        return try {
+            target.copyTo(backup, overwrite = true)
+            pruneOldBackups(backupsDir, keep = MAX_BACKUPS)
+            backup
+        } finally {
+            // Reopen Room immediately after filesystem-level backup copy.
+            db.openHelper.writableDatabase
+        }
     }
 
     private fun latestBackup(): File? =
