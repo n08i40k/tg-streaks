@@ -91,8 +91,9 @@ class StreaksController(
         val daysChecked: Int,
     ) {
         fun showBulletin() {
-            val plugin = Plugin.getInstance() ?: return
-            val message = plugin.translate(
+            val plugin = Plugin.getInstance()
+
+            val message = plugin.translator.translate(
                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_CHAT,
                 mapOf(
                     "peer_name" to peerLabel,
@@ -102,7 +103,7 @@ class StreaksController(
 
             AndroidUtilities.runOnUIThread {
                 org.telegram.ui.Components.Bulletin.hideVisible()
-                plugin.showBulletin("msg_retry", message)
+                plugin.bulletinHelper.show("msg_retry", message)
             }
         }
     }
@@ -296,8 +297,7 @@ class StreaksController(
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
         if (!ignoreLock && !rebuildLock.compareAndSet(false, true)) {
-            Plugin.getInstance()
-                ?.log("Unable to rebuild peer $accountId:${peer.id} because another rebuild is already running")
+            Plugin.getInstance().logger.info("Unable to rebuild peer $accountId:${peer.id} because another rebuild is already running")
             return
         }
 
@@ -364,7 +364,7 @@ class StreaksController(
                 || serviceMessagePolicy.sendDeath
                 || serviceMessagePolicy.sendRestore
             ) {
-                Plugin.getInstance()?.log("Rebuild service messages policy is unexpectedly enabled")
+                Plugin.getInstance().logger.info("Rebuild service messages policy is unexpectedly enabled")
             }
 
             db.withTransaction {
@@ -391,7 +391,7 @@ class StreaksController(
 
             // TODO: service message abt upgrade?
         } catch (e: Throwable) {
-            Plugin.getInstance()?.logException("Failed to rebuild peer $accountId:${peer.id}", e)
+            Plugin.getInstance().logger.fatal("Failed to rebuild peer $accountId:${peer.id}", e)
         } finally {
             if (!ignoreLock)
                 rebuildLock.set(false)
@@ -404,8 +404,7 @@ class StreaksController(
         onProgressUpdate: (index: Int, total: Int, peer: TLRPC.User, progress: RebuildProgress) -> Unit
     ): RebuildAllResult {
         if (!rebuildLock.compareAndSet(false, true)) {
-            Plugin.getInstance()
-                ?.log("Unable to rebuild all peers for $accountId because another rebuild is already running")
+            Plugin.getInstance().logger.info("Unable to rebuild all peers for $accountId because another rebuild is already running")
             return RebuildAllResult(0, emptyList())
         }
 
@@ -516,9 +515,7 @@ class StreaksController(
                         kill(
                             accountId,
                             peerUserId,
-                            currentDay.next(),
-                            sendServiceMessage =
-                                serviceMessagePolicy.sendDeath && isVisibleLength(streakBeforeDeath.length)
+                            serviceMessagePolicy.sendDeath && isVisibleLength(streakBeforeDeath.length)
                         )
                         return
                     }
@@ -725,9 +722,9 @@ class StreaksController(
         val streak = get(accountId, peerUserId) ?: return null
 
         val nextLevelLength = Plugin.getInstance()
-            ?.streakLevelRegistry
-            ?.levels()
-            ?.firstOrNull { it.length > streak.level.length }
+            .streakLevelRegistry
+            .levels()
+            .firstOrNull { it.length > streak.level.length }
             ?.length
             ?: return streak.level.length
 
@@ -809,7 +806,6 @@ class StreaksController(
     suspend fun kill(
         accountId: Int,
         peerUserId: Long,
-        deathDate: LocalDate = LocalDate.now(),
         sendServiceMessage: Boolean = true
     ) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId

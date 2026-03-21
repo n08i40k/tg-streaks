@@ -8,7 +8,6 @@ package ru.n08i40k.streaks.controller
 
 import android.app.Dialog
 import android.graphics.BitmapFactory
-import android.content.DialogInterface
 import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
@@ -169,12 +168,10 @@ class StreakPopupController(
         }
 
         val shown = showPopup(popup) {
-            Plugin.getInstance()?.backgroundScope?.launch {
+            Plugin.getInstance().backgroundScope.launch {
                 dao.delete(popup)
                 isShowing.set(false)
                 flushCurrentChat()
-            } ?: run {
-                isShowing.set(false)
             }
         }
 
@@ -192,7 +189,6 @@ class StreakPopupController(
             return false
         }
 
-        val plugin = Plugin.getInstance() ?: return false
         val context = resolvePopupContext() ?: return false
 
         AndroidUtilities.runOnUIThread {
@@ -239,10 +235,12 @@ class StreakPopupController(
                                     animatedDrawable?.repeatCount = 0
                                     animatedDrawable?.start()
                                 } catch (_: Throwable) {
-                                    BitmapFactory.decodeFile(resourceFile.absolutePath)?.let(::setImageBitmap)
+                                    BitmapFactory.decodeFile(resourceFile.absolutePath)
+                                        ?.let(::setImageBitmap)
                                 }
                             } else {
-                                BitmapFactory.decodeFile(resourceFile.absolutePath)?.let(::setImageBitmap)
+                                BitmapFactory.decodeFile(resourceFile.absolutePath)
+                                    ?.let(::setImageBitmap)
                             }
                         }
 
@@ -346,7 +344,7 @@ class StreakPopupController(
                     POPUP_AUTO_DISMISS_MS
                 )
             } catch (e: Throwable) {
-                plugin.logException("Failed to show streak popup", e)
+                Plugin.getInstance().logger.fatal("Failed to show streak popup", e)
                 onDismiss()
             }
         }

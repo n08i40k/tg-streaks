@@ -77,7 +77,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
 
     private val streakViewData: StreakViewData
 
-    private fun t(key: String): String = Plugin.getInstance()?.translate(key) ?: key
+    private fun t(key: String): String = Plugin.getInstance().translator.translate(key)
 
     @Suppress("SameParameterValue")
     private fun tf(key: String, vararg replacements: Pair<String, Any?>): String {

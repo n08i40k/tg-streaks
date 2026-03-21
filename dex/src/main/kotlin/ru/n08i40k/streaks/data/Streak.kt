@@ -36,9 +36,7 @@ data class Streak(
 
     val level: StreakLevel
         get() {
-            val registry =
-                Plugin.getInstance()?.streakLevelRegistry
-                    ?: throw NullPointerException("Plugin is not injected")
+            val registry = Plugin.getInstance().streakLevelRegistry
 
             return registry.findByLengthApproximate(length).let {
                 if (this.frozen) {

@@ -92,7 +92,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 field.set(obj, newDrawable)
                 newDrawable.detach()
 
-                Plugin.getInstance()?.streakEmojiRegistry?.add(
+                Plugin.getInstance().streakEmojiRegistry.add(
                     EjectData(
                         WeakReference(newDrawable),
                         WeakReference(obj),
@@ -132,7 +132,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             )
             array[arrayIndex] = newDrawable
 
-            Plugin.getInstance()?.streakEmojiRegistry?.add(
+            Plugin.getInstance().streakEmojiRegistry.add(
                 EjectData(
                     WeakReference(newDrawable),
                     WeakReference(obj),
@@ -403,7 +403,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     fun setPeerUserId(peerUserId: Long, clearStreak: Boolean = false) {
         this.peerUserId = peerUserId
 
-        val plugin = Plugin.getInstance() ?: return
+        val plugin = Plugin.getInstance()
 
         plugin.backgroundScope.launch {
             cachedStreakViewData =

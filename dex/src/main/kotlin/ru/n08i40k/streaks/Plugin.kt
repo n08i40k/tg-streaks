@@ -15,6 +15,7 @@ import android.webkit.ValueCallback
 import androidx.room.Room
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -39,11 +40,9 @@ import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.Cells.UserCell
 import org.telegram.ui.ChatActivity
-import org.telegram.ui.Components.BulletinFactory
 import org.telegram.ui.Components.ChatAvatarContainer
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.DialogsActivity
-import org.telegram.ui.LaunchActivity
 import org.telegram.ui.ProfileActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
 import ru.n08i40k.streaks.constants.ServiceMessage
@@ -64,38 +63,45 @@ import ru.n08i40k.streaks.registry.LockableCallbackRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
 import ru.n08i40k.streaks.registry.StreakLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.util.BulletinHelper
+import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import java.lang.reflect.Member
+import java.lang.Runnable
 
-private typealias Logger = ValueCallback<String>
-private typealias TranslationResolver = java.util.function.Function<String, String?>
+typealias LogReceiver = ValueCallback<String>
+typealias TranslationResolver = java.util.function.Function<String, String?>
 
 class Plugin {
     @Suppress("unused")
     companion object {
         private var INSTANCE: Plugin? = null
 
+        // should not be called from python
         @JvmStatic
-        fun getInstance(): Plugin? = INSTANCE
+        fun getInstance(): Plugin = INSTANCE!!
 
         @JvmStatic
         fun getBuildDate(): String = Integer.toHexString(BuildConfig.BUILD_TIME.hashCode())
 
         @JvmStatic
         fun inject(
-            logger: Logger,
+            logReceiver: LogReceiver,
             translationResolver: TranslationResolver,
             resourcesRootPath: String,
+            reloadPluginCallback: Runnable,
         ) {
             if (INSTANCE != null)
                 return
 
             INSTANCE = Plugin(
-                logger,
+                logReceiver,
                 translationResolver,
                 ResourcesProvider(resourcesRootPath),
+                reloadPluginCallback,
             )
             INSTANCE!!.onInject()
         }
@@ -137,27 +143,42 @@ class Plugin {
         fun eject() {
             INSTANCE?.onEject()
             INSTANCE = null
+
+            BulletinHelper.show(null, "Streaks plugin has been ejected!")
         }
     }
 
+    val backgroundScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, exception ->
+            logger.fatal("An unknown error occurred in background coroutine scope", exception)
+            eject()
+        })
 
-    private var db: PluginDatabase
-    private var legacyUsersDbImporter: LegacyUsersDbImporter
-    private var databaseBackupManager: DatabaseBackupManager
+    // database
+    private val db: PluginDatabase
+    private val databaseBackupManager: DatabaseBackupManager
 
-    private val logger: Logger
-    private val translationResolver: TranslationResolver
+    // helpers
+    private val reloadPluginCallback: Runnable
+    val logger: Logger
+    val translator: Translator
     val resourcesProvider: ResourcesProvider
+    val bulletinHelper: BulletinHelper
 
+    // callback registries
     private val chatContextMenuCallbackRegistry = LockableCallbackRegistry()
     private val settingsActionCallbackRegistry = LockableActionRegistry()
+
+    // eject data
     private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     val streakEmojiRegistry = StreakEmojiRegistry()
 
+    // controllers
     var streaksController: StreaksController
+
+    // registries
     val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
 
-    val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
@@ -174,22 +195,18 @@ class Plugin {
     }
 
     constructor(
-        logger: Logger,
+        logReceiver: LogReceiver,
         translationResolver: TranslationResolver,
         resourcesProvider: ResourcesProvider,
+        reloadPluginCallback: Runnable,
     ) {
-        this.logger = logger
-        this.translationResolver = translationResolver
+        this.logger = Logger(logReceiver)
+        this.translator = Translator(translationResolver)
         this.resourcesProvider = resourcesProvider
+        this.reloadPluginCallback = reloadPluginCallback
+        this.bulletinHelper = BulletinHelper(this.translator)
 
-        this.db = buildDatabase()
-        this.legacyUsersDbImporter = LegacyUsersDbImporter(this.db, this::log)
-        this.databaseBackupManager = DatabaseBackupManager(this.db, this::log)
-        this.streaksController = StreaksController(this.db, resourcesProvider)
-    }
-
-    private fun buildDatabase(): PluginDatabase =
-        Room.databaseBuilder(
+        this.db = Room.databaseBuilder(
             ApplicationLoader.applicationContext,
             PluginDatabase::class.java,
             "tg-streaks"
@@ -197,95 +214,51 @@ class Plugin {
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
-    private fun recreateDatabaseBindings() {
-        db = buildDatabase()
-        legacyUsersDbImporter = LegacyUsersDbImporter(db, this::log)
-        databaseBackupManager = DatabaseBackupManager(db, this::log)
-        streaksController = StreaksController(db, resourcesProvider)
+        this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
+
+        this.streaksController = StreaksController(this.db, this.resourcesProvider)
     }
 
-    fun log(message: String) =
-        logger.onReceiveValue(message)
+    private fun requestFullPluginReload(reason: String) {
+        logger.info(reason)
 
-    fun logException(message: String, exception: Throwable) {
-        val e = exception as? Exception ?: Exception(exception)
-
-        logger.onReceiveValue(message)
-        logger.onReceiveValue(e.toString())
-        logger.onReceiveValue(e.stackTrace.joinToString("\n"))
-    }
-
-    fun translate(key: String): String =
-        translationResolver.apply(key) ?: key
-
-    fun translate(key: String, replacements: Map<String, String>): String {
-        var value = translate(key)
-
-        replacements.forEach { (name, replacement) ->
-            value = value.replace("{$name}", replacement)
-        }
-
-        return value
-    }
-
-    fun showBulletin(icon: String?, message: String) {
-        AndroidUtilities.runOnUIThread {
-            val fragment = LaunchActivity.getSafeLastFragment()
-                ?.takeIf { BulletinFactory.canShowBulletin(it) }
-                ?: return@runOnUIThread
-
-            val bulletin = BulletinFactory.of(fragment).let { factory ->
-                if (icon.isNullOrBlank()) {
-                    factory.createSimpleBulletin(message, "")
-                } else {
-                    val drawableId = ApplicationLoader.applicationContext.resources
-                        .getIdentifier(
-                            icon,
-                            "drawable",
-                            ApplicationLoader.applicationContext.packageName
-                        )
-
-                    if (drawableId != 0) {
-                        factory.createSimpleBulletin(drawableId, message)
-                    } else {
-                        factory.createEmojiBulletin(icon, message)
-                    }
-                }
-            }
-
-            bulletin.show()
+        try {
+            reloadPluginCallback.run()
+        } catch (e: Throwable) {
+            logger.fatal("Failed to request full plugin reload", e)
         }
     }
 
-    fun showTranslatedBulletin(key: String, icon: String? = null) {
-        showBulletin(icon, translate(key))
-    }
-
-    fun showTranslatedBulletin(
-        key: String,
-        replacements: Map<String, String>,
-        icon: String? = null
-    ) {
-        showBulletin(icon, translate(key, replacements))
-    }
 
     private fun onInject() {
         registerCallbacks()
 
-        log("Injected!")
+        logger.info("Injected!")
     }
 
     private fun onFinalizeInject() {
-        runBlocking {
-            legacyUsersDbImporter.importIfNeeded()
-            userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
+        try {
+            val importedLegacyDb = runBlocking {
+                LegacyUsersDbImporter(db, logger::info).importIfNeeded()
+            }
+
+            if (importedLegacyDb) {
+                requestFullPluginReload("Legacy database import finished, reloading plugin")
+                return
+            }
+
+            backgroundScope.launch {
+                userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
+            }
+        } catch (e: Throwable) {
+            logger.fatal("Failed to import legacy database", e)
         }
 
         try {
             hookMethods()
-        } catch (e: Exception) {
-            logException("Failed to hook methods!", e)
-            return onEject()
+        } catch (e: Throwable) {
+            logger.fatal("Failed to hook methods!", e)
+            return eject()
         }
 
         backgroundScope.launch {
@@ -299,11 +272,11 @@ class Plugin {
             try {
                 databaseBackupManager.runAutoBackupLoop()
             } catch (e: Throwable) {
-                logException("Automatic database backup loop failed", e)
+                logger.fatal("Automatic database backup loop failed", e)
             }
         }
 
-        log("Inject finalized!")
+        logger.info("Inject finalized!")
     }
 
     private fun onEject() {
@@ -312,20 +285,20 @@ class Plugin {
         try {
             hooks.forEach { it.unhook() }
             hooks.clear()
-        } catch (e: Exception) {
-            logException("Failed to unhook methods!", e)
+        } catch (e: Throwable) {
+            logger.fatal("Failed to unhook methods!", e)
         }
 
         try {
             streakEmojiRegistry.restoreAll()
-        } catch (e: Exception) {
-            logException("Failed to restore original SwapAnimatedEmojiDrawable!", e)
+        } catch (e: Throwable) {
+            logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
 
         chatContextMenuCallbackRegistry.clear()
         settingsActionCallbackRegistry.clear()
 
-        log("Ejected!")
+        logger.info("Ejected!")
     }
 
     private suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
@@ -368,7 +341,7 @@ class Plugin {
                 try {
                     callback(it)
                 } catch (e: Throwable) {
-                    logException("An exception occurred while handling context menu entry touch", e)
+                    logger.fatal("An error occurred while handling context menu entry touch", e)
                     eject()
                 }
             }
@@ -379,7 +352,7 @@ class Plugin {
                 try {
                     callback()
                 } catch (e: Throwable) {
-                    logException("An exception occurred while handling settings action", e)
+                    logger.fatal("An error occurred while handling settings action", e)
                     eject()
                 }
             }
@@ -389,7 +362,7 @@ class Plugin {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
             if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                showTranslatedBulletin(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
                 return null
             }
 
@@ -402,7 +375,7 @@ class Plugin {
                 || UserObject.isReplyUser(peer)
                 || UserObject.isUserSelf(peer)
             ) {
-                showTranslatedBulletin(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
                 return null
             }
 
@@ -433,7 +406,7 @@ class Plugin {
                 }
             }
 
-            log("[Context Menu] Rebuild clicked on $peerUserId")
+            logger.info("[Context Menu] Rebuild clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.TOGGLE_SERVICE_MESSAGES) { peerUserId ->
@@ -441,28 +414,28 @@ class Plugin {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
             if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
                 return@add
             }
 
             val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
-                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
                 return@add
             }
 
             if (UserObject.isBot(peer)) {
-                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
                 return@add
             }
 
             if (UserObject.isDeleted(peer)) {
-                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
                 return@add
             }
 
             val enabled = streaksController.toggleServiceMessages(accountId, peerUserId)
 
-            showTranslatedBulletin(
+            bulletinHelper.showTranslated(
                 if (enabled) {
                     TranslationKey.OK_UPGRADE_SERVICE_MESSAGES_ENABLED
                 } else {
@@ -471,7 +444,7 @@ class Plugin {
                 "msg_reactions"
             )
 
-            log("[Context Menu] Toggle service messages clicked on $peerUserId; enabled=$enabled")
+            logger.info("[Context Menu] Toggle service messages clicked on $peerUserId; enabled=$enabled")
         }
 
         add(ChatContextMenuButton.REVIVE) { peerUserId ->
@@ -479,22 +452,22 @@ class Plugin {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
             if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
                 return@add
             }
 
             val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
-                showTranslatedBulletin(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
                 return@add
             }
 
             if (UserObject.isBot(peer)) {
-                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
                 return@add
             }
 
             if (UserObject.isDeleted(peer)) {
-                showTranslatedBulletin(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
                 return@add
             }
 
@@ -502,22 +475,22 @@ class Plugin {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
                     return@launch
                 }
 
                 if (!streak.dead) {
-                    showTranslatedBulletin(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
                     return@launch
                 }
 
                 if (!streak.canRevive) {
-                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
                     return@launch
                 }
 
                 if (!streaksController.reviveNow(accountId, peerUserId)) {
-                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
                     return@launch
                 }
 
@@ -525,7 +498,10 @@ class Plugin {
                 MessagesController.getInstance(accountId).putUser(peer, false, true)
                 streakEmojiRegistry.refreshByPeerUserId(peerUserId)
                 AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
-                showTranslatedBulletin(TranslationKey.OK_STREAK_RESTORED, "msg_reactions")
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_STREAK_RESTORED,
+                    "msg_reactions"
+                )
             }
         }
 
@@ -536,10 +512,13 @@ class Plugin {
             backgroundScope.launch {
                 streaksController.debugSetThreeDayStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
-                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_SET_3, "msg_reactions")
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_DEBUG_STREAK_SET_3,
+                    "msg_reactions"
+                )
             }
 
-            log("[Context Menu] Debug-create clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-create clicked on ${peer.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_UPGRADE) { peerUserId ->
@@ -550,7 +529,7 @@ class Plugin {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
                     return@launch
                 }
 
@@ -559,21 +538,21 @@ class Plugin {
                     .firstOrNull { level -> level.length > streak.level.length }
 
                 if (nextLevel == null) {
-                    showTranslatedBulletin(TranslationKey.INFO_DEBUG_STREAK_ALREADY_MAX)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_STREAK_ALREADY_MAX)
                     return@launch
                 }
 
                 val newLength =
                     streaksController.debugUpgradeStreak(accountId, peerUserId) ?: return@launch
                 syncPeerUi(accountId, peerUserId)
-                showTranslatedBulletin(
+                bulletinHelper.showTranslated(
                     TranslationKey.OK_DEBUG_STREAK_UPGRADED,
                     mapOf("days" to newLength.toString()),
                     "msg_reactions"
                 )
             }
 
-            log("[Context Menu] Debug-upgrade clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-upgrade clicked on ${peer.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_FREEZE) { peerUserId ->
@@ -583,10 +562,13 @@ class Plugin {
             backgroundScope.launch {
                 streaksController.debugFreezeStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
-                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_FROZEN, "msg_reactions")
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_DEBUG_STREAK_FROZEN,
+                    "msg_reactions"
+                )
             }
 
-            log("[Context Menu] Debug-freeze clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-freeze clicked on ${peer.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_KILL) { peerUserId ->
@@ -596,10 +578,13 @@ class Plugin {
             backgroundScope.launch {
                 streaksController.debugMarkDead(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
-                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_MARKED_DEAD, "msg_reactions")
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_DEBUG_STREAK_MARKED_DEAD,
+                    "msg_reactions"
+                )
             }
 
-            log("[Context Menu] Debug-kill clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-kill clicked on ${peer.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_DELETE) { peerUserId ->
@@ -608,32 +593,38 @@ class Plugin {
 
             backgroundScope.launch {
                 if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
-                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
                     return@launch
                 }
 
                 syncPeerUi(accountId, peerUserId)
-                showTranslatedBulletin(TranslationKey.OK_DEBUG_STREAK_DELETED, "msg_reactions")
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_DEBUG_STREAK_DELETED,
+                    "msg_reactions"
+                )
             }
 
-            log("[Context Menu] Debug-delete clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-delete clicked on ${peer.id}")
         }
 
         addSettingAction(SettingsActionButton.REBUILD_ALL) {
             val accountId = UserConfig.selectedAccount
 
             if (streaksController.isRebuildRunning()) {
-                showTranslatedBulletin(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
+                bulletinHelper.showTranslated(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
                 return@addSettingAction
             }
 
-            showTranslatedBulletin(TranslationKey.INFO_FORCE_CHECK_STARTED_ALL, "msg_retry")
+            bulletinHelper.showTranslated(
+                TranslationKey.INFO_FORCE_CHECK_STARTED_ALL,
+                "msg_retry"
+            )
 
             backgroundScope.launch {
                 try {
                     val result =
                         streaksController.rebuildAll(accountId) { index, total, _, progress ->
-                            showTranslatedBulletin(
+                            bulletinHelper.showTranslated(
                                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE,
                                 mapOf(
                                     "peer_name" to progress.peerLabel,
@@ -647,14 +638,14 @@ class Plugin {
 
                     syncPeersUi(result.uiSyncTargets, refreshAll = true)
 
-                    showTranslatedBulletin(
+                    bulletinHelper.showTranslated(
                         TranslationKey.FORCE_CHECK_SUMMARY_ALL_SIMPLE,
                         mapOf("checked" to result.totalChats.toString()),
                         "msg_retry"
                     )
                 } catch (e: Throwable) {
-                    logException("Failed to rebuild all private chats for account $accountId", e)
-                    showTranslatedBulletin(TranslationKey.ERR_FORCE_CHECK_FAILED_LOGS)
+                    logger.fatal("Failed to rebuild all private chats for account $accountId", e)
+                    bulletinHelper.showTranslated(TranslationKey.ERR_FORCE_CHECK_FAILED_LOGS)
                 }
             }
         }
@@ -663,14 +654,14 @@ class Plugin {
             backgroundScope.launch {
                 try {
                     val backup = databaseBackupManager.exportNow()
-                    showTranslatedBulletin(
+                    bulletinHelper.showTranslated(
                         TranslationKey.OK_BACKUP_EXPORTED,
                         mapOf("name" to backup.name),
                         "msg_save"
                     )
                 } catch (e: Throwable) {
-                    logException("Failed to export database backup", e)
-                    showTranslatedBulletin(TranslationKey.ERR_BACKUP_EXPORT_FAILED)
+                    logger.fatal("Failed to export database backup", e)
+                    bulletinHelper.showTranslated(TranslationKey.ERR_BACKUP_EXPORT_FAILED)
                 }
             }
         }
@@ -679,27 +670,22 @@ class Plugin {
             backgroundScope.launch {
                 try {
                     val backup = databaseBackupManager.restoreLatest()
-                    recreateDatabaseBindings()
-                    syncPeersUi(streaksController.checkAllForUpdates(), refreshAll = true)
-                    showTranslatedBulletin(
-                        TranslationKey.OK_BACKUP_IMPORTED,
-                        mapOf("name" to backup.name),
-                        "msg_reset"
-                    )
+                    logger.info("Database backup restore completed, reloading plugin: ${backup.name}")
+                    requestFullPluginReload("Reload requested after database backup restore")
                 } catch (e: IllegalStateException) {
                     if (e.message == TranslationKey.DB_ERR_NO_BACKUPS_FOUND) {
-                        showTranslatedBulletin(TranslationKey.DB_ERR_NO_BACKUPS_FOUND)
+                        bulletinHelper.showTranslated(TranslationKey.DB_ERR_NO_BACKUPS_FOUND)
                     } else {
-                        logException("Failed to restore latest database backup", e)
-                        showTranslatedBulletin(
+                        logger.fatal("Failed to restore latest database backup", e)
+                        bulletinHelper.showTranslated(
                             TranslationKey.DB_ERR_FAILED_APPLY_BACKUP,
                             mapOf("reason" to (e.message ?: e.javaClass.simpleName)),
                             "msg_reset"
                         )
                     }
                 } catch (e: Throwable) {
-                    logException("Failed to restore latest database backup", e)
-                    showTranslatedBulletin(
+                    logger.fatal("Failed to restore latest database backup", e)
+                    bulletinHelper.showTranslated(
                         TranslationKey.DB_ERR_FAILED_APPLY_BACKUP,
                         mapOf("reason" to (e.message ?: e.javaClass.simpleName)),
                         "msg_reset"
@@ -726,8 +712,8 @@ class Plugin {
                         try {
                             callback(param)
                         } catch (e: Throwable) {
-                            logException(
-                                "An exception occurred in $method before-call hook!",
+                            logger.fatal(
+                                "An error occurred in $method before-call hook!",
                                 e
                             )
                             eject()
@@ -745,8 +731,8 @@ class Plugin {
                         try {
                             callback(param)
                         } catch (e: Throwable) {
-                            logException(
-                                "An exception occurred in $method after-call hook!",
+                            logger.fatal(
+                                "An error occurred in $method after-call hook!",
                                 e
                             )
                             eject()
@@ -877,7 +863,8 @@ class Plugin {
                     return@streakCreate null
 
                 TLRPC.TL_messageActionCustomAction().apply {
-                    val messageText = translate(TranslationKey.SERVICE_MESSAGE_CREATE_TEXT)
+                    val messageText =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_CREATE_TEXT)
                     (this as TLRPC.MessageAction).message = messageText
                 }
             }
@@ -891,8 +878,9 @@ class Plugin {
                     ?.takeIf { it > 0 } ?: return@streakUpgrade null
 
                 TLRPC.TL_messageActionCustomAction().apply {
-                    val messageText = translate(TranslationKey.SERVICE_MESSAGE_UPGRADE_TEXT)
-                        .replace("{days}", days.toString())
+                    val messageText =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_UPGRADE_TEXT)
+                            .replace("{days}", days.toString())
 
                     (this as TLRPC.MessageAction).message = messageText
                 }
@@ -924,7 +912,7 @@ class Plugin {
 
                 val messageText =
                     if (!restoredByPeer) {
-                        translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_SELF)
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_SELF)
                     } else {
                         val peerName =
                             peerId
@@ -934,7 +922,7 @@ class Plugin {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_PEER)
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_PEER)
                             .replace("{name}", peerName)
                     }
 
@@ -984,22 +972,22 @@ class Plugin {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    showTranslatedBulletin(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
                     return@launch
                 }
 
                 if (!streak.dead) {
-                    showTranslatedBulletin(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
                     return@launch
                 }
 
                 if (!streak.canRevive) {
-                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
                     return@launch
                 }
 
                 if (!streaksController.reviveNow(accountId, peerUserId)) {
-                    showTranslatedBulletin(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
                     return@launch
                 }
             }
@@ -1037,10 +1025,10 @@ class Plugin {
             if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
                 return@before
 
-            param.args[0] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_TITLE)
-            param.args[1] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_SUBTITLE)
-            param.args[3] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_HINT)
-            param.args[5] = translate(TranslationKey.SERVICE_MESSAGE_DEATH_BUTTON)
+            param.args[0] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_TITLE)
+            param.args[1] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_SUBTITLE)
+            param.args[3] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_HINT)
+            param.args[5] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_BUTTON)
             param.args[9] = false
             param.args[10] = true
         }

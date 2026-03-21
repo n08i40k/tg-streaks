@@ -19,7 +19,7 @@ from base_plugin import BasePlugin, MenuItemData, MenuItemType
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
 from java import dynamic_proxy
-from java.lang import Class, Integer, Long, String
+from java.lang import Class, Integer, Long, Runnable, String
 from java.nio import ByteBuffer  # ty:ignore[unresolved-import]
 from java.util.function import Function
 from org.telegram.messenger import ApplicationLoader, LocaleController
@@ -1229,6 +1229,8 @@ class PluginUpdateChecker:
 
 
 class TgStreaksPlugin(BasePlugin):
+    _reload_lock = threading.Lock()
+
     settings_actions: SettingsActions
 
     def log_exception(self, message: str, exception: BaseException):
@@ -1568,20 +1570,56 @@ class TgStreaksPlugin(BasePlugin):
                         return ""
                     return ref._t(str(t))
 
+            class ReloadCallback(dynamic_proxy(Runnable)):
+                def run(self):
+                    ref._schedule_full_reload("Reload requested by JVM plugin")
+
             self.jvm_plugin.klass.getDeclaredMethod(
                 String("inject"),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
                 String.getClass(),  # ty:ignore[unresolved-attribute]
+                Runnable.getClass(),  # ty:ignore[unresolved-attribute]
             ).invoke(
                 None,
                 Logger(),
                 TranslationResolver(),
                 String(self.resources_bridge.resources_root),
+                ReloadCallback(),
             )  # ty:ignore[no-matching-overload]
             self.log("JVM plugin injected successfully")
         except Exception as e:
             self.log_exception("Failed to inject JVM plugin", e)
+
+    def _schedule_full_reload(self, reason: str):
+        if not self._reload_lock.acquire(blocking=False):
+            self.log(f"Skipped duplicate plugin reload request: {reason}")
+            return
+
+        def worker():
+            try:
+                self.log(f"Starting full plugin reload: {reason}")
+
+                try:
+                    self.on_plugin_unload()
+                except BaseException as e:
+                    self.log_exception("Failed during plugin unload while reloading", e)
+
+                try:
+                    self.on_plugin_load()
+                except BaseException as e:
+                    self.log_exception("Failed during plugin load while reloading", e)
+                    return
+
+                self.log("Full plugin reload completed")
+            finally:
+                self._reload_lock.release()
+
+        threading.Thread(
+            target=worker,
+            name="tg-streaks-full-reload",
+            daemon=True,
+        ).start()
 
     def on_plugin_load(self):
         self.resources_bridge = ZipResourcesBridge(self)

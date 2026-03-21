@@ -55,11 +55,11 @@ class LegacyUsersDbImporter(
     private val streakDao by lazy(LazyThreadSafetyMode.NONE) { db.streakDao() }
     private val reviveDao by lazy(LazyThreadSafetyMode.NONE) { db.streakReviveDao() }
 
-    suspend fun importIfNeeded() {
+    suspend fun importIfNeeded(): Boolean {
         if (preferences.getBoolean(IMPORTED_KEY, false))
-            return
+            return false
 
-        val sourceFile = resolveSourceFile() ?: return
+        val sourceFile = resolveSourceFile() ?: return false
 
         try {
             val payload = JSONObject(sourceFile.readText())
@@ -74,8 +74,10 @@ class LegacyUsersDbImporter(
             logger(
                 "Legacy users_db import completed: imported=$importedCount, version=$version, source=${sourceFile.absolutePath}"
             )
+            return importedCount > 0
         } catch (t: Throwable) {
             logger("Legacy users_db import failed: ${t.message ?: t}")
+            return false
         }
     }
 
