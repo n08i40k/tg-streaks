@@ -15,6 +15,7 @@ import android.webkit.ValueCallback
 import androidx.room.Room
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -269,6 +270,8 @@ class Plugin {
         backgroundScope.launch {
             try {
                 databaseBackupManager.runAutoBackupLoop()
+            } catch (_: CancellationException) {
+                // Suppress error
             } catch (e: Throwable) {
                 logger.fatal("Automatic database backup loop failed", e)
             }
