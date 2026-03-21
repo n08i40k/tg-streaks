@@ -86,37 +86,13 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Daily backups are created automatically. Import replaces current streak database.",
         "ru": "Ежедневные бэкапы создаются автоматически. Импорт заменяет текущую базу стриков.",
     },
-    "err.users_db_not_ready": {
-        "en": "Users database is not ready yet",
-        "ru": "База пользователей ещё не готова",
-    },
     "err.cannot_detect_current_chat": {
         "en": "Cannot detect current chat",
         "ru": "Не удалось определить текущий чат",
     },
-    "err.force_check_failed_logs": {
-        "en": "Force check failed. See plugin logs.",
-        "ru": "Принудительная проверка завершилась ошибкой. Смотрите логи плагина.",
-    },
-    "err.cannot_open_chat_context": {
-        "en": "Cannot open chat context for jump",
-        "ru": "Не удалось открыть контекст чата для перехода",
-    },
-    "err.failed_jump_to_streak_start": {
-        "en": "Failed to jump to streak start",
-        "ru": "Не удалось перейти к началу стрика",
-    },
-    "err.failed_export_backup": {
-        "en": "Failed to export backup",
-        "ru": "Не удалось экспортировать бэкап",
-    },
     "err.backup_export_failed": {
         "en": "Backup export failed",
         "ru": "Ошибка экспорта бэкапа",
-    },
-    "err.backup_import_failed": {
-        "en": "Backup import failed",
-        "ru": "Ошибка импорта бэкапа",
     },
     "err.failed_open_update_link": {
         "en": "Failed to open update link",
@@ -129,10 +105,6 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "ok.backup_imported": {
         "en": "Backup imported: {name}",
         "ru": "Бэкап импортирован: {name}",
-    },
-    "ok.jumped_to_streak_start_message": {
-        "en": "Jumped to streak start message",
-        "ru": "Переход к сообщению начала стрика выполнен",
     },
     "ok.debug_streak_set_3": {
         "en": "Debug: streak set to 3 days",
@@ -167,18 +139,6 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "This action works only for private user chats",
         "ru": "Это действие работает только в личных чатах с пользователями",
     },
-    "info.private_chat_only": {
-        "en": "This action is available only in a private chat with another person",
-        "ru": "Это действие доступно только в личном чате с другим человеком",
-    },
-    "info.action_not_available_for_saved_messages": {
-        "en": "This action is not available in Saved Messages",
-        "ru": "Это действие недоступно в Избранном",
-    },
-    "info.action_not_available_for_your_other_account": {
-        "en": "This action is not available in chats with your other account",
-        "ru": "Это действие недоступно в чате с вашим другим аккаунтом",
-    },
     "info.action_not_available_for_bots": {
         "en": "This action is not available in chats with bots",
         "ru": "Это действие недоступно в чатах с ботами",
@@ -199,10 +159,6 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Force check is already running",
         "ru": "Принудительная проверка уже выполняется",
     },
-    "info.force_check_started_chat": {
-        "en": "Force check started for this chat",
-        "ru": "Принудительная проверка запущена для этого чата",
-    },
     "info.force_check_started_all": {
         "en": "Force check started",
         "ru": "Принудительная проверка запущена",
@@ -210,18 +166,6 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "info.no_streak_record_for_chat": {
         "en": "No streak record for this chat",
         "ru": "Для этого чата нет записи стрика",
-    },
-    "info.searching_streak_start_message": {
-        "en": "Searching streak start message...",
-        "ru": "Ищу сообщение начала стрика...",
-    },
-    "info.exact_start_message_not_found": {
-        "en": "Exact start message not found, jumped to streak start day",
-        "ru": "Точное сообщение начала не найдено, выполнен переход к дню начала стрика",
-    },
-    "info.debug_mode_disabled": {
-        "en": "Debug mode is disabled",
-        "ru": "Debug-режим отключён",
     },
     "info.debug_private_user_only": {
         "en": "Debug actions work only for private user chats",
@@ -279,14 +223,6 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Check the chat history again and update the streak length",
         "ru": "Ещё раз проверить историю чата и обновить длину стрика",
     },
-    "menu.go_to_streak_start.text": {
-        "en": "Open where the streak began",
-        "ru": "Открыть начало стрика",
-    },
-    "menu.go_to_streak_start.subtext": {
-        "en": "Jump to the message or day where the current streak started",
-        "ru": "Перейти к сообщению или дню, с которого начался текущий стрик",
-    },
     "menu.upgrade_service_messages.text": {
         "en": "Toggle service messages",
         "ru": "Переключить сервисные сообщения",
@@ -340,51 +276,19 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Delete the streak record for the current chat",
         "ru": "Удалить запись стрика для текущего чата",
     },
-    "force_check.day_mode_today": {"en": "today pass", "ru": "проверка сегодня"},
-    "force_check.day_mode_yesterday": {"en": "yesterday pass", "ru": "проверка вчера"},
-    "force_check.day_state_active": {"en": "active", "ru": "активно"},
-    "force_check.day_state_stop": {"en": "stop", "ru": "стоп"},
     "force_check.day_progress_chat": {
         "en": "Recalculating streak with {peer_name}: checked {days_checked} d.",
         "ru": "Пересчитываю стрик с {peer_name}: проверено {days_checked} д.",
     },
-    "force_check.day_progress_all": {
-        "en": "Force check day progress: {days_checked} days for {peer_name} [{checked_chats}/{total_chats}] (offset={day_offset}, {state}, {mode})",
-        "ru": "Прогресс проверки по дням: {days_checked} дней для {peer_name} [{checked_chats}/{total_chats}] (смещение={day_offset}, {state}, {mode})",
-    },
     "force_check.day_progress_all_simple": {
         "en": "Recalculating streaks: {peer_name} [{checked_chats}/{total_chats}], checked {days_checked} d.",
         "ru": "Пересчитываю стрики: {peer_name} [{checked_chats}/{total_chats}], проверено {days_checked} д.",
-    },
-    "force_check.progress_zero": {
-        "en": "Force check progress: 0/0",
-        "ru": "Прогресс проверки: 0/0",
-    },
-    "force_check.progress": {
-        "en": "Force check progress: {checked}/{total} (updated={updated}, removed={removed}, unchanged={unchanged})",
-        "ru": "Прогресс проверки: {checked}/{total} (обновлено={updated}, удалено={removed}, без изменений={unchanged})",
-    },
-    "force_check.summary_chat": {
-        "en": "Force check done for this chat: checked={checked}, updated={updated}, removed={removed}, unchanged={unchanged}",
-        "ru": "Проверка этого чата завершена: проверено={checked}, обновлено={updated}, удалено={removed}, без изменений={unchanged}",
-    },
-    "force_check.summary_all": {
-        "en": "Force check done: checked={checked}, updated={updated}, removed={removed}, unchanged={unchanged}",
-        "ru": "Проверка завершена: проверено={checked}, обновлено={updated}, удалено={removed}, без изменений={unchanged}",
     },
     "force_check.summary_all_simple": {
         "en": "Rebuild completed for {checked} private chats",
         "ru": "Ребилд завершён для {checked} личных чатов",
     },
     "db.err.no_backups_found": {"en": "No backups found", "ru": "Бэкапы не найдены"},
-    "db.err.failed_list_backups": {
-        "en": "Failed to list backups: {reason}",
-        "ru": "Не удалось получить список бэкапов: {reason}",
-    },
-    "db.err.failed_read_backup": {
-        "en": "Failed to read backup: {reason}",
-        "ru": "Не удалось прочитать бэкап: {reason}",
-    },
     "db.err.failed_apply_backup": {
         "en": "Failed to apply backup: {reason}",
         "ru": "Не удалось применить бэкап: {reason}",
