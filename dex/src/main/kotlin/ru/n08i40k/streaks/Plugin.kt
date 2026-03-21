@@ -151,7 +151,6 @@ class Plugin {
     val backgroundScope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, exception ->
             logger.fatal("An unknown error occurred in background coroutine scope", exception)
-            eject()
         })
 
     // database
@@ -258,7 +257,6 @@ class Plugin {
             hookMethods()
         } catch (e: Throwable) {
             logger.fatal("Failed to hook methods!", e)
-            return eject()
         }
 
         backgroundScope.launch {
@@ -342,7 +340,6 @@ class Plugin {
                     callback(it)
                 } catch (e: Throwable) {
                     logger.fatal("An error occurred while handling context menu entry touch", e)
-                    eject()
                 }
             }
         }
@@ -353,7 +350,6 @@ class Plugin {
                     callback()
                 } catch (e: Throwable) {
                     logger.fatal("An error occurred while handling settings action", e)
-                    eject()
                 }
             }
         }
@@ -716,7 +712,6 @@ class Plugin {
                                 "An error occurred in $method before-call hook!",
                                 e
                             )
-                            eject()
                         }
                     }
                 }
@@ -735,7 +730,6 @@ class Plugin {
                                 "An error occurred in $method after-call hook!",
                                 e
                             )
-                            eject()
                         }
                     }
                 }
