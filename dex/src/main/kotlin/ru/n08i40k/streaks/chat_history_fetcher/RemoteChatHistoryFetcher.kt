@@ -173,10 +173,10 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 if (message.date !in startLocalEpoch..endLocalEpoch)
                     break@reqLoop // no more messages for today
 
-                if (message.from_id.user_id == peerUserId)
-                    fromPeer = true
-                else
+                if (message.out)
                     fromOwner = true
+                else
+                    fromPeer = true
 
                 if (message.message == ServiceMessage.RESTORE_TEXT)
                     wasRevived = true
