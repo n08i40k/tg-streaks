@@ -46,3 +46,41 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         )
     }
 }
+
+val MIGRATION_3_5 = object : Migration(3, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `streak_pet` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `created_at` INTEGER NOT NULL,
+                `last_checked_at` INTEGER NOT NULL,
+                `name` TEXT NOT NULL,
+                `points` INTEGER NOT NULL,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `streak_pet_task` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `created_at` INTEGER NOT NULL,
+                `type` TEXT NOT NULL,
+                `is_completed` INTEGER NOT NULL,
+                `payload` TEXT,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`, `created_at`, `type`),
+                FOREIGN KEY(`owner_user_id`, `peer_user_id`) REFERENCES `streak_pet`(`owner_user_id`, `peer_user_id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_streak_pet_task_owner_user_id_peer_user_id_created_at`
+            ON `streak_pet_task` (`owner_user_id`, `peer_user_id`, `created_at`)
+            """.trimIndent()
+        )
+    }
+}

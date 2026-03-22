@@ -56,6 +56,7 @@ import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.LegacyUsersDbImporter
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
+import ru.n08i40k.streaks.database.MIGRATION_3_5
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
@@ -219,7 +220,7 @@ class Plugin {
             PluginDatabase::class.java,
             "tg-streaks"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5)
             .build()
 
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
