@@ -237,7 +237,7 @@ class StreaksController(
         if (revives.contains(day))
             return Action.REVIVE
 
-        if (!untilRevive && cachedFetcher.fetch(
+        if (!untilRevive && cachedFetcher.fetchActivity(
                 accountId,
                 peer.id,
                 day
@@ -245,7 +245,7 @@ class StreaksController(
         )
             return Action.GROW
 
-        return when (val status = remoteFetcher.fetch(accountId, peer.id, day, untilRevive)) {
+        return when (val status = remoteFetcher.fetchActivity(accountId, peer.id, day, untilRevive)) {
             is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) Action.REVIVE else Action.GROW
             is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
             is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER

@@ -7,15 +7,26 @@ import java.time.LocalDate
 
 class CachedChatHistoryFetcher : ChatHistoryFetcher {
     companion object {
-        const val QUERY =
-            "SELECT " +
-                    "MAX(CASE WHEN out = 1 THEN 1 ELSE 0 END), " +
-                    "MAX(CASE WHEN out = 0 THEN 1 ELSE 0 END) " +
-                    "FROM messages_v2 " +
-                    "WHERE uid = ? AND date >= ? AND date < ?"
+        const val CHECK_QUERY =
+            """
+            SELECT
+                MAX(CASE WHEN out = 1 THEN 1 ELSE 0 END),
+                MAX(CASE WHEN out = 0 THEN 1 ELSE 0 END)
+            FROM messages_v2
+            WHERE uid = ? AND date >= ? AND date < ?
+            """
+
+        const val IDS_QUERY =
+            """
+            SELECT
+                mid,
+                out
+            FROM messages_v2
+            WHERE uid = ? AND date >= ? AND date < ?
+            """
     }
 
-    override suspend fun fetch(
+    override suspend fun fetchActivity(
         accountId: Int,
         peerUserId: Long,
         day: LocalDate,
@@ -25,7 +36,7 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         val endLocalEpoch = day.next().toEpochSecondSystem()
 
         val db = AccountInstance.getInstance(accountId).messagesStorage.database
-        val cursor = db.queryFinalized(QUERY, peerUserId, startLocalEpoch, endLocalEpoch)
+        val cursor = db.queryFinalized(CHECK_QUERY, peerUserId, startLocalEpoch, endLocalEpoch)
 
         if (!cursor.next())
             return ChatHistoryFetcher.Status.NoActivity()
@@ -48,5 +59,25 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
             fromPeer -> ChatHistoryFetcher.Status.FromPeer(false)
             else -> ChatHistoryFetcher.Status.NoActivity()
         }
+    }
+
+    override suspend fun fetchIds(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate
+    ): List<Pair<Int, Boolean>> {
+        val startLocalEpoch = day.toEpochSecondSystem()
+        val endLocalEpoch = day.next().toEpochSecondSystem()
+
+        val db = AccountInstance.getInstance(accountId).messagesStorage.database
+        val cursor = db.queryFinalized(IDS_QUERY, peerUserId, startLocalEpoch, endLocalEpoch)
+
+        val ids = mutableListOf<Pair<Int, Boolean>>()
+
+        while (cursor.next()) {
+            ids.add(Pair(cursor.intValue(0), cursor.intValue(1) == 1))
+        }
+
+        return ids.toList()
     }
 }

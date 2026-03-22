@@ -61,7 +61,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         accountId: Int,
         peerUserId: Long,
         connectionsManager: ConnectionsManager,
-        req: TLRPC.TL_messages_getHistory
+        req: TLRPC.TL_messages_getHistory,
     ): TLRPC.messages_Messages {
         var attempt = 0
 
@@ -130,7 +130,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                     }
 
                     throw RuntimeException(
-                        "Failed to fetch chat activity $accountId:$peerUserId",
+                        "Failed to fetchActivity chat activity $accountId:$peerUserId",
                         Exception(result.error.toString())
                     )
                 }
@@ -139,7 +139,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
     }
 
     @Throws(RuntimeException::class)
-    override suspend fun fetch(
+    override suspend fun fetchActivity(
         accountId: Int,
         peerUserId: Long,
         day: LocalDate,
@@ -197,5 +197,44 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             fromPeer -> ChatHistoryFetcher.Status.FromPeer(wasRevived)
             else -> ChatHistoryFetcher.Status.NoActivity()
         }
+    }
+
+    override suspend fun fetchIds(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate
+    ): List<Pair<Int, Boolean>> {
+        val startLocalEpoch = day.toEpochSecondUtc().toInt()
+        var endLocalEpoch = day.next().toEpochSecondUtc().toInt()
+
+        val ids = arrayListOf<Pair<Int, Boolean>>()
+
+        val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
+        val connectionsManager = ConnectionsManager.getInstance(accountId)
+
+        reqLoop@ while (true) {
+            val req = TLRPC.TL_messages_getHistory().apply {
+                this.peer = peer
+                offset_date = endLocalEpoch
+            }
+
+            val res = requestHistory(accountId, peerUserId, connectionsManager, req)
+
+            if (res.messages.isEmpty())
+                break@reqLoop // break loop if no messages found (probably start of the chat?)
+
+            for (message in res.messages) {
+                val message = message as? TLRPC.Message ?: continue
+
+                if (message.date !in startLocalEpoch..endLocalEpoch)
+                    break@reqLoop // no more messages for today
+
+                ids.add(Pair(message.id, message.out))
+
+                endLocalEpoch = message.date
+            }
+        }
+
+        return ids.toList()
     }
 }

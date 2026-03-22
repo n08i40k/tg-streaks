@@ -11,10 +11,16 @@ interface ChatHistoryFetcher {
         class FromBoth(wasRevived: Boolean) : Status(wasRevived)
     }
 
-    suspend fun fetch(
+    suspend fun fetchActivity(
         accountId: Int,
         peerUserId: Long,
         day: LocalDate,
         untilRevive: Boolean = false
     ): Status
+
+    suspend fun fetchIds(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate,
+    ): List<Pair<Int, Boolean>>
 }
