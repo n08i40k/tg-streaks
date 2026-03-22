@@ -415,6 +415,23 @@ class Plugin {
                     streakEmojiRegistry.refreshByPeerUserId(peerUserId)
                     streakEmojiRegistry.refreshDialogCells()
                 }
+
+                val rebuiltStreak = streaksController.get(accountId, peerUserId)
+
+                if (rebuiltStreak != null) {
+                    bulletinHelper.showTranslated(
+                        TranslationKey.FORCE_CHECK_SUMMARY_CHAT,
+                        mapOf(
+                            "peer_name" to (peer.username?.takeIf { it.isNotBlank() }
+                                ?.let { "@$it" }
+                                ?: UserObject.getUserName(peer).takeIf { it.isNotBlank() }
+                                ?: peer.id.toString()),
+                            "days" to rebuiltStreak.length.toString(),
+                            "revives" to rebuiltStreak.revivesCount.toString(),
+                        ),
+                        "msg_retry"
+                    )
+                }
             }
 
             logger.info("[Context Menu] Rebuild clicked on $peerUserId")

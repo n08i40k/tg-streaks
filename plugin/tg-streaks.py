@@ -329,6 +329,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Rebuild completed for {checked} private chats",
         "ru": "Ребилд завершён для {checked} личных чатов",
     },
+    "force_check.summary_chat": {
+        "en": "Recalculated streak with {peer_name}: {days} d., {revives} revives.",
+        "ru": "Стрик с {peer_name} пересчитан: {days} д., восстановлений: {revives}.",
+    },
     "force_check.retry_delay": {
         "en": "Telegram did not respond. Next attempt in {seconds} s.",
         "ru": "Telegram не ответил. Следующая попытка через {seconds} сек.",

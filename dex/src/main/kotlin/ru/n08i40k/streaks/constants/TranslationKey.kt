@@ -4,6 +4,7 @@ object TranslationKey {
     const val FORCE_CHECK_DAY_PROGRESS_CHAT = "force_check.day_progress_chat"
     const val FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE = "force_check.day_progress_all_simple"
     const val FORCE_CHECK_SUMMARY_ALL_SIMPLE = "force_check.summary_all_simple"
+    const val FORCE_CHECK_SUMMARY_CHAT = "force_check.summary_chat"
     const val FORCE_CHECK_RETRY_DELAY = "force_check.retry_delay"
     const val OK_UPGRADE_SERVICE_MESSAGES_ENABLED = "ok.upgrade_service_messages_enabled"
     const val OK_UPGRADE_SERVICE_MESSAGES_DISABLED = "ok.upgrade_service_messages_disabled"
