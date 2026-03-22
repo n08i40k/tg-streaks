@@ -1,10 +1,15 @@
 package ru.n08i40k.streaks.data
 
 sealed interface StreakPetTaskPayload {
+    val isCompleted: Boolean
+
     data class ExchangeOneMessage(
         val fromOwnerMessageId: Int?,
         val fromPeerMessageId: Int?,
     ) : StreakPetTaskPayload {
+        override val isCompleted: Boolean
+            get() = fromOwnerMessageId != null && fromPeerMessageId != null
+
         companion object {
             val empty
                 get() = ExchangeOneMessage(
@@ -20,6 +25,9 @@ sealed interface StreakPetTaskPayload {
         val fromPeerMessagesCount: Int,
         val fromPeerLastMessageId: Int?,
     ) : StreakPetTaskPayload {
+        override val isCompleted: Boolean
+            get() = fromOwnerMessagesCount == 4 && fromPeerMessagesCount == 4
+
         companion object {
             val empty
                 get() = SendFourMessagesEach(
@@ -37,6 +45,9 @@ sealed interface StreakPetTaskPayload {
         val fromPeerMessagesCount: Int,
         val fromPeerLastMessageId: Int?,
     ) : StreakPetTaskPayload {
+        override val isCompleted: Boolean
+            get() = fromOwnerMessagesCount == 10 && fromPeerMessagesCount == 10
+
         companion object {
             val empty
                 get() = SendTenMessagesEach(
