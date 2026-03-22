@@ -23,6 +23,7 @@ import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakRevive
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
@@ -58,7 +59,7 @@ class StreaksController(
     )
 
     data class RebuildProgress(
-        val peerLabel: String,
+        val user: TLRPC.User,
         val daysChecked: Int,
     ) {
         fun showBulletin() {
@@ -67,7 +68,7 @@ class StreaksController(
             val message = plugin.translator.translate(
                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_CHAT,
                 mapOf(
-                    "peer_name" to peerLabel,
+                    "peer_name" to user.label,
                     "days_checked" to daysChecked.toString(),
                 )
             )
@@ -113,13 +114,6 @@ class StreaksController(
             revivesCount,
         )
     }
-
-    private fun getPeerLabel(peer: TLRPC.User): String =
-        peer.username
-            ?.takeIf { it.isNotBlank() }
-            ?.let { "@$it" }
-            ?: UserObject.getUserName(peer).takeIf { it.isNotBlank() }
-            ?: peer.id.toString()
 
     private fun isVisibleLength(length: Int): Boolean =
         length >= MIN_VISIBLE_STREAK_LENGTH
@@ -288,7 +282,7 @@ class StreaksController(
                 val checkedDay = currentDay
                 val action = fetchStreakActionForDay(accountId, peer, checkedDay, revives, false)
                 val progress = RebuildProgress(
-                    peerLabel = getPeerLabel(peer),
+                    user = peer,
                     daysChecked = (startDay.toEpochDay() - checkedDay.toEpochDay()).toInt() + 1,
                 )
 

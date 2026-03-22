@@ -57,6 +57,7 @@ import ru.n08i40k.streaks.database.LegacyUsersDbImporter
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.override.StreakEmoji
@@ -730,7 +731,7 @@ class Plugin {
                             bulletinHelper.showTranslated(
                                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE,
                                 mapOf(
-                                    "peer_name" to progress.peerLabel,
+                                    "peer_name" to progress.user.label,
                                     "days_checked" to progress.daysChecked.toString(),
                                     "checked_chats" to (index + 1).toString(),
                                     "total_chats" to total.toString(),
