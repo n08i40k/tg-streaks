@@ -31,4 +31,37 @@ data class StreakPetTask(
 ) {
     @Ignore
     val payload: StreakPetTaskPayload = dbPayload ?: type.defaultPayload
+
+    companion object {
+        fun getNewTasksList(
+            ownerUserId: Long,
+            peerUserId: Long,
+            day: LocalDate
+        ): ArrayList<StreakPetTask> = arrayListOf(
+            StreakPetTask(
+                ownerUserId,
+                peerUserId,
+                day,
+                StreakPetTaskType.EXCHANGE_ONE_MESSAGE,
+                false,
+                null
+            ),
+            StreakPetTask(
+                ownerUserId,
+                peerUserId,
+                day,
+                StreakPetTaskType.SEND_FOUR_MESSAGES_EACH,
+                false,
+                null
+            ),
+            StreakPetTask(
+                ownerUserId,
+                peerUserId,
+                day,
+                StreakPetTaskType.SEND_TEN_MESSAGES_EACH,
+                false,
+                null
+            ),
+        )
+    }
 }
