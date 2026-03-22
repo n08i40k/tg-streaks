@@ -121,16 +121,9 @@ class DatabaseBackupManager(
 
         sqliteDb.query("PRAGMA wal_checkpoint(FULL)").close()
 
-        db.close()
-
-        return try {
-            target.copyTo(backup, overwrite = true)
-            pruneOldBackups(backupsDir, keep = MAX_BACKUPS)
-            backup
-        } finally {
-            // Reopen Room immediately after filesystem-level backup copy.
-            db.openHelper.writableDatabase
-        }
+        target.copyTo(backup, overwrite = true)
+        pruneOldBackups(backupsDir, keep = MAX_BACKUPS)
+        return backup
     }
 
     private fun latestBackup(): File? =
