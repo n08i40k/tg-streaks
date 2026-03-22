@@ -26,8 +26,8 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
     private companion object {
         const val HISTORY_BLOCK_SIZE = 10
-        const val REQUEST_TIMEOUT_MS = 10_000L
-        const val RETRY_DELAY_MS = 45_000L
+        const val REQUEST_TIMEOUT_MS = 5_000L
+        const val RETRY_DELAY_MS = 15_000L
         val FLOOD_WAIT_REGEX = Regex("""FLOOD_WAIT_(\d+)""")
     }
 
@@ -66,6 +66,8 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         var attempt = 0
 
         while (true) {
+            delay(200)
+
             attempt++
 
             val deferred = CompletableDeferred<RequestOutcome>()
