@@ -143,30 +143,20 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         day: LocalDate,
         untilRevive: Boolean
     ): ChatHistoryFetcher.Status {
-        val startLocalEpoch = day.toEpochSecondUtc()
-        val endLocalEpoch = day.next().toEpochSecondUtc()
+        val startLocalEpoch = day.toEpochSecondUtc().toInt()
+        var endLocalEpoch = day.next().toEpochSecondUtc().toInt()
 
         var fromOwner = false
         var fromPeer = false
         var wasRevived = false
 
-        var lastMessageId = 0
-
         val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
         val connectionsManager = ConnectionsManager.getInstance(accountId)
 
         reqLoop@ while (true) {
-            // ide lost context ig
-            // in runtime all should be ok
-            @Suppress("KotlinConstantConditions")
-            if (fromOwner && fromPeer && (!untilRevive || wasRevived)) {
-                break@reqLoop
-            }
-
             val req = TLRPC.TL_messages_getHistory().apply {
                 this.peer = peer
-                offset_id = lastMessageId
-                offset_date = startLocalEpoch.toInt()
+                offset_date = endLocalEpoch
                 limit = HISTORY_BLOCK_SIZE
             }
 
@@ -189,7 +179,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 if (message.message == ServiceMessage.RESTORE_TEXT)
                     wasRevived = true
 
-                lastMessageId = message.id
+                endLocalEpoch = message.date
 
                 if (fromOwner && fromPeer && (!untilRevive || wasRevived))
                     break@reqLoop // no need to check other messages more
