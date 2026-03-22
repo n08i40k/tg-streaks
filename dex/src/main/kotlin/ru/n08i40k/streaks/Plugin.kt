@@ -147,13 +147,12 @@ class Plugin {
 
         @JvmStatic
         fun eject() {
-            val instance = INSTANCE
-            INSTANCE = null
-
-            instance?.let {
+            INSTANCE?.let {
                 it.onEject()
                 BulletinHelper.show(null, "Streaks plugin has been ejected!")
             }
+
+            INSTANCE = null
         }
     }
 
@@ -293,6 +292,7 @@ class Plugin {
     }
 
     private fun onEject() {
+        logger.setFatalSuppression(true)
         backgroundScope.cancel()
 
         try {
