@@ -24,14 +24,20 @@ private val TELEGRAM_COMPILE_PACKAGE_PREFIXES = listOf(
 
 private fun File.isJarFile(): Boolean = isFile && extension.equals("jar", ignoreCase = true)
 
+private val MODULE_NAME_WITH_VERSION = Regex("""^(.+?)-\d[\w.+-]*$""")
+
 private fun File.artifactKey(): String {
     val pathSegments = absolutePath.split(File.separatorChar)
     val cacheIndex = pathSegments.indexOf("files-2.1")
 
     return if (cacheIndex >= 0 && pathSegments.size > cacheIndex + 3) {
-        "${pathSegments[cacheIndex + 1]}:${pathSegments[cacheIndex + 2]}"
+        pathSegments[cacheIndex + 2]
     } else {
         name.removeSuffix(".jar")
+            .let { jarName ->
+                MODULE_NAME_WITH_VERSION.matchEntire(jarName)?.groupValues?.get(1) ?: jarName
+            }
+            .removeSuffix("-decoroutinator")
             .removeSuffix("-api")
             .removeSuffix("-runtime")
             .removeSuffix("-R")
@@ -124,6 +130,7 @@ private fun Project.resolveAndroidJar(): File {
 plugins {
     id("com.android.library") version "9.0.1"
     id("com.google.devtools.ksp") version "2.3.5"
+    id("dev.reformator.stacktracedecoroutinator") version "2.6.1"
 }
 
 android {
