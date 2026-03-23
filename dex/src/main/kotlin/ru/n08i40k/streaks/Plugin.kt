@@ -34,14 +34,16 @@ import org.telegram.messenger.SendMessagesHelper
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
-import org.telegram.ui.ActionBar.BaseFragment
 import org.telegram.ui.ActionBar.AlertDialog
+import org.telegram.ui.ActionBar.BaseFragment
+import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.ChatActionCell
 import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.Cells.UserCell
 import org.telegram.ui.ChatActivity
+import org.telegram.ui.Components.AnimatedEmojiDrawable
 import org.telegram.ui.Components.ChatAvatarContainer
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.DialogsActivity
@@ -51,9 +53,9 @@ import ru.n08i40k.streaks.constants.ChatContextMenuButton
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.controller.ServiceMessagesController
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreaksController
-import ru.n08i40k.streaks.controller.ServiceMessagesController
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.LegacyUsersDbImporter
@@ -64,10 +66,12 @@ import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
+import ru.n08i40k.streaks.override.SafeParticlesDrawable
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.registry.LockableActionRegistry
 import ru.n08i40k.streaks.registry.LockableCallbackRegistry
+import ru.n08i40k.streaks.registry.SafeParticlesDrawableRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
 import ru.n08i40k.streaks.registry.StreakLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
@@ -187,6 +191,7 @@ class Plugin {
     // eject data
     private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     val streakEmojiRegistry = StreakEmojiRegistry()
+    val safeParticlesDrawableRegistry = SafeParticlesDrawableRegistry()
 
     // controllers
     private val serviceMessagesController = ServiceMessagesController()
@@ -317,6 +322,7 @@ class Plugin {
 
         try {
             streakEmojiRegistry.restoreAll()
+            safeParticlesDrawableRegistry.restoreAll()
         } catch (e: Throwable) {
             logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
@@ -1497,19 +1503,69 @@ class Plugin {
         ) { param ->
             val thisObject = param.thisObject as UserCell
             val thisClass = UserCell::class.java
+            val nameTextView =
+                getFieldValue<SimpleTextView>(thisClass, thisObject, "nameTextView")!!
+            val rightDrawableField = getField(SimpleTextView::class.java, "rightDrawable")
+            val rightDrawable2Field = getField(SimpleTextView::class.java, "rightDrawable2")
 
             val dialogId = getFieldValue<Long>(thisClass, thisObject, "dialogId")!!
 
             if (dialogId < 0)
                 return@after
 
+            val oldEmojiStatus =
+                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
+                    thisClass,
+                    thisObject,
+                    "emojiStatus"
+                )
+            val oldEmojiStatus2 =
+                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
+                    thisClass,
+                    thisObject,
+                    "emojiStatus2"
+                )
+
             StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatus"),
                 null,
                 dialogId,
-                hideParticlesOnCollectibles = true
+                nameTextView = nameTextView
             )
+
+            SafeParticlesDrawable.encapsulate(
+                oldEmojiStatus2,
+                thisObject,
+                getField(thisClass, "emojiStatus2"),
+                nameTextView
+            )
+
+            val newEmojiStatus =
+                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
+                    thisClass,
+                    thisObject,
+                    "emojiStatus"
+                )
+            val newEmojiStatus2 =
+                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
+                    thisClass,
+                    thisObject,
+                    "emojiStatus2"
+                )
+
+            val currentRightDrawable = rightDrawableField.get(nameTextView)
+            val currentRightDrawable2 = rightDrawable2Field.get(nameTextView)
+
+            if (currentRightDrawable === oldEmojiStatus)
+                nameTextView.rightDrawable = newEmojiStatus
+            else if (currentRightDrawable === oldEmojiStatus2)
+                nameTextView.rightDrawable = newEmojiStatus2
+
+            if (currentRightDrawable2 === oldEmojiStatus)
+                nameTextView.rightDrawable2 = newEmojiStatus
+            else if (currentRightDrawable2 === oldEmojiStatus2)
+                nameTextView.rightDrawable2 = newEmojiStatus2
         }
 
         // Профиль пользователя

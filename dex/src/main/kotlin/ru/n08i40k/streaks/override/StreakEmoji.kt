@@ -12,12 +12,14 @@ import android.graphics.drawable.Drawable
 import android.view.View
 import com.exteragram.messenger.badges.BadgesController
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
+import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.AnimatedEmojiDrawable
 import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
@@ -37,6 +39,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         val targetObject: WeakReference<Any>,
         val targetField: Field,
         val arrayIndex: Int?,
+        val nameTextView: WeakReference<SimpleTextView>? = null,
     ) {
         fun restore() {
             val drawable = this.drawable.get() ?: return
@@ -54,6 +57,16 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
             if (arrayIndex == null) {
                 targetField.set(targetObject, pseudoOriginal)
+                nameTextView?.get()?.let { textView ->
+                    val rightDrawableField = getField(SimpleTextView::class.java, "rightDrawable")
+                    val rightDrawable2Field = getField(SimpleTextView::class.java, "rightDrawable2")
+
+                    if (rightDrawableField.get(textView) === drawable)
+                        textView.rightDrawable = pseudoOriginal
+
+                    if (rightDrawable2Field.get(textView) === drawable)
+                        textView.rightDrawable2 = pseudoOriginal
+                }
                 return
             }
 
@@ -71,7 +84,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             arrayIndex: Int?,
             peerUserId: Long,
             canDrawBadge: Boolean = false,
-            hideParticlesOnCollectibles: Boolean = false,
+            nameTextView: SimpleTextView? = null,
         ) {
             if (arrayIndex == null) {
                 val drawable = (field.get(obj) ?: return) as? SwapAnimatedEmojiDrawable
@@ -86,18 +99,17 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     drawable,
                     peerUserId,
                     canDrawBadge,
-                    hideParticlesOnCollectibles
                 )
 
                 field.set(obj, newDrawable)
-                newDrawable.detach()
 
                 Plugin.getInstance().streakEmojiRegistry.add(
                     EjectData(
                         WeakReference(newDrawable),
                         WeakReference(obj),
                         field,
-                        arrayIndex
+                        arrayIndex,
+                        nameTextView?.let(::WeakReference)
                     )
                 )
                 return
@@ -128,7 +140,6 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 drawable,
                 peerUserId,
                 canDrawBadge,
-                hideParticlesOnCollectibles
             )
             array[arrayIndex] = newDrawable
 
@@ -137,7 +148,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     WeakReference(newDrawable),
                     WeakReference(obj),
                     field,
-                    arrayIndex
+                    arrayIndex,
+                    nameTextView?.let(::WeakReference)
                 )
             )
         }
@@ -155,11 +167,10 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     private val canDrawBadge: Boolean
     private var badgeView: SwapAnimatedEmojiDrawable? = null
 
-    private var hideParticlesOnCollectibles: Boolean
-
     private val size: Int
 
     private var hasCustomParticles: Boolean = false
+    private var hasParticles: Boolean = false
 
     private fun clearBadgeView() {
         badgeView?.detach()
@@ -236,49 +247,19 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             }
     }
 
-    private fun applyMainDocument(
-        document: TLRPC.Document,
-        showParticles: Boolean,
-        cacheType: Int? = null,
-        animated: Boolean = false,
-    ) {
-        if (cacheType != null) {
-            super.set(document, cacheType, animated)
-        } else {
-            super.set(document, animated)
-        }
+    private fun applyStreakState(streakViewData: StreakViewData) {
+        val peerUserId = this.peerUserId
 
-        super.setParticles(showParticles, false)
-        invalidateSelf()
-    }
-
-    private fun applyMainDocumentId(
-        documentId: Long,
-        showParticles: Boolean,
-        cacheType: Int? = null,
-        animated: Boolean = false,
-        isStillExpected: () -> Boolean,
-    ) {
-        whenDocumentReady(documentId) { document ->
-            if (!isStillExpected()) {
+        whenDocumentReady(streakViewData.documentId) { document ->
+            if (this.peerUserId != peerUserId || cachedStreakViewData?.documentId != streakViewData.documentId) {
                 return@whenDocumentReady
             }
 
-            applyMainDocument(document, showParticles, cacheType, animated)
-        }
-    }
+            super.set(document, 7, true)
+            super.setParticles(true, false)
 
-    private fun applyStreakState(streakViewData: StreakViewData) {
-        applyMainDocumentId(
-            documentId = streakViewData.documentId,
-            showParticles = !hideParticlesOnCollectibles,
-            cacheType = 7,
-            animated = true,
-            isStillExpected = {
-                this.peerUserId != 0L &&
-                        cachedStreakViewData?.documentId == streakViewData.documentId
-            }
-        )
+            invalidateSelf()
+        }
 
         getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
             val parent = field.get(this) as? StarsReactionsSheet.Particles
@@ -306,15 +287,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
         when {
             documentId != null -> {
-                applyMainDocumentId(
-                    documentId = documentId,
-                    showParticles = !hideParticlesOnCollectibles &&
-                            DialogObject.isEmojiStatusCollectible(user.emoji_status),
-                    isStillExpected = {
-                        this.peerUserId == user.id &&
-                                UserObject.getEmojiStatusDocumentId(user.emoji_status) == documentId
-                    }
-                )
+                super.set(documentId, true)
+                super.setParticles(hasParticles, false)
             }
 
             user.premium -> {
@@ -335,16 +309,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         val documentId = DialogObject.getEmojiStatusDocumentId(chat.emoji_status)
 
         if (documentId != 0L) {
-            applyMainDocumentId(
-                documentId = documentId,
-                showParticles = !hideParticlesOnCollectibles && DialogObject.isEmojiStatusCollectible(
-                    chat.emoji_status
-                ),
-                isStillExpected = {
-                    this.peerUserId == chat.id &&
-                            DialogObject.getEmojiStatusDocumentId(chat.emoji_status) == documentId
-                }
-            )
+            super.set(documentId, true)
+            super.setParticles(hasParticles, false)
         } else {
             val badge = BadgesController.INSTANCE.getBadge(chat)
 
@@ -405,13 +371,15 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
         val plugin = Plugin.getInstance()
 
-        plugin.backgroundScope.launch {
+        runBlocking {
             cachedStreakViewData =
                 if (clearStreak)
                     null
                 else
                     plugin.streaksController.getViewData(UserConfig.selectedAccount, peerUserId)
+        }
 
+        plugin.backgroundScope.launch {
             AndroidUtilities.runOnUIThread {
                 if (cachedStreakViewData != null)
                     applyStreakState(cachedStreakViewData!!)
@@ -444,14 +412,12 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         base: SwapAnimatedEmojiDrawable,
         peerUserId: Long,
         canDrawBadge: Boolean,
-        hideParticlesOnCollectibles: Boolean
     ) : super(
         null,
         0
     ) {
         cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
         this.canDrawBadge = canDrawBadge
-        this.hideParticlesOnCollectibles = hideParticlesOnCollectibles
         this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 
         setPeerUserId(peerUserId)
@@ -480,8 +446,10 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     }
 
     override fun setParticles(p0: Boolean, p1: Boolean) {
-        if (cachedStreakViewData != null)
+        if (cachedStreakViewData != null) {
+            hasParticles = p0
             return
+        }
 
         super.setParticles(p0, p1)
     }
