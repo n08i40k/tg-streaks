@@ -50,6 +50,7 @@ import ru.n08i40k.streaks.constants.ChatContextMenuButton
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
@@ -183,7 +184,8 @@ class Plugin {
     val streakEmojiRegistry = StreakEmojiRegistry()
 
     // controllers
-    var streaksController: StreaksController
+    val streaksController: StreaksController
+    val streakPetsController: StreakPetsController
 
     // registries
     val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
@@ -226,6 +228,8 @@ class Plugin {
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
 
         this.streaksController = StreaksController(this.db, this.resourcesProvider)
+        this.streakPetsController =
+            StreakPetsController(this.logger, this.db, this.streaksController)
     }
 
     private fun requestFullPluginReload(reason: String) {
@@ -275,6 +279,7 @@ class Plugin {
 
         backgroundScope.launch {
             syncPeersUi(streaksController.checkAllForUpdates(), refreshAll = true)
+            streakPetsController.checkAllForUpdates()
             streaksController.flushCurrentChatPopup()
 
             AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
@@ -1360,12 +1365,17 @@ class Plugin {
         }
 
         fun handleUpdates(accountId: Int, updates: TLRPC.Updates) {
-            data class Update(val peerUserId: Long, val out: Boolean, val message: String?)
+            data class Update(
+                val peerUserId: Long,
+                val out: Boolean,
+                val messageId: Int,
+                val message: String?
+            )
 
             @Suppress("IMPOSSIBLE_IS_CHECK_WARNING", "KotlinConstantConditions")
             val entries = when (updates) {
                 is TLRPC.TL_updateShortMessage -> {
-                    setOf(Update(updates.user_id, updates.out, updates.message))
+                    setOf(Update(updates.user_id, updates.out, updates.id, updates.message))
                 }
 
                 is TLRPC.TL_updates -> {
@@ -1374,6 +1384,7 @@ class Plugin {
                             is TLRPC.TL_updateNewMessage -> Update(
                                 it.message.peer_id.user_id,
                                 it.message.out,
+                                it.message.id,
                                 it.message.message
                             )
 
@@ -1388,6 +1399,7 @@ class Plugin {
                             is TLRPC.TL_updateNewMessage -> Update(
                                 it.message.peer_id.user_id,
                                 it.message.out,
+                                it.message.id,
                                 it.message.message
                             )
 
@@ -1403,8 +1415,9 @@ class Plugin {
             backgroundScope.launch {
                 var changed = false
 
-                for ((peerUserId, out, message) in entries) {
+                for ((peerUserId, out, messageId, message) in entries) {
                     val result = streaksController.handleUpdate(accountId, peerUserId, out, message)
+                    streakPetsController.handleUpdate(accountId, peerUserId, messageId, out)
 
                     if (result.changed) {
                         changed = true
@@ -1459,6 +1472,9 @@ class Plugin {
                     true,
                     sendMessageParams.message
                 )
+
+                // TODO: fill message id
+                streakPetsController.handleUpdate(accountId, peerUserId, 0, true)
 
                 if (result.changed) {
                     streaksController.syncUserState(accountId, peerUserId)

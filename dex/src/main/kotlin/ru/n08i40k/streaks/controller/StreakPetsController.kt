@@ -2,7 +2,6 @@
 
 package ru.n08i40k.streaks.controller
 
-import android.app.TaskStackBuilder
 import androidx.room.withTransaction
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
@@ -24,7 +23,6 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
-import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,7 +31,6 @@ class StreakPetsController(
     private val logger: Logger,
     private val db: PluginDatabase,
     private val streaksController: StreaksController,
-    resourcesProvider: ResourcesProvider
 ) {
     private val dao = db.streakPetDao()
     private val taskDao = db.streakPetTaskDao()
