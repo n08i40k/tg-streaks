@@ -16,12 +16,14 @@ import androidx.room.Room
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
@@ -264,6 +266,8 @@ class Plugin {
     }
 
     private fun onFinalizeInject() {
+        val uiLock = CompletableDeferred<Unit>()
+
         try {
             val importedLegacyDb = runBlocking {
                 LegacyUsersDbImporter(db, logger::info).importIfNeeded()
@@ -276,6 +280,7 @@ class Plugin {
 
             backgroundScope.launch {
                 userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
+                uiLock.complete(Unit)
             }
         } catch (e: Throwable) {
             logger.fatal("Failed to import legacy database", e)
@@ -288,11 +293,18 @@ class Plugin {
         }
 
         backgroundScope.launch {
+            uiLock.await()
+
+            // refresh dialogs cells and show saved streaks
+            delay(250)
+            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+
             syncPeersUi(streaksController.checkAllForUpdates(), refreshAll = true)
+
+            // refresh dialogs cells and show new streaks
+            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
             streakPetsController.checkAllForUpdates()
             streaksController.flushCurrentChatPopup()
-
-            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
         }
 
         backgroundScope.launch {
@@ -320,10 +332,10 @@ class Plugin {
         }
 
         try {
-            runBlocking { streaksController.restorePatchedUsers() }
-
             streakEmojiRegistry.restoreAll()
             safeParticlesDrawableRegistry.restoreAll()
+
+            runBlocking { streaksController.restorePatchedUsers() }
         } catch (e: Throwable) {
             logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
