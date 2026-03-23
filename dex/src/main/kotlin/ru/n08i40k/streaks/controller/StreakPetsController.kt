@@ -11,6 +11,7 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.chat_history_fetcher.CachedChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
+import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.data.StreakPet
 import ru.n08i40k.streaks.data.StreakPetTask
@@ -39,7 +40,6 @@ class StreakPetsController(
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
     private val remoteFetcher: ChatHistoryFetcher = RemoteChatHistoryFetcher()
-    private val serviceMessagesController = ServiceMessagesController()
 
     suspend fun get(accountId: Int, peerUserId: Long): StreakPet? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
@@ -158,6 +158,8 @@ class StreakPetsController(
                 points
             )
         )
+
+        tasks.forEach { taskDao.insertOrUpdateAll(it) }
     }
 
     // do not call this func if streak pet is not existing
@@ -188,10 +190,7 @@ class StreakPetsController(
         val lastCheckedDay = streakPet.lastCheckedAt
         val now = LocalDate.now()
 
-        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val peerUserId = streakPet.peerUserId
-
-        val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return
 
         var currentDay = lastCheckedDay
 
@@ -271,6 +270,16 @@ class StreakPetsController(
             val streakPets = dao.findAllByOwnerUserId(ownerUserId)
 
             for (streakPet in streakPets) {
+                if (
+                    taskDao.findAllByRelationAndDay(ownerUserId, streakPet.peerUserId, now)
+                        .isEmpty()
+                ) {
+                    taskDao.insertIfNotExistsAll(
+                        *StreakPetTask.getNewTasksList(ownerUserId, streakPet.peerUserId, now)
+                            .toTypedArray()
+                    )
+                }
+
                 val notCompletedTasks =
                     taskDao.findNotCompletedByRelationAndDay(
                         ownerUserId,
@@ -278,19 +287,23 @@ class StreakPetsController(
                         streakPet.lastCheckedAt
                     ).toMutableList()
 
-                val currentDay = streakPet.lastCheckedAt.next()
+                run {
+                    var currentDay = streakPet.lastCheckedAt.next()
 
-                while (true) {
-                    if (currentDay > now)
-                        break
+                    while (true) {
+                        if (currentDay > now)
+                            break
 
-                    notCompletedTasks.addAll(
-                        StreakPetTask.getNewTasksList(
-                            ownerUserId,
-                            streakPet.peerUserId,
-                            currentDay
+                        notCompletedTasks.addAll(
+                            StreakPetTask.getNewTasksList(
+                                ownerUserId,
+                                streakPet.peerUserId,
+                                currentDay
+                            )
                         )
-                    )
+
+                        currentDay = currentDay.next()
+                    }
                 }
 
                 if (notCompletedTasks.isEmpty()) {
@@ -305,34 +318,78 @@ class StreakPetsController(
         }
     }
 
-    suspend fun handleUpdate(accountId: Int, peerUserId: Long, messageId: Int, out: Boolean) {
+    suspend fun handleUpdate(
+        accountId: Int,
+        peerUserId: Long,
+        at: LocalDate,
+        messageId: Int,
+        message: String?,
+        out: Boolean
+    ) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val streakPet = get(accountId, peerUserId) ?: return
+        val streakPet = get(accountId, peerUserId)
+            ?: run {
+                // !out because if it is true, user already accepted and created streak-pet locally
+                if (!out && message == ServiceMessage.PET_INVITE_ACCEPTED_TEXT)
+                    return@run create(accountId, peerUserId, at).streakPet
+                else
+                    return@run null
+            }
+            ?: return
+
+        ServiceMessage.PET_SET_NAME_REGEX.matchEntire(message.orEmpty())
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let {
+                rename(accountId, peerUserId, it)
+                return
+            }
+
+        if (ServiceMessage.isServiceText(message))
+            return
 
         val now = LocalDate.now()
-        val currentDay = streakPet.lastCheckedAt.next()
+        val targetDay = if (at > now) now else at
 
-        val notCompletedTasks = taskDao.findNotCompletedByRelationAndDay(
+        val tasksByType = taskDao.findAllByRelationAndDay(
             ownerUserId,
             peerUserId,
-            LocalDate.now()
-        ).toMutableList()
+            targetDay
+        ).associateBy { it.type }.toMutableMap()
 
-        while (true) {
-            if (currentDay > now)
-                break
+        val missingTasksForTargetDay = mutableListOf<StreakPetTask>()
+        StreakPetTask.getNewTasksList(ownerUserId, peerUserId, targetDay)
+            .forEach {
+                if (tasksByType.putIfAbsent(it.type, it) == null) {
+                    missingTasksForTargetDay.add(it)
+                }
+            }
 
-            notCompletedTasks.addAll(
-                StreakPetTask.getNewTasksList(
-                    ownerUserId,
-                    streakPet.peerUserId,
-                    currentDay
+        val notCompletedTasks = enumValues<StreakPetTaskType>()
+            .mapNotNull(tasksByType::get)
+            .filterNot { it.isCompleted }
+
+        val backfillTasks = mutableListOf<StreakPetTask>()
+        run {
+            var currentDay = streakPet.lastCheckedAt.next()
+
+            while (true) {
+                if (currentDay > targetDay)
+                    break
+
+                backfillTasks.addAll(
+                    StreakPetTask.getNewTasksList(
+                        ownerUserId,
+                        streakPet.peerUserId,
+                        currentDay
+                    )
                 )
-            )
-        }
 
-        if (notCompletedTasks.isEmpty())
-            return
+                currentDay = currentDay.next()
+            }
+        }
 
         var updatedTask: StreakPetTask? = null
 
@@ -389,31 +446,43 @@ class StreakPetsController(
             }
         }
 
-        if (updatedTask == null)
+        val lastCheckedAt =
+            if (streakPet.lastCheckedAt < targetDay) targetDay else streakPet.lastCheckedAt
+        val pointsToAdd = if (updatedTask?.isCompleted == true) updatedTask.type.points else 0
+
+        if (updatedTask == null && backfillTasks.isEmpty() && lastCheckedAt == streakPet.lastCheckedAt)
             return
 
         db.withTransaction {
+            if (missingTasksForTargetDay.isNotEmpty())
+                taskDao.insertIfNotExistsAll(*missingTasksForTargetDay.toTypedArray())
+
+            if (backfillTasks.isNotEmpty())
+                taskDao.insertIfNotExistsAll(*backfillTasks.toTypedArray())
+
             dao.update(
                 streakPet.copy(
-                    lastCheckedAt = now,
-                    points = streakPet.points + if (updatedTask.isCompleted) updatedTask.type.points else 0
+                    lastCheckedAt = lastCheckedAt,
+                    points = streakPet.points + pointsToAdd
                 )
             )
 
-            notCompletedTasks.forEach { taskDao.insertOrUpdateAll(it) }
-            taskDao.insertOrUpdateAll(updatedTask)
+            if (updatedTask != null)
+                taskDao.insertOrUpdateAll(updatedTask)
         }
     }
 
-    enum class CreateResult {
-        CREATED,
-        ALREADY_EXISTS,
-        ;
+    sealed class CreateResult(val streakPet: StreakPet) {
+        class Created(streakPet: StreakPet) : CreateResult(streakPet)
+        class AlreadyExists(streakPet: StreakPet) : CreateResult(streakPet)
     }
 
-    suspend fun create(accountId: Int, peerUserId: Long): CreateResult {
-        if (get(accountId, peerUserId) != null)
-            return CreateResult.ALREADY_EXISTS
+    suspend fun create(
+        accountId: Int,
+        peerUserId: Long,
+        at: LocalDate = LocalDate.now()
+    ): CreateResult {
+        get(accountId, peerUserId)?.let { return CreateResult.AlreadyExists(it) }
 
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
@@ -421,25 +490,44 @@ class StreakPetsController(
         val ownerUser = messagesController.getUser(ownerUserId)
         val peerUser = messagesController.getUser(peerUserId)
 
+        val streakPet = StreakPet(
+            ownerUserId,
+            peerUserId,
+            at,
+            at,
+            "${ownerUser.label}&${peerUser.label}",
+            0
+        )
+
         db.withTransaction {
-            val now = LocalDate.now()
+            dao.insertAll(streakPet)
 
-            dao.insertAll(
-                StreakPet(
-                    ownerUserId,
-                    peerUserId,
-                    now,
-                    now,
-                    "${ownerUser.label}&${peerUser.label}",
-                    0
-                )
-            )
+            var currentDay = at
 
-            StreakPetTask.getNewTasksList(ownerUserId, peerUserId, now)
-                .forEach { taskDao.insertIfNotExistsAll(it) }
+            while (true) {
+                if (currentDay > LocalDate.now())
+                    break
+
+                StreakPetTask.getNewTasksList(ownerUserId, peerUserId, currentDay)
+                    .forEach { taskDao.insertIfNotExistsAll(it) }
+
+                currentDay = currentDay.next()
+            }
         }
 
-        return CreateResult.CREATED
+        return CreateResult.Created(streakPet)
+    }
+
+    suspend fun rename(accountId: Int, peerUserId: Long, newName: String): Boolean {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val pet = dao.findByRelation(ownerUserId, peerUserId) ?: return false
+
+        val normalizedName = newName.trim().take(20)
+        if (normalizedName.isEmpty())
+            return false
+
+        dao.update(pet.copy(name = normalizedName))
+        return true
     }
 
     suspend fun delete(accountId: Int, peerUserId: Long): Boolean {

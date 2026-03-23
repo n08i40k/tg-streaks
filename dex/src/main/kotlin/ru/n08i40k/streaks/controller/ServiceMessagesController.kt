@@ -55,6 +55,14 @@ class ServiceMessagesController {
         send(accountId, peerUserId, ServiceMessage.PET_INVITE_TEXT)
     }
 
+    fun sendPetInviteAccepted(accountId: Int, peerUserId: Long) {
+        send(accountId, peerUserId, ServiceMessage.PET_INVITE_ACCEPTED_TEXT)
+    }
+
+    fun sendPetSetName(accountId: Int, peerUserId: Long, name: String) {
+        send(accountId, peerUserId, ServiceMessage.PET_SET_NAME_TEXT(name))
+    }
+
     fun sendUpgrade(accountId: Int, peerUserId: Long, length: Int) {
         if (!isEnabled(accountId, peerUserId))
             return

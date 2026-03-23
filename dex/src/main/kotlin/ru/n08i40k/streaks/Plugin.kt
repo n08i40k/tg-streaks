@@ -80,6 +80,9 @@ import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
 import java.lang.reflect.Member
 import java.lang.Runnable
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 typealias LogReceiver = ValueCallback<String>
 typealias TranslationResolver = java.util.function.Function<String, String?>
@@ -529,14 +532,14 @@ class Plugin {
                             ) { _, _ ->
                                 backgroundScope.launch {
                                     when (streakPetsController.create(accountId, peerUserId)) {
-                                        StreakPetsController.CreateResult.CREATED -> {
+                                        is StreakPetsController.CreateResult.Created -> {
                                             bulletinHelper.showTranslated(
                                                 TranslationKey.OK_STREAK_PET_CREATED,
                                                 "msg_reactions"
                                             )
                                         }
 
-                                        StreakPetsController.CreateResult.ALREADY_EXISTS -> {
+                                        is StreakPetsController.CreateResult.AlreadyExists -> {
                                             bulletinHelper.showTranslated(
                                                 TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT
                                             )
@@ -1030,6 +1033,7 @@ class Plugin {
         }
 
         // каким блять хуем я не могу кастануть child в parent?
+        // это кстати хук MessageObject для полной замены вида сервисных сообщений
         @Suppress("CAST_NEVER_SUCCEEDS")
         before(
             MessageObject::class.java.getDeclaredConstructor(
@@ -1064,7 +1068,7 @@ class Plugin {
                     val messageText =
                         translator.translate(TranslationKey.SERVICE_MESSAGE_CREATE_TEXT)
                     (this as TLRPC.MessageAction).message = messageText
-                }
+                } as TLRPC.MessageAction
             }
 
             val tryStreakUpgrade = streakUpgrade@{
@@ -1081,7 +1085,7 @@ class Plugin {
                             .replace("{days}", days.toString())
 
                     (this as TLRPC.MessageAction).message = messageText
-                }
+                } as TLRPC.MessageAction
             }
 
             val tryStreakDeath = streakDeath@{
@@ -1095,7 +1099,7 @@ class Plugin {
                     stars = 0
                     transaction_id = ServiceMessage.DEATH_TEXT
                     unclaimed = false
-                }
+                } as TLRPC.MessageAction
             }
 
             val tryStreakRestore = streakRestore@{
@@ -1105,11 +1109,11 @@ class Plugin {
                 val peerId = message.peer_id?.user_id
                 val fromId = message.from_id?.user_id
 
-                val restoredByPeer =
+                val byPeer =
                     peerId != null && fromId != null && peerId > 0 && fromId == peerId
 
                 val messageText =
-                    if (!restoredByPeer) {
+                    if (!byPeer) {
                         translator.translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_SELF)
                     } else {
                         val peerName =
@@ -1126,15 +1130,106 @@ class Plugin {
 
                 TLRPC.TL_messageActionCustomAction().apply {
                     (this as TLRPC.MessageAction).message = messageText
+                } as TLRPC.MessageAction
+            }
+
+            val tryPetInvite = petInvite@{
+                if (message.message != ServiceMessage.PET_INVITE_TEXT)
+                    return@petInvite null
+
+                if (message.out) {
+                    TLRPC.TL_messageActionCustomAction().apply {
+                        val messageText =
+                            translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_TEXT_SELF)
+                        (this as TLRPC.MessageAction).message = messageText
+                    } as TLRPC.MessageAction
+                } else {
+                    TLRPC.TL_messageActionPrizeStars().apply {
+                        boost_peer = message.peer_id
+                        flags = 0
+                        giveaway_msg_id = 0
+                        stars = 0
+                        transaction_id = ServiceMessage.PET_INVITE_TEXT
+                        unclaimed = false
+                    } as TLRPC.MessageAction
                 }
             }
 
-            val action: TLRPC.MessageAction =
-                (tryStreakCreate() as? TLRPC.MessageAction)
-                    ?: (tryStreakUpgrade() as? TLRPC.MessageAction)
-                    ?: (tryStreakDeath() as? TLRPC.MessageAction)
-                    ?: (tryStreakRestore() as? TLRPC.MessageAction)
-                    ?: return@before
+            val tryPetInviteAccepted = petInviteAccepted@{
+                if (message.message != ServiceMessage.PET_INVITE_ACCEPTED_TEXT)
+                    return@petInviteAccepted null
+
+                val peerId = message.peer_id?.user_id
+                val fromId = message.from_id?.user_id
+
+                val byPeer =
+                    peerId != null && fromId != null && peerId > 0 && fromId == peerId
+
+                val messageText =
+                    if (!byPeer) {
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_ACCEPTED_TEXT_SELF)
+                    } else {
+                        val peerName =
+                            peerId
+                                .takeIf { it > 0 }
+                                ?.let { MessagesController.getInstance(currentAccount).getUser(it) }
+                                ?.let { UserObject.getUserName(it) }
+                                ?.takeIf { it.isNotBlank() }
+                                ?: "Unknown"
+
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_ACCEPTED_TEXT_PEER)
+                            .replace("{name}", peerName)
+                    }
+
+                TLRPC.TL_messageActionCustomAction().apply {
+                    (this as TLRPC.MessageAction).message = messageText
+                } as TLRPC.MessageAction
+            }
+
+            val tryPetSetName = petSetName@{
+                val name = ServiceMessage.PET_SET_NAME_REGEX
+                    .matchEntire(message.message)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?: return@petSetName null
+
+                val peerId = message.peer_id?.user_id
+                val fromId = message.from_id?.user_id
+
+                val byPeer =
+                    peerId != null && fromId != null && peerId > 0 && fromId == peerId
+
+                val messageText =
+                    if (!byPeer) {
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_SET_NAME_TEXT_SELF)
+                            .replace("{petName}", name)
+                    } else {
+                        val peerName =
+                            peerId
+                                .takeIf { it > 0 }
+                                ?.let { MessagesController.getInstance(currentAccount).getUser(it) }
+                                ?.let { UserObject.getUserName(it) }
+                                ?.takeIf { it.isNotBlank() }
+                                ?: "Unknown"
+
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_SET_NAME_TEXT_PEER)
+                            .replace("{peerName}", peerName)
+                            .replace("{petName}", name)
+                    }
+
+                TLRPC.TL_messageActionCustomAction().apply {
+                    (this as TLRPC.MessageAction).message = messageText
+                } as TLRPC.MessageAction
+            }
+
+            val action = tryStreakCreate()
+                ?: tryStreakUpgrade()
+                ?: tryStreakDeath()
+                ?: tryStreakRestore()
+                ?: tryPetInvite()
+                ?: tryPetInviteAccepted()
+                ?: tryPetSetName()
+                ?: return@before
 
             param.args[1] = TLRPC.TL_messageService().apply {
                 cloneFields(message as Object, this as Object, TLRPC.Message::class.java)
@@ -1144,6 +1239,7 @@ class Plugin {
             }
         }
 
+        // Callback для кнопки у сервисного сообщения основанного на gift
         @Suppress("CAST_NEVER_SUCCEEDS")
         before(
             ChatActionCell::class.java.getDeclaredMethod(
@@ -1160,39 +1256,70 @@ class Plugin {
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                     ?: return@before
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
-                return@before
+            when (prizeStars.transaction_id) {
+                ServiceMessage.DEATH_TEXT -> {
+                    backgroundScope.launch {
+                        val accountId = UserConfig.selectedAccount
+                        val peerUserId = messageObject.dialogId
 
-            backgroundScope.launch {
-                val accountId = UserConfig.selectedAccount
-                val peerUserId = messageObject.dialogId
+                        val streak = streaksController.get(accountId, peerUserId)
 
-                val streak = streaksController.get(accountId, peerUserId)
+                        if (streak == null) {
+                            bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                            return@launch
+                        }
 
-                if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@launch
+                        if (!streak.dead) {
+                            bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
+                            return@launch
+                        }
+
+                        if (!streak.canRevive) {
+                            bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                            return@launch
+                        }
+
+                        if (!streaksController.reviveNow(accountId, peerUserId)) {
+                            bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                            return@launch
+                        }
+                    }
                 }
 
-                if (!streak.dead) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
-                    return@launch
+                ServiceMessage.PET_INVITE_TEXT -> {
+                    backgroundScope.launch {
+                        val accountId = UserConfig.selectedAccount
+                        val peerUserId = messageObject.dialogId
+
+                        when (streakPetsController.create(accountId, peerUserId)) {
+                            is StreakPetsController.CreateResult.Created -> {
+                                serviceMessagesController.sendPetInviteAccepted(
+                                    accountId,
+                                    peerUserId
+                                )
+                                syncPeerUi(accountId, peerUserId)
+                                bulletinHelper.showTranslated(
+                                    TranslationKey.OK_STREAK_PET_CREATED,
+                                    "msg_reactions"
+                                )
+                            }
+
+                            is StreakPetsController.CreateResult.AlreadyExists -> {
+                                bulletinHelper.showTranslated(
+                                    TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT
+                                )
+                            }
+                        }
+                    }
                 }
 
-                if (!streak.canRevive) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                    return@launch
-                }
-
-                if (!streaksController.reviveNow(accountId, peerUserId)) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                    return@launch
-                }
+                else -> return@before
             }
 
             param.result = null
         }
 
+        // Текст у сервисных сообщений основанных на gift
         @Suppress("CAST_NEVER_SUCCEEDS")
         before(
             ChatActionCell::class.java.getDeclaredMethod(
@@ -1220,17 +1347,34 @@ class Plugin {
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                     ?: return@before
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
-                return@before
+            when (prizeStars.transaction_id) {
+                ServiceMessage.DEATH_TEXT -> {
+                    param.args[0] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_TITLE)
+                    param.args[1] =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_SUBTITLE)
+                    param.args[3] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_HINT)
+                    param.args[5] =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_BUTTON)
+                    param.args[9] = false
+                    param.args[10] = true
+                }
 
-            param.args[0] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_TITLE)
-            param.args[1] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_SUBTITLE)
-            param.args[3] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_HINT)
-            param.args[5] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_BUTTON)
-            param.args[9] = false
-            param.args[10] = true
+                ServiceMessage.PET_INVITE_TEXT -> {
+                    param.args[0] =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_TITLE)
+                    param.args[1] =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_SUBTITLE)
+                    param.args[3] =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_HINT)
+                    param.args[5] =
+                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_BUTTON)
+                    param.args[9] = false
+                    param.args[10] = true
+                }
+            }
         }
 
+        // "Новый" ui у gift
         @Suppress("CAST_NEVER_SUCCEEDS")
         after(
             ChatActionCell::class.java.getDeclaredMethod(
@@ -1247,12 +1391,13 @@ class Plugin {
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                     ?: return@after
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT)
                 return@after
 
             param.result = true
         }
 
+        // Фикс размеров gift
         @Suppress("CAST_NEVER_SUCCEEDS")
         after(
             ChatActionCell::class.java.getDeclaredMethod(
@@ -1270,12 +1415,13 @@ class Plugin {
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                     ?: return@after
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT)
                 return@after
 
             param.result = -AndroidUtilities.dp(19.5f)
         }
 
+        // Удаление анимации у gift
         @Suppress("CAST_NEVER_SUCCEEDS")
         after(
             ChatActionCell::class.java.getDeclaredMethod(
@@ -1290,7 +1436,7 @@ class Plugin {
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                     ?: return@after
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT)
+            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT)
                 return@after
 
             val thisObject = param.thisObject as ChatActionCell
@@ -1306,6 +1452,7 @@ class Plugin {
             imageReceiver.setVisible(false, true)
         }
 
+        // Исправление размера сообщения в чате
         after(
             ChatMessageCell::class.java.getDeclaredMethod(
                 "setMessageContent",
@@ -1455,6 +1602,7 @@ class Plugin {
         fun handleUpdates(accountId: Int, updates: TLRPC.Updates) {
             data class Update(
                 val peerUserId: Long,
+                val at: LocalDate,
                 val out: Boolean,
                 val messageId: Int,
                 val message: String?
@@ -1463,7 +1611,17 @@ class Plugin {
             @Suppress("IMPOSSIBLE_IS_CHECK_WARNING", "KotlinConstantConditions")
             val entries = when (updates) {
                 is TLRPC.TL_updateShortMessage -> {
-                    setOf(Update(updates.user_id, updates.out, updates.id, updates.message))
+                    setOf(
+                        Update(
+                            updates.user_id,
+                            Instant.ofEpochSecond(updates.date.toLong())
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDate(),
+                            updates.out,
+                            updates.id,
+                            updates.message
+                        )
+                    )
                 }
 
                 is TLRPC.TL_updates -> {
@@ -1471,6 +1629,9 @@ class Plugin {
                         when (it) {
                             is TLRPC.TL_updateNewMessage -> Update(
                                 it.message.peer_id.user_id,
+                                Instant.ofEpochSecond(it.message.date.toLong())
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDate(),
                                 it.message.out,
                                 it.message.id,
                                 it.message.message
@@ -1486,6 +1647,9 @@ class Plugin {
                         when (it) {
                             is TLRPC.TL_updateNewMessage -> Update(
                                 it.message.peer_id.user_id,
+                                Instant.ofEpochSecond(it.message.date.toLong())
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDate(),
                                 it.message.out,
                                 it.message.id,
                                 it.message.message
@@ -1503,9 +1667,16 @@ class Plugin {
             backgroundScope.launch {
                 var changed = false
 
-                for ((peerUserId, out, messageId, message) in entries) {
+                for ((peerUserId, at, out, messageId, message) in entries) {
                     val result = streaksController.handleUpdate(accountId, peerUserId, out, message)
-                    streakPetsController.handleUpdate(accountId, peerUserId, messageId, out)
+                    streakPetsController.handleUpdate(
+                        accountId,
+                        peerUserId,
+                        at,
+                        messageId,
+                        message,
+                        out
+                    )
 
                     if (result.changed) {
                         changed = true
@@ -1562,7 +1733,14 @@ class Plugin {
                 )
 
                 // TODO: fill message id
-                streakPetsController.handleUpdate(accountId, peerUserId, 0, true)
+                streakPetsController.handleUpdate(
+                    accountId,
+                    peerUserId,
+                    LocalDate.now(),
+                    0,
+                    sendMessageParams.message,
+                    true
+                )
 
                 if (result.changed) {
                     streaksController.syncUserState(accountId, peerUserId)

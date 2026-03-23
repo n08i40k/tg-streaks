@@ -457,6 +457,42 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "{name} restored the streak!",
         "ru": "{name} восстановил(а) стрик!",
     },
+    "service_message.pet.invite.title": {
+        "en": "Accept streak pet invite?",
+        "ru": "Принять приглашение в стрик-пета?",
+    },
+    "service_message.pet.invite.subtitle": {
+        "en": "Accept the shared pet invite for this chat",
+        "ru": "Примите приглашение в общего питомца для этого чата",
+    },
+    "service_message.pet.invite.hint": {
+        "en": "Tap the button below to accept the invite",
+        "ru": "Нажмите кнопку ниже, чтобы принять приглашение",
+    },
+    "service_message.pet.invite.button": {
+        "en": "Accept",
+        "ru": "Принять",
+    },
+    "service_message.pet.invite.text.self": {
+        "en": "You invited them to create a streak pet!",
+        "ru": "Вы пригласили собеседника создать стрик-пета!",
+    },
+    "service_message.pet.invite_accepted.text.peer": {
+        "en": "{name} accepted the streak pet invite!",
+        "ru": "{name} принял(а) приглашение!",
+    },
+    "service_message.pet.invite_accepted.text.self": {
+        "en": "You accepted the streak pet invite!",
+        "ru": "Вы приняли приглашение!",
+    },
+    "service_message.pet.set_name.text.self": {
+        "en": "You named the pet {petName}!",
+        "ru": "Вы назвали питомца {petName}!",
+    },
+    "service_message.pet.set_name.text.peer": {
+        "en": "{peerName} named the pet {petName}!",
+        "ru": "{peerName} назвал(а) питомца {petName}!",
+    },
 }
 
 

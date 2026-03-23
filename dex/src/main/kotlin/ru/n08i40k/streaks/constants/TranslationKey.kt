@@ -53,6 +53,17 @@ object TranslationKey {
     const val SERVICE_MESSAGE_DEATH_BUTTON = "service_message.death.button"
     const val SERVICE_MESSAGE_RESTORE_TEXT_PEER = "service_message.restore.text.peer"
     const val SERVICE_MESSAGE_RESTORE_TEXT_SELF = "service_message.restore.text.self"
+    const val SERVICE_MESSAGE_PET_INVITE_TITLE = "service_message.pet.invite.title"
+    const val SERVICE_MESSAGE_PET_INVITE_SUBTITLE = "service_message.pet.invite.subtitle"
+    const val SERVICE_MESSAGE_PET_INVITE_HINT = "service_message.pet.invite.hint"
+    const val SERVICE_MESSAGE_PET_INVITE_BUTTON = "service_message.pet.invite.button"
+    const val SERVICE_MESSAGE_PET_INVITE_TEXT_SELF = "service_message.pet.invite.text.self"
+    const val SERVICE_MESSAGE_PET_INVITE_ACCEPTED_TEXT_PEER =
+        "service_message.pet.invite_accepted.text.peer"
+    const val SERVICE_MESSAGE_PET_INVITE_ACCEPTED_TEXT_SELF =
+        "service_message.pet.invite_accepted.text.self"
+    const val SERVICE_MESSAGE_PET_SET_NAME_TEXT_SELF = "service_message.pet.set_name.text.self"
+    const val SERVICE_MESSAGE_PET_SET_NAME_TEXT_PEER = "service_message.pet.set_name.text.peer"
 
     const val DEX_SHEET_TITLE = "dex_sheet.title"
     const val DEX_SHEET_SUBTITLE = "dex_sheet.subtitle"
