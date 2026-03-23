@@ -83,7 +83,6 @@ import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
 import java.lang.reflect.Member
-import java.lang.Runnable
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -321,6 +320,8 @@ class Plugin {
         }
 
         try {
+            runBlocking { streaksController.restorePatchedUsers() }
+
             streakEmojiRegistry.restoreAll()
             safeParticlesDrawableRegistry.restoreAll()
         } catch (e: Throwable) {

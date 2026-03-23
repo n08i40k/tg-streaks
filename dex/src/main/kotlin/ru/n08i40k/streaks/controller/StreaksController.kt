@@ -29,8 +29,8 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.resource.ResourcesProvider
-import ru.n08i40k.streaks.util.MyResult
 import java.time.LocalDate
+import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.comparisons.compareBy
 
@@ -80,7 +80,13 @@ class StreaksController(
         }
     }
 
+    private data class OriginalUserState(
+        val premium: Boolean,
+        val emojiStatus: TLRPC.EmojiStatus?,
+    )
+
     private val rebuildLock = AtomicBoolean(false)
+    private val originalUserStates = LinkedHashMap<Long, OriginalUserState>()
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
     private val remoteFetcher: ChatHistoryFetcher = RemoteChatHistoryFetcher()
@@ -890,6 +896,22 @@ class StreaksController(
 
     suspend fun patchUser(accountId: Int, user: TLRPC.User) {
         val streakViewData = getViewData(accountId, user.id) ?: return
+        val currentEmojiStatusDocumentId = UserObject.getEmojiStatusDocumentId(user.emoji_status)
+        val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
+            Plugin.getInstance()
+                .streakLevelRegistry
+                .levels()
+                .any { it.documentId == currentEmojiStatusDocumentId }
+
+        if (!isCurrentEmojiStatusPatched) {
+            originalUserStates.putIfAbsent(
+                user.id,
+                OriginalUserState(
+                    premium = user.premium,
+                    emojiStatus = user.emoji_status
+                )
+            )
+        }
 
         user.premium = true
 
@@ -899,10 +921,10 @@ class StreaksController(
     }
 
     suspend fun patchUsers(accountId: Int) {
+        val messagesController = MessagesController.getInstance(accountId)
         val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
         for (streak in streaks) {
-            val messagesController = MessagesController.getInstance(accountId)
             val user = messagesController.getUser(streak.peerUserId) ?: continue
 
             patchUser(accountId, user)
@@ -911,35 +933,32 @@ class StreaksController(
         }
     }
 
-    private suspend fun restoreUser(accountId: Int, userId: Long) {
+    private fun restoreUser(accountId: Int, userId: Long) {
         val messagesController = MessagesController.getInstance(accountId)
+        val originalState = originalUserStates.remove(userId) ?: return
+        val user = messagesController.getUser(userId) ?: return
 
-        val req = TLRPC.TL_users_getUsers().apply {
-            id.add(userId)
-        }
+        user.premium = originalState.premium
+        user.emoji_status = originalState.emojiStatus
 
-        val connectionsManager = ConnectionsManager.getInstance(accountId)
+        messagesController.putUser(user, false, true)
+    }
 
-        val deferred = CompletableDeferred<MyResult<TLObject, TLRPC.TL_error>>()
+    fun restorePatchedUsers() {
+        val states = originalUserStates.toMap()
 
-        connectionsManager.sendRequest(req) { response, error ->
-            deferred.complete(
-                when {
-                    error == null -> MyResult.Ok(response)
-                    else -> MyResult.Err(error)
-                }
-            )
-        }
+        for (accountId in userConfigAuthorizedIds) {
+            val messagesController = MessagesController.getInstance(accountId)
 
-        when (val result = deferred.await()) {
-            is MyResult.Ok -> {
-                @Suppress("CAST_NEVER_SUCCEEDS")
-                val user = ((result as TLRPC.Users).users.getOrNull(0) ?: return) as TLRPC.User
+            for ((userId, originalState) in states) {
+                val user = messagesController.getUser(userId) ?: continue
+
+                user.premium = originalState.premium
+                user.emoji_status = originalState.emojiStatus
 
                 messagesController.putUser(user, false, true)
+                originalUserStates.remove(userId)
             }
-
-            else -> return
         }
     }
 }
