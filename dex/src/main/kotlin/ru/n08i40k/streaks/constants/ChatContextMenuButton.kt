@@ -3,6 +3,7 @@ package ru.n08i40k.streaks.constants
 object ChatContextMenuButton {
     const val REBUILD = "rebuild"
     const val REBUILD_PET = "rebuildPet"
+    const val CREATE_PET = "createPet"
     const val GO_TO_STREAK_START = "goToStreakStart"
     const val TOGGLE_SERVICE_MESSAGES = "serviceMessages.toggle"
     const val REVIVE = "reviveNow"

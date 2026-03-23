@@ -169,6 +169,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "No streak pet exists for this chat yet",
         "ru": "Для этого чата ещё не создан стрик-питомец",
     },
+    "info.streak_pet_already_exists_for_chat": {
+        "en": "A streak pet already exists for this chat",
+        "ru": "Для этого чата стрик-питомец уже создан",
+    },
     "info.streak_not_ended_yet": {
         "en": "This streak hasn't ended yet",
         "ru": "Этот стрик ещё не завершился",
@@ -261,6 +265,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Recalculate streak pet tasks and points from this chat history",
         "ru": "Пересчитать задачи и очки стрик-питомца по истории этого чата",
     },
+    "menu.create_streak_pet.text": {
+        "en": "Create streak pet",
+        "ru": "Создать стрик-питомца",
+    },
+    "menu.create_streak_pet.subtext": {
+        "en": "Create a streak pet for this chat or send a plugin invite",
+        "ru": "Создать стрик-питомца для этого чата или отправить приглашение в плагин",
+    },
     "menu.go_to_streak_start.text": {
         "en": "Open where the streak began",
         "ru": "Открыть начало стрика",
@@ -281,6 +293,26 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "menu.restore_streak.subtext": {
         "en": "Available only during the first 24 hours after the streak ends",
         "ru": "Доступно только в течение первых 24 часов после прерывания стрика",
+    },
+    "ok.streak_pet_created": {
+        "en": "Streak pet created",
+        "ru": "Стрик-питомец создан",
+    },
+    "dialog.create_streak_pet.title": {
+        "en": "Create streak pet?",
+        "ru": "Создать стрик-питомца?",
+    },
+    "dialog.create_streak_pet.message": {
+        "en": "Does the other person use this plugin?",
+        "ru": "Собеседник использует этот плагин?",
+    },
+    "dialog.create_streak_pet.yes": {
+        "en": "Yes",
+        "ru": "Да",
+    },
+    "dialog.create_streak_pet.no": {
+        "en": "No",
+        "ru": "Нет",
     },
     "menu.debug_create_streak.text": {
         "en": "[DEBUG] Create 3-day streak",
@@ -901,6 +933,7 @@ class ZipResourcesBridge:
 class ChatContextMenu:
     REBUILD = "rebuild"
     REBUILD_PET = "rebuildPet"
+    CREATE_PET = "createPet"
     TOGGLE_SERVICE_MESSAGES = "serviceMessages.toggle"
     GO_TO_STREAK_START = "goToStreakStart"
     REVIVE_NOW = "reviveNow"
@@ -953,66 +986,73 @@ class ChatContextMenu:
                 "priority": 999,
             },
             {
+                "key": cls.CREATE_PET,
+                "text_key": "menu.create_streak_pet.text",
+                "subtext_key": "menu.create_streak_pet.subtext",
+                "icon": "menu_premium_main",
+                "priority": 998,
+            },
+            {
                 "key": cls.GO_TO_STREAK_START,
                 "text_key": "menu.go_to_streak_start.text",
                 "subtext_key": "menu.go_to_streak_start.subtext",
                 "icon": "other_chats",
-                "priority": 998,
+                "priority": 997,
             },
             {
                 "key": cls.TOGGLE_SERVICE_MESSAGES,
                 "text_key": "menu.upgrade_service_messages.text",
                 "subtext_key": "menu.upgrade_service_messages.subtext",
                 "icon": "msg_settings",
-                "priority": 997,
+                "priority": 996,
             },
             {
                 "key": cls.REVIVE_NOW,
                 "text_key": "menu.restore_streak.text",
                 "subtext_key": "menu.restore_streak.subtext",
                 "icon": "msg_reactions",
-                "priority": 996,
+                "priority": 995,
             },
             {
                 "key": cls.DEBUG_CREATE,
                 "text_key": "menu.debug_create_streak.text",
                 "subtext_key": "menu.debug_create_streak.subtext",
-                "priority": 995,
+                "priority": 994,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_UPGRADE,
                 "text_key": "menu.debug_upgrade_streak.text",
                 "subtext_key": "menu.debug_upgrade_streak.subtext",
-                "priority": 994,
+                "priority": 993,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_FREEZE,
                 "text_key": "menu.debug_freeze_streak.text",
                 "subtext_key": "menu.debug_freeze_streak.subtext",
-                "priority": 993,
+                "priority": 992,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_KILL,
                 "text_key": "menu.debug_kill_streak.text",
                 "subtext_key": "menu.debug_kill_streak.subtext",
-                "priority": 992,
+                "priority": 991,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_DELETE,
                 "text_key": "menu.debug_delete_streak.text",
                 "subtext_key": "menu.debug_delete_streak.subtext",
-                "priority": 991,
+                "priority": 990,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_CRASH,
                 "text_key": "menu.debug_crash_plugin.text",
                 "subtext_key": "menu.debug_crash_plugin.subtext",
-                "priority": 990,
+                "priority": 989,
                 "debug_only": True,
             },
         )

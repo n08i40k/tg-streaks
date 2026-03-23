@@ -35,6 +35,7 @@ import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
+import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.ChatActionCell
 import org.telegram.ui.Cells.ChatMessageCell
@@ -52,6 +53,7 @@ import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreaksController
+import ru.n08i40k.streaks.controller.ServiceMessagesController
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.LegacyUsersDbImporter
@@ -184,6 +186,7 @@ class Plugin {
     val streakEmojiRegistry = StreakEmojiRegistry()
 
     // controllers
+    private val serviceMessagesController = ServiceMessagesController()
     val streaksController: StreaksController
     val streakPetsController: StreakPetsController
 
@@ -400,6 +403,32 @@ class Plugin {
             return peer
         }
 
+        fun validatePrivatePeer(accountId: Int, peerUserId: Long): TLRPC.User? {
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+            if (peerUserId <= 0L || peerUserId == ownerUserId) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return null
+            }
+
+            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return null
+            }
+
+            if (UserObject.isBot(peer)) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
+                return null
+            }
+
+            if (UserObject.isDeleted(peer)) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
+                return null
+            }
+
+            return peer
+        }
+
         add(ChatContextMenuButton.REBUILD) { peerUserId ->
             val accountId = UserConfig.selectedAccount
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
@@ -446,27 +475,7 @@ class Plugin {
 
         add(ChatContextMenuButton.REBUILD_PET) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-
-            if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return@add
-            }
-
-            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return@add
-            }
-
-            if (UserObject.isBot(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
-                return@add
-            }
-
-            if (UserObject.isDeleted(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
-                return@add
-            }
+            val peer = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             if (streakPetsController.isRebuildRunning()) {
                 bulletinHelper.showTranslated(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
@@ -487,6 +496,60 @@ class Plugin {
             }
 
             logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
+        }
+
+        add(ChatContextMenuButton.CREATE_PET) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                if (streakPetsController.get(accountId, peerUserId) != null) {
+                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT)
+                    return@launch
+                }
+
+                AndroidUtilities.runOnUIThread {
+                    val fragment = LaunchActivity.getSafeLastFragment()
+                    if (fragment == null) {
+                        bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
+                        return@runOnUIThread
+                    }
+
+                    fragment.showDialog(
+                        AlertDialog.Builder(fragment.context)
+                            .setTitle(translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_TITLE))
+                            .setMessage(translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_MESSAGE))
+                            .setPositiveButton(
+                                translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_YES)
+                            ) { _, _ ->
+                                serviceMessagesController.sendPetInvite(accountId, peerUserId)
+                            }
+                            .setNegativeButton(
+                                translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_NO)
+                            ) { _, _ ->
+                                backgroundScope.launch {
+                                    when (streakPetsController.create(accountId, peerUserId)) {
+                                        StreakPetsController.CreateResult.CREATED -> {
+                                            bulletinHelper.showTranslated(
+                                                TranslationKey.OK_STREAK_PET_CREATED,
+                                                "msg_reactions"
+                                            )
+                                        }
+
+                                        StreakPetsController.CreateResult.ALREADY_EXISTS -> {
+                                            bulletinHelper.showTranslated(
+                                                TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            .create()
+                    )
+                }
+            }
+
+            logger.info("[Context Menu] Create pet clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.GO_TO_STREAK_START) { peerUserId ->
@@ -562,27 +625,7 @@ class Plugin {
 
         add(ChatContextMenuButton.TOGGLE_SERVICE_MESSAGES) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-
-            if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return@add
-            }
-
-            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return@add
-            }
-
-            if (UserObject.isBot(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
-                return@add
-            }
-
-            if (UserObject.isDeleted(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
-                return@add
-            }
+            validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             val enabled = streaksController.toggleServiceMessages(accountId, peerUserId)
 
@@ -600,27 +643,7 @@ class Plugin {
 
         add(ChatContextMenuButton.REVIVE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-
-            if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return@add
-            }
-
-            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return@add
-            }
-
-            if (UserObject.isBot(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
-                return@add
-            }
-
-            if (UserObject.isDeleted(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
-                return@add
-            }
+            val peer = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             backgroundScope.launch {
                 val streak = streaksController.get(accountId, peerUserId)
