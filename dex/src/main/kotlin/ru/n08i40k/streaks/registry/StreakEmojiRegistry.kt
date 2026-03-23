@@ -4,6 +4,7 @@ package ru.n08i40k.streaks.registry
 
 import android.view.View
 import org.telegram.ui.ActionBar.INavigationLayout
+import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.override.StreakEmoji
@@ -87,20 +88,45 @@ class StreakEmojiRegistry {
         launchActivity.layersActionBarLayout?.let { populateSet(it) }
 
         val viewPagesField = getField(DialogsActivity::class.java, "viewPages")
+        val currentDialogIdField = getField(DialogCell::class.java, "currentDialogId")
+        val emojiStatusField = getField(DialogCell::class.java, "emojiStatus")
+        val emojiStatusViewField = getField(DialogCell::class.java, "emojiStatusView")
 
         @Suppress("UNCHECKED_CAST")
         val viewPages = dialogsActivities
             .mapNotNull { viewPagesField.get(it) as? Array<View?> }
             .flatMap { it.toSet() }
 
+        var totalDialogCells = 0
+        var refreshedDialogCells = 0
+
         for (page in viewPages) {
             val page = page as? DialogsActivity.ViewPage ?: continue
-
             val listView = page.listView
 
-            val adapter = listView.adapter
-            listView.adapter = null
-            listView.adapter = adapter
+            for (i in 0..<listView.childCount) {
+                val child = listView.getChildAt(i) as? DialogCell ?: continue
+                totalDialogCells++
+                val currentDialogId = currentDialogIdField.getLong(child)
+
+                if (currentDialogId == 0L) {
+                    continue
+                }
+
+                StreakEmoji.encapsulate(
+                    obj = child,
+                    field = emojiStatusField,
+                    arrayIndex = null,
+                    peerUserId = currentDialogId,
+                )
+                refreshedDialogCells++
+
+                (emojiStatusViewField.get(child) as? View)?.invalidate()
+                child.requestLayout()
+                child.invalidate()
+            }
+
+            listView.invalidate()
         }
     }
 }
