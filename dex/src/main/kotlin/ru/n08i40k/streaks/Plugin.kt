@@ -444,6 +444,51 @@ class Plugin {
             logger.info("[Context Menu] Rebuild clicked on $peerUserId")
         }
 
+        add(ChatContextMenuButton.REBUILD_PET) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+            if (peerUserId <= 0L || peerUserId == ownerUserId) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return@add
+            }
+
+            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
+                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                return@add
+            }
+
+            if (UserObject.isBot(peer)) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
+                return@add
+            }
+
+            if (UserObject.isDeleted(peer)) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
+                return@add
+            }
+
+            if (streakPetsController.isRebuildRunning()) {
+                bulletinHelper.showTranslated(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
+                return@add
+            }
+
+            backgroundScope.launch {
+                val streakPet = streakPetsController.get(accountId, peerUserId)
+
+                if (streakPet == null) {
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
+                    return@launch
+                }
+
+                streakPetsController.rebuild(accountId, peer) { progress ->
+                    progress.showBulletin()
+                }
+            }
+
+            logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
+        }
+
         add(ChatContextMenuButton.GO_TO_STREAK_START) { peerUserId ->
             val accountId = UserConfig.selectedAccount
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId

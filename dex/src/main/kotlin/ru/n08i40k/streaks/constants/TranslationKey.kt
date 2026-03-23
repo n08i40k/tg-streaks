@@ -23,6 +23,7 @@ object TranslationKey {
     const val INFO_PRIVATE_USER_ONLY = "info.private_user_only"
     const val INFO_ACTION_NOT_AVAILABLE_FOR_BOTS = "info.action_not_available_for_bots"
     const val INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS = "info.action_not_available_for_deleted_users"
+    const val INFO_NO_STREAK_PET_FOR_CHAT = "info.no_streak_pet_for_chat"
     const val INFO_STREAK_NOT_ENDED_YET = "info.streak_not_ended_yet"
     const val INFO_STREAK_RESTORE_UNAVAILABLE = "info.streak_restore_unavailable"
     const val INFO_NO_STREAK_RECORD_FOR_CHAT = "info.no_streak_record_for_chat"

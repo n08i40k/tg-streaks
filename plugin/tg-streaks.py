@@ -59,6 +59,7 @@ def get_plugin_cache_dir(*parts: str) -> str:
     cache_root = ApplicationLoader.applicationContext.getCacheDir().getAbsolutePath()
     return os.path.join(cache_root, __id__, *parts)
 
+
 I18N_STRINGS: dict[str, dict[str, str]] = {
     "settings.updates": {"en": "Updates", "ru": "Обновления"},
     "settings.check_updates": {
@@ -164,6 +165,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "This action is not available for deleted accounts",
         "ru": "Это действие недоступно для удалённых аккаунтов",
     },
+    "info.no_streak_pet_for_chat": {
+        "en": "No streak pet exists for this chat yet",
+        "ru": "Для этого чата ещё не создан стрик-питомец",
+    },
     "info.streak_not_ended_yet": {
         "en": "This streak hasn't ended yet",
         "ru": "Этот стрик ещё не завершился",
@@ -247,6 +252,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "menu.force_check_chat.subtext": {
         "en": "Check the chat history again and update the streak length",
         "ru": "Ещё раз проверить историю чата и обновить длину стрика",
+    },
+    "menu.rebuild_streak_pet.text": {
+        "en": "Rebuild streak pet",
+        "ru": "Пересобрать стрик-питомца",
+    },
+    "menu.rebuild_streak_pet.subtext": {
+        "en": "Recalculate streak pet tasks and points from this chat history",
+        "ru": "Пересчитать задачи и очки стрик-питомца по истории этого чата",
     },
     "menu.go_to_streak_start.text": {
         "en": "Open where the streak began",
@@ -471,14 +484,18 @@ class JvmPluginBridge:
 
     def load(self):
         if DEBUG_MODE:
-            self.plugin.log("Debug mode enabled. Downloading DEX without SHA256 checks...")
+            self.plugin.log(
+                "Debug mode enabled. Downloading DEX without SHA256 checks..."
+            )
             dex_data = self._download_bytes(show_bulletins=True)
             if dex_data is not None:
                 self._write_dex_file(dex_data)
                 self._load(dex_data)
                 return
 
-            self.plugin.log("DEX download failed in debug mode. Falling back to cached DEX if available...")
+            self.plugin.log(
+                "DEX download failed in debug mode. Falling back to cached DEX if available..."
+            )
             self._load_cached_file()
             return
 
@@ -499,7 +516,9 @@ class JvmPluginBridge:
                 self._refresh_async()
                 return
 
-            self.plugin.log("Cached DEX exists but failed to load. Downloading replacement synchronously...")
+            self.plugin.log(
+                "Cached DEX exists but failed to load. Downloading replacement synchronously..."
+            )
         else:
             self.plugin.log("Cached DEX not found. Downloading new file...")
 
@@ -571,7 +590,9 @@ class JvmPluginBridge:
             finally:
                 self._download_lock.release()
 
-        threading.Thread(target=worker, name="tg-streaks-dex-refresh", daemon=True).start()
+        threading.Thread(
+            target=worker, name="tg-streaks-dex-refresh", daemon=True
+        ).start()
 
     def _load(self, dex_data: bytes):
         class_path = "ru.n08i40k.streaks.Plugin"
@@ -618,16 +639,24 @@ class ZipResourcesBridge:
         lock_fd = self._acquire_download_lock(blocking=False)
         if lock_fd is not None:
             try:
-                self.plugin.log("Debug mode enabled. Downloading resources ZIP without SHA256 checks...")
+                self.plugin.log(
+                    "Debug mode enabled. Downloading resources ZIP without SHA256 checks..."
+                )
                 zip_data = self._download_bytes(show_bulletins=True)
                 if zip_data is not None:
                     self._write_zip_file(zip_data)
                     self._extract_zip()
-                    return self.resources_root if os.path.isdir(self.resources_root) else None
+                    return (
+                        self.resources_root
+                        if os.path.isdir(self.resources_root)
+                        else None
+                    )
             finally:
                 self._release_download_lock(lock_fd)
         else:
-            self.plugin.log("Resources ZIP download is already in progress. Waiting for the existing run to finish...")
+            self.plugin.log(
+                "Resources ZIP download is already in progress. Waiting for the existing run to finish..."
+            )
             wait_lock_fd = self._acquire_download_lock(blocking=True)
             try:
                 pass
@@ -647,7 +676,9 @@ class ZipResourcesBridge:
             if os.path.isdir(self.resources_root):
                 return self.resources_root
 
-        self.plugin.log("Resources ZIP download failed in debug mode. Falling back to current extracted resources if available...")
+        self.plugin.log(
+            "Resources ZIP download failed in debug mode. Falling back to current extracted resources if available..."
+        )
         return self.resources_root if os.path.isdir(self.resources_root) else None
 
     def _load_release_slow_path(self, expected_sha256: str) -> Optional[str]:
@@ -663,7 +694,9 @@ class ZipResourcesBridge:
             finally:
                 self._release_download_lock(lock_fd)
         else:
-            self.plugin.log("Resources ZIP update is already in progress. Waiting for the existing run to finish...")
+            self.plugin.log(
+                "Resources ZIP update is already in progress. Waiting for the existing run to finish..."
+            )
             wait_lock_fd = self._acquire_download_lock(blocking=True)
             try:
                 result_path, refresh_needed = self._load_release_slow_path_locked(
@@ -687,13 +720,19 @@ class ZipResourcesBridge:
 
         if cached_sha256 == expected_sha256:
             if not os.path.isdir(self.resources_root):
-                self.plugin.log("Resources ZIP is cached, but unpacked files are missing. Extracting...")
+                self.plugin.log(
+                    "Resources ZIP is cached, but unpacked files are missing. Extracting..."
+                )
                 self._extract_zip()
-            return self.resources_root if os.path.isdir(self.resources_root) else None, False
+            return self.resources_root if os.path.isdir(
+                self.resources_root
+            ) else None, False
 
         if cached_sha256 is not None:
             if not os.path.isdir(self.resources_root):
-                self.plugin.log("Cached resources ZIP is outdated, but unpacked files are missing. Extracting cached version first...")
+                self.plugin.log(
+                    "Cached resources ZIP is outdated, but unpacked files are missing. Extracting cached version first..."
+                )
                 self._extract_zip()
 
             if os.path.isdir(self.resources_root):
@@ -705,7 +744,9 @@ class ZipResourcesBridge:
             if not allow_download:
                 return None, False
 
-            self.plugin.log("Cached resources ZIP exists but there are no usable extracted files. Downloading replacement synchronously...")
+            self.plugin.log(
+                "Cached resources ZIP exists but there are no usable extracted files. Downloading replacement synchronously..."
+            )
         else:
             if not allow_download:
                 return None, False
@@ -714,7 +755,9 @@ class ZipResourcesBridge:
 
         zip_data = self._download_bytes(show_bulletins=True)
         if zip_data is None:
-            return self.resources_root if os.path.isdir(self.resources_root) else None, False
+            return self.resources_root if os.path.isdir(
+                self.resources_root
+            ) else None, False
 
         downloaded_sha256 = self._compute_sha256(zip_data)
         if downloaded_sha256 != expected_sha256:
@@ -723,7 +766,9 @@ class ZipResourcesBridge:
         self._write_zip_file(zip_data)
         self._extract_zip()
 
-        return self.resources_root if os.path.isdir(self.resources_root) else None, False
+        return self.resources_root if os.path.isdir(
+            self.resources_root
+        ) else None, False
 
     def _compute_sha256(self, data: bytes) -> str:
         return hashlib.sha256(data).hexdigest().lower()
@@ -736,7 +781,9 @@ class ZipResourcesBridge:
             with open(path, "rb") as f:
                 return self._compute_sha256(f.read())
         except Exception as e:
-            self.plugin.log_exception("Failed to read cached resources ZIP for SHA256", e)
+            self.plugin.log_exception(
+                "Failed to read cached resources ZIP for SHA256", e
+            )
             return None
 
     def _write_zip_file(self, zip_data: bytes):
@@ -786,7 +833,9 @@ class ZipResourcesBridge:
             try:
                 expected_sha256 = str(RESOURCES_SHA256).strip().lower()
                 cached_sha256 = self._compute_file_sha256(self.zip_path)
-                if cached_sha256 == expected_sha256 and os.path.isdir(self.resources_root):
+                if cached_sha256 == expected_sha256 and os.path.isdir(
+                    self.resources_root
+                ):
                     return
 
                 zip_data = self._download_bytes(show_bulletins=True)
@@ -804,7 +853,9 @@ class ZipResourcesBridge:
             finally:
                 self._release_download_lock(lock_fd)
 
-        threading.Thread(target=worker, name="tg-streaks-resources-refresh", daemon=True).start()
+        threading.Thread(
+            target=worker, name="tg-streaks-resources-refresh", daemon=True
+        ).start()
 
     def _extract_zip(self):
         staging_root = os.path.join(self.cache_dir, "resources-staging")
@@ -821,8 +872,12 @@ class ZipResourcesBridge:
                     if not normalized.startswith("resources/"):
                         raise RuntimeError(f"Unexpected ZIP entry: {member}")
 
-                    target_path = os.path.abspath(os.path.join(staging_root, normalized))
-                    if not target_path.startswith(os.path.abspath(staging_root) + os.sep):
+                    target_path = os.path.abspath(
+                        os.path.join(staging_root, normalized)
+                    )
+                    if not target_path.startswith(
+                        os.path.abspath(staging_root) + os.sep
+                    ):
                         raise RuntimeError(f"Unsafe ZIP entry: {member}")
 
                 zip_file.extractall(staging_root)
@@ -845,6 +900,7 @@ class ZipResourcesBridge:
 
 class ChatContextMenu:
     REBUILD = "rebuild"
+    REBUILD_PET = "rebuildPet"
     TOGGLE_SERVICE_MESSAGES = "serviceMessages.toggle"
     GO_TO_STREAK_START = "goToStreakStart"
     REVIVE_NOW = "reviveNow"
@@ -890,66 +946,73 @@ class ChatContextMenu:
                 "priority": 1000,
             },
             {
+                "key": cls.REBUILD_PET,
+                "text_key": "menu.rebuild_streak_pet.text",
+                "subtext_key": "menu.rebuild_streak_pet.subtext",
+                "icon": "msg_retry",
+                "priority": 999,
+            },
+            {
                 "key": cls.GO_TO_STREAK_START,
                 "text_key": "menu.go_to_streak_start.text",
                 "subtext_key": "menu.go_to_streak_start.subtext",
                 "icon": "other_chats",
-                "priority": 999,
+                "priority": 998,
             },
             {
                 "key": cls.TOGGLE_SERVICE_MESSAGES,
                 "text_key": "menu.upgrade_service_messages.text",
                 "subtext_key": "menu.upgrade_service_messages.subtext",
                 "icon": "msg_settings",
-                "priority": 998,
+                "priority": 997,
             },
             {
                 "key": cls.REVIVE_NOW,
                 "text_key": "menu.restore_streak.text",
                 "subtext_key": "menu.restore_streak.subtext",
                 "icon": "msg_reactions",
-                "priority": 997,
+                "priority": 996,
             },
             {
                 "key": cls.DEBUG_CREATE,
                 "text_key": "menu.debug_create_streak.text",
                 "subtext_key": "menu.debug_create_streak.subtext",
-                "priority": 996,
+                "priority": 995,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_UPGRADE,
                 "text_key": "menu.debug_upgrade_streak.text",
                 "subtext_key": "menu.debug_upgrade_streak.subtext",
-                "priority": 995,
+                "priority": 994,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_FREEZE,
                 "text_key": "menu.debug_freeze_streak.text",
                 "subtext_key": "menu.debug_freeze_streak.subtext",
-                "priority": 994,
+                "priority": 993,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_KILL,
                 "text_key": "menu.debug_kill_streak.text",
                 "subtext_key": "menu.debug_kill_streak.subtext",
-                "priority": 993,
+                "priority": 992,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_DELETE,
                 "text_key": "menu.debug_delete_streak.text",
                 "subtext_key": "menu.debug_delete_streak.subtext",
-                "priority": 992,
+                "priority": 991,
                 "debug_only": True,
             },
             {
                 "key": cls.DEBUG_CRASH,
                 "text_key": "menu.debug_crash_plugin.text",
                 "subtext_key": "menu.debug_crash_plugin.subtext",
-                "priority": 991,
+                "priority": 990,
                 "debug_only": True,
             },
         )
