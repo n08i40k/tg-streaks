@@ -493,6 +493,13 @@ class Plugin {
                     return@launch
                 }
 
+                val streak = streaksController.get(accountId, peerUserId)
+
+                if (streak == null) {
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    return@launch
+                }
+
                 streakPetsController.rebuild(accountId, peer) { progress ->
                     progress.showBulletin()
                 }
