@@ -144,6 +144,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Debug: streak deleted",
         "ru": "Debug: стрик удалён",
     },
+    "ok.debug_streak_pet_deleted": {
+        "en": "Debug: streak pet deleted",
+        "ru": "Debug: стрик-питомец удалён",
+    },
     "ok.upgrade_service_messages_enabled": {
         "en": "Upgrade service messages enabled for this chat",
         "ru": "Сервисные сообщения об апгрейде включены для этого чата",
@@ -361,6 +365,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "menu.debug_delete_streak.subtext": {
         "en": "Delete the streak record for the current chat",
         "ru": "Удалить запись стрика для текущего чата",
+    },
+    "menu.debug_delete_streak_pet.text": {
+        "en": "[DEBUG] Delete streak pet",
+        "ru": "[DEBUG] Удалить стрик-питомца",
+    },
+    "menu.debug_delete_streak_pet.subtext": {
+        "en": "Delete the streak pet for the current chat",
+        "ru": "Удалить стрик-питомца для текущего чата",
     },
     "force_check.day_progress_chat": {
         "en": "Recalculating streak with {peer_name}: checked {days_checked} d.",
@@ -943,6 +955,7 @@ class ChatContextMenu:
     DEBUG_FREEZE = "debug.freeze"
     DEBUG_KILL = "debug.kill"
     DEBUG_DELETE = "debug.delete"
+    DEBUG_DELETE_PET = "debug.deletePet"
     DEBUG_CRASH = "debug.crash"
 
     MENU_PAYLOAD_DIALOG_KEYS = (
@@ -1049,10 +1062,17 @@ class ChatContextMenu:
                 "debug_only": True,
             },
             {
+                "key": cls.DEBUG_DELETE_PET,
+                "text_key": "menu.debug_delete_streak_pet.text",
+                "subtext_key": "menu.debug_delete_streak_pet.subtext",
+                "priority": 989,
+                "debug_only": True,
+            },
+            {
                 "key": cls.DEBUG_CRASH,
                 "text_key": "menu.debug_crash_plugin.text",
                 "subtext_key": "menu.debug_crash_plugin.subtext",
-                "priority": 989,
+                "priority": 988,
                 "debug_only": True,
             },
         )

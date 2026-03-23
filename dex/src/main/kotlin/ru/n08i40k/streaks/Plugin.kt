@@ -781,6 +781,26 @@ class Plugin {
             logger.info("[Context Menu] Debug-delete clicked on ${peer.id}")
         }
 
+        add(ChatContextMenuButton.DEBUG_DELETE_PET) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                if (!streakPetsController.delete(accountId, peerUserId)) {
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
+                    return@launch
+                }
+
+                syncPeerUi(accountId, peerUserId)
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_DEBUG_STREAK_PET_DELETED,
+                    "msg_reactions"
+                )
+            }
+
+            logger.info("[Context Menu] Debug-delete-pet clicked on ${peer.id}")
+        }
+
         add(ChatContextMenuButton.DEBUG_CRASH) { _ ->
             throw RuntimeException("Crash button was pressed")
         }

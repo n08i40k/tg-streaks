@@ -41,6 +41,7 @@ object TranslationKey {
     const val OK_DEBUG_STREAK_UPGRADED = "ok.debug_streak_upgraded"
     const val OK_DEBUG_STREAK_FROZEN = "ok.debug_streak_frozen"
     const val OK_DEBUG_STREAK_DELETED = "ok.debug_streak_deleted"
+    const val OK_DEBUG_STREAK_PET_DELETED = "ok.debug_streak_pet_deleted"
     const val DB_ERR_NO_BACKUPS_FOUND = "db.err.no_backups_found"
     const val DB_ERR_FAILED_APPLY_BACKUP = "db.err.failed_apply_backup"
 
