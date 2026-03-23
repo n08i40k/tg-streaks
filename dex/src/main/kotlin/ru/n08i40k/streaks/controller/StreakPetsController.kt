@@ -44,6 +44,40 @@ class StreakPetsController(
     suspend fun get(accountId: Int, peerUserId: Long): StreakPet? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
+    data class UiState(
+        val pet: StreakPet,
+        val streak: ru.n08i40k.streaks.data.Streak?,
+        val ownerUser: TLRPC.User?,
+        val peerUser: TLRPC.User?,
+        val tasks: List<StreakPetTask>,
+    )
+
+    suspend fun getUiState(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate = LocalDate.now(),
+    ): UiState? {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val pet = dao.findByRelation(ownerUserId, peerUserId) ?: return null
+
+        val taskByType = taskDao.findAllByRelationAndDay(ownerUserId, peerUserId, day)
+            .associateBy { it.type }
+            .toMutableMap()
+
+        StreakPetTask.getNewTasksList(ownerUserId, peerUserId, day)
+            .forEach { taskByType.putIfAbsent(it.type, it) }
+
+        val messagesController = MessagesController.getInstance(accountId)
+
+        return UiState(
+            pet = pet,
+            streak = streaksController.get(accountId, peerUserId),
+            ownerUser = messagesController.getUser(ownerUserId),
+            peerUser = messagesController.getUser(peerUserId),
+            tasks = enumValues<StreakPetTaskType>().mapNotNull(taskByType::get),
+        )
+    }
+
     data class RebuildProgress(
         val user: TLRPC.User,
         val daysChecked: Int,

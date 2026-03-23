@@ -261,6 +261,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Check the chat history again and update the streak length",
         "ru": "Ещё раз проверить историю чата и обновить длину стрика",
     },
+    "menu.open_streak_pet.text": {
+        "en": "Open streak pet",
+        "ru": "Открыть стрик-питомца",
+    },
+    "menu.open_streak_pet.subtext": {
+        "en": "View your streak pet, today's tasks, and current progress",
+        "ru": "Посмотреть питомца, сегодняшние задания и текущий прогресс",
+    },
     "menu.rebuild_streak_pet.text": {
         "en": "Rebuild streak pet",
         "ru": "Пересобрать стрик-питомца",
@@ -317,6 +325,70 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "dialog.create_streak_pet.no": {
         "en": "No",
         "ru": "Нет",
+    },
+    "pet_sheet.streak_days": {
+        "en": "Streak Days",
+        "ru": "Дней серии",
+    },
+    "pet_sheet.points_to_evolution": {
+        "en": "{count} points until evolution",
+        "ru": "{count} очков до эволюции",
+    },
+    "pet_sheet.max_level": {
+        "en": "Maximum",
+        "ru": "Максимум",
+    },
+    "pet_sheet.locked": {
+        "en": "Locked",
+        "ru": "Заблокировано",
+    },
+    "pet_sheet.locked_subtext": {
+        "en": "First upgrade the previous form",
+        "ru": "Сначала откройте предыдущий облик",
+    },
+    "pet_sheet.tasks_title": {
+        "en": "Today's tasks",
+        "ru": "Задания на сегодня",
+    },
+    "pet_sheet.badges_title": {
+        "en": "Streak badges",
+        "ru": "Значки серии",
+    },
+    "pet_sheet.task.exchange_one_message": {
+        "en": "Exchange one message each",
+        "ru": "Отправьте друг другу по одному сообщению",
+    },
+    "pet_sheet.task.send_four_messages_each": {
+        "en": "Send four messages each",
+        "ru": "Отправьте друг другу по четыре сообщения",
+    },
+    "pet_sheet.task.send_ten_messages_each": {
+        "en": "Send ten messages each",
+        "ru": "Отправьте друг другу по десять сообщений",
+    },
+    "pet_sheet.progress_you": {
+        "en": "You",
+        "ru": "Вы",
+    },
+    "pet_sheet.progress_peer": {
+        "en": "Peer",
+        "ru": "Партнёр",
+    },
+    "pet_sheet.rename_title": {
+        "en": "Rename streak pet",
+        "ru": "Переименовать питомца",
+    },
+    "pet_sheet.rename_hint": {
+        "en": "Enter a new name",
+        "ru": "Введите новое имя",
+    },
+    "pet_sheet.rename_save": {
+        "en": "Save",
+        "ru": "Сохранить",
+    },
+    "pet_sheet.rename_cancel": {
+        "en": "Cancel",
+        "ru": "Отмена",
     },
     "menu.debug_create_streak.text": {
         "en": "[DEBUG] Create 3-day streak",
@@ -979,6 +1051,7 @@ class ZipResourcesBridge:
 
 
 class ChatContextMenu:
+    OPEN_PET = "openPet"
     REBUILD = "rebuild"
     REBUILD_PET = "rebuildPet"
     CREATE_PET = "createPet"
@@ -1020,6 +1093,13 @@ class ChatContextMenu:
     @classmethod
     def _menu_items(cls) -> tuple[dict[str, Any], ...]:
         return (
+            {
+                "key": cls.OPEN_PET,
+                "text_key": "menu.open_streak_pet.text",
+                "subtext_key": "menu.open_streak_pet.subtext",
+                "icon": "menu_premium_main",
+                "priority": 1001,
+            },
             {
                 "key": cls.REBUILD,
                 "text_key": "menu.force_check_chat.text",

@@ -77,6 +77,7 @@ import ru.n08i40k.streaks.registry.SafeParticlesDrawableRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
 import ru.n08i40k.streaks.registry.StreakLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.ui.StreakPetDialog
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.Translator
@@ -202,6 +203,9 @@ class Plugin {
     // registries
     val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
 
+    private var openedPetDialog: StreakPetDialog? = null
+    private var openedPetDialogAccountId: Int? = null
+    private var openedPetDialogPeerUserId: Long? = null
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
@@ -323,6 +327,10 @@ class Plugin {
     private fun onEject() {
         logger.setFatalSuppression(true)
         backgroundScope.cancel()
+        AndroidUtilities.runOnUIThread {
+            openedPetDialog?.dismiss()
+            clearTrackedPetDialog()
+        }
 
         try {
             hooks.forEach { it.unhook() }
@@ -344,6 +352,55 @@ class Plugin {
         settingsActionCallbackRegistry.clear()
 
         logger.info("Ejected!")
+    }
+
+    private fun clearTrackedPetDialog(dialog: StreakPetDialog? = null) {
+        if (dialog != null && openedPetDialog !== dialog) {
+            return
+        }
+
+        openedPetDialog = null
+        openedPetDialogAccountId = null
+        openedPetDialogPeerUserId = null
+    }
+
+    private fun trackPetDialog(accountId: Int, peerUserId: Long, dialog: StreakPetDialog) {
+        openedPetDialog = dialog
+        openedPetDialogAccountId = accountId
+        openedPetDialogPeerUserId = peerUserId
+        dialog.setOnDismissListener {
+            clearTrackedPetDialog(dialog)
+        }
+    }
+
+    private fun refreshOpenedPetDialog(accountId: Int, peerUserId: Long) {
+        if (openedPetDialogAccountId != accountId || openedPetDialogPeerUserId != peerUserId) {
+            return
+        }
+
+        backgroundScope.launch {
+            val refreshedState = streakPetsController.getUiState(accountId, peerUserId)
+
+            AndroidUtilities.runOnUIThread {
+                val dialog = openedPetDialog ?: return@runOnUIThread
+                if (
+                    openedPetDialogAccountId != accountId
+                    || openedPetDialogPeerUserId != peerUserId
+                    || !dialog.isShowing
+                ) {
+                    clearTrackedPetDialog(dialog)
+                    return@runOnUIThread
+                }
+
+                if (refreshedState == null) {
+                    dialog.dismiss()
+                    clearTrackedPetDialog(dialog)
+                    return@runOnUIThread
+                }
+
+                dialog.updateState(refreshedState)
+            }
+        }
     }
 
     private suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
@@ -525,6 +582,48 @@ class Plugin {
             }
 
             logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
+        }
+
+        add(ChatContextMenuButton.OPEN_PET) { peerUserId ->
+            val accountId = UserConfig.selectedAccount
+            validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            backgroundScope.launch {
+                val uiState = streakPetsController.getUiState(accountId, peerUserId)
+
+                if (uiState == null) {
+                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
+                    return@launch
+                }
+
+                AndroidUtilities.runOnUIThread {
+                    val fragment = LaunchActivity.getSafeLastFragment()
+                    if (fragment == null) {
+                        bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
+                        return@runOnUIThread
+                    }
+
+                    val dialog = StreakPetDialog(fragment, uiState, translator) { newName ->
+                        backgroundScope.launch {
+                            if (!streakPetsController.rename(accountId, peerUserId, newName)) {
+                                return@launch
+                            }
+
+                            serviceMessagesController.sendPetSetName(
+                                accountId,
+                                peerUserId,
+                                newName
+                            )
+                            refreshOpenedPetDialog(accountId, peerUserId)
+                        }
+                    }
+
+                    trackPetDialog(accountId, peerUserId, dialog)
+                    fragment.showDialog(dialog)
+                }
+            }
+
+            logger.info("[Context Menu] Open pet clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.CREATE_PET) { peerUserId ->
@@ -1753,6 +1852,7 @@ class Plugin {
                         message,
                         out
                     )
+                    refreshOpenedPetDialog(accountId, peerUserId)
 
                     if (result.changed) {
                         changed = true
@@ -1817,6 +1917,7 @@ class Plugin {
                     sendMessageParams.message,
                     true
                 )
+                refreshOpenedPetDialog(accountId, peerUserId)
 
                 if (result.changed) {
                     streaksController.syncUserState(accountId, peerUserId)
