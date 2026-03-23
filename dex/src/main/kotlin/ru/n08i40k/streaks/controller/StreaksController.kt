@@ -57,36 +57,6 @@ class StreaksController(
         val uiSyncTargets: List<UiSyncTarget>,
     )
 
-    data class ServiceMessagePolicy(
-        val sendCreation: Boolean,
-        val sendUpgrade: Boolean,
-        val sendDeath: Boolean,
-        val sendRestore: Boolean,
-    ) {
-        companion object {
-            val LIVE = ServiceMessagePolicy(
-                sendCreation = true,
-                sendUpgrade = true,
-                sendDeath = true,
-                sendRestore = true,
-            )
-
-            val REBUILD = ServiceMessagePolicy(
-                sendCreation = false,
-                sendUpgrade = false,
-                sendDeath = false,
-                sendRestore = false,
-            )
-
-            val UPDATE_CHECK = ServiceMessagePolicy(
-                sendCreation = false,
-                sendUpgrade = true,
-                sendDeath = true,
-                sendRestore = false,
-            )
-        }
-    }
-
     data class RebuildProgress(
         val peerLabel: String,
         val daysChecked: Int,
@@ -294,7 +264,7 @@ class StreaksController(
         peer: TLRPC.User,
         revives: Set<LocalDate>? = null,
         ignoreLock: Boolean = false,
-        serviceMessagePolicy: ServiceMessagePolicy = ServiceMessagePolicy.REBUILD,
+        sendServiceMessages: Boolean = false,
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
         if (!ignoreLock && !rebuildLock.compareAndSet(false, true)) {
@@ -359,12 +329,7 @@ class StreaksController(
             val rebuildFrom = currentDay
             val rebuildTo = if (startDayIsFrozen) startDay.prev() else startDay
 
-            if (
-                serviceMessagePolicy.sendCreation
-                || serviceMessagePolicy.sendUpgrade
-                || serviceMessagePolicy.sendDeath
-                || serviceMessagePolicy.sendRestore
-            ) {
+            if (sendServiceMessages) {
                 Plugin.getInstance().logger.info("Rebuild service messages policy is unexpectedly enabled")
             }
 
@@ -401,7 +366,7 @@ class StreaksController(
 
     suspend fun rebuildAll(
         accountId: Int,
-        serviceMessagePolicy: ServiceMessagePolicy = ServiceMessagePolicy.REBUILD,
+        sendServiceMessages: Boolean = false,
         onProgressUpdate: (index: Int, total: Int, peer: TLRPC.User, progress: RebuildProgress) -> Unit
     ): RebuildAllResult {
         if (!rebuildLock.compareAndSet(false, true)) {
@@ -418,7 +383,7 @@ class StreaksController(
                 val peerRevives =
                     revives.filter { it.peerUserId == user.id }.map { it.revivedAt }.toSet()
 
-                rebuild(accountId, user, peerRevives, true, serviceMessagePolicy) {
+                rebuild(accountId, user, peerRevives, true, sendServiceMessages) {
                     onProgressUpdate(index, peers.size, user, it)
                 }
 
@@ -436,7 +401,7 @@ class StreaksController(
     private suspend fun checkForUpdates(
         accountId: Int,
         streak: Streak,
-        serviceMessagePolicy: ServiceMessagePolicy = ServiceMessagePolicy.UPDATE_CHECK
+        sendServiceMessages: Boolean = true
     ) {
         val now = LocalDate.now()
         val previousLength = streak.length
@@ -516,7 +481,7 @@ class StreaksController(
                         kill(
                             accountId,
                             peerUserId,
-                            serviceMessagePolicy.sendDeath && isVisibleLength(streakBeforeDeath.length)
+                            sendServiceMessages && isVisibleLength(streakBeforeDeath.length)
                         )
                         return
                     }
@@ -546,7 +511,7 @@ class StreaksController(
         val currentStreak = get(accountId, peerUserId) ?: return
 
         if (
-            serviceMessagePolicy.sendUpgrade
+            sendServiceMessages
             && isVisibleLength(previousLength)
             && currentStreak.level.length > previousLevelLength
         ) {
@@ -559,7 +524,7 @@ class StreaksController(
         peerUserId: Long,
         out: Boolean,
         message: String?,
-        serviceMessagePolicy: ServiceMessagePolicy = ServiceMessagePolicy.LIVE
+        sendServiceMessages: Boolean = true
     ): HandleUpdateResult {
         val now = LocalDate.now()
         val existingStreak = get(accountId, peerUserId)
@@ -598,7 +563,7 @@ class StreaksController(
 
             dao.insertAll(streak)
 
-            if (serviceMessagePolicy.sendCreation && isVisibleLength(streak.length))
+            if (sendServiceMessages && isVisibleLength(streak.length))
                 serviceMessagesController.sendCreation(accountId, peerUserId)
 
             return HandleUpdateResult(
@@ -627,13 +592,13 @@ class StreaksController(
         streakPopupController.enqueueForTransition(accountId, peerUserId, streak, currentStreak)
 
         if (
-            serviceMessagePolicy.sendCreation
+            sendServiceMessages
             && !isVisibleLength(streak.length)
             && isVisibleLength(currentStreak.length)
         ) {
             serviceMessagesController.sendCreation(accountId, peerUserId)
         } else if (
-            serviceMessagePolicy.sendUpgrade
+            sendServiceMessages
             && isVisibleLength(streak.length)
             && currentStreak.level.length > streak.level.length
         ) {
@@ -654,7 +619,7 @@ class StreaksController(
                 dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
             streaks.forEach {
-                checkForUpdates(accountId, it, ServiceMessagePolicy.UPDATE_CHECK)
+                checkForUpdates(accountId, it)
                 uiSyncTargets.add(UiSyncTarget(accountId, it.peerUserId))
             }
         }
