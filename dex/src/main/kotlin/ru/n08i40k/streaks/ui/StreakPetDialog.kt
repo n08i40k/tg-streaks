@@ -42,6 +42,7 @@ class StreakPetDialog(
     initialState: StreakPetsController.UiState,
     private val translator: Translator,
     private val onRenameRequested: (String) -> Unit,
+    private val onDismissed: (() -> Unit)? = null,
 ) : Dialog(
     fragment.context ?: fragment.parentActivity
     ?: throw IllegalStateException("Cannot create streak pet dialog without a context"),
@@ -125,6 +126,7 @@ class StreakPetDialog(
 
         super.dismiss()
         destroyWebView()
+        onDismissed?.invoke()
     }
 
     private fun destroyWebView() {
