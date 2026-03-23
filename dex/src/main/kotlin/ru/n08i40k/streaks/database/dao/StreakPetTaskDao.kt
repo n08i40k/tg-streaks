@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy.Companion.IGNORE
+import androidx.room.OnConflictStrategy.Companion.REPLACE
 import androidx.room.Query
 import androidx.room.Update
 import ru.n08i40k.streaks.data.StreakPetTask
@@ -47,7 +48,10 @@ interface StreakPetTaskDao {
     ): StreakPetTask?
 
     @Insert(onConflict = IGNORE)
-    suspend fun insertAll(vararg records: StreakPetTask)
+    suspend fun insertIfNotExistsAll(vararg records: StreakPetTask)
+
+    @Insert(onConflict = REPLACE)
+    suspend fun insertOrUpdateAll(vararg records: StreakPetTask)
 
     @Update
     suspend fun update(record: StreakPetTask)
