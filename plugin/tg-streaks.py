@@ -31,7 +31,7 @@ from ui.settings import Divider, Header, Switch, Text
 __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Analog for TikTok streaks for Telegram"
-__author__ = "@n08i40k"
+__author__ = "@n08i40k & @RoflPlugins"
 __version__ = "2.2.0"
 __icon__ = "exteraPlugins/0"
 __min_version__ = "12.1.1"
