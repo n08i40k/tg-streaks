@@ -62,6 +62,7 @@ import ru.n08i40k.streaks.controller.ServiceMessagesController
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.data.StreakLevel
+import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.LegacyUsersDbImporter
 import ru.n08i40k.streaks.database.MIGRATION_1_2
@@ -79,6 +80,7 @@ import ru.n08i40k.streaks.registry.LockableCallbackRegistry
 import ru.n08i40k.streaks.registry.SafeParticlesDrawableRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
 import ru.n08i40k.streaks.registry.StreakLevelRegistry
+import ru.n08i40k.streaks.registry.StreakPetLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.StreakPetDialog
 import ru.n08i40k.streaks.ui.StreakPetFabDialog
@@ -160,6 +162,31 @@ class Plugin {
         }
 
         @JvmStatic
+        fun registerStreakPetLevel(
+            maxPoints: Int,
+            imageResourcePath: String,
+            gradientStart: String,
+            gradientEnd: String,
+            petStart: String,
+            petEnd: String,
+            accent: String,
+            accentSecondary: String,
+        ) {
+            INSTANCE?.streakPetLevelRegistry?.register(
+                StreakPetLevel(
+                    maxPoints = maxPoints,
+                    imageResourcePath = imageResourcePath,
+                    gradientStart = gradientStart,
+                    gradientEnd = gradientEnd,
+                    petStart = petStart,
+                    petEnd = petEnd,
+                    accent = accent,
+                    accentSecondary = accentSecondary,
+                )
+            )
+        }
+
+        @JvmStatic
         fun finalizeInject() {
             INSTANCE?.onFinalizeInject()
         }
@@ -207,6 +234,7 @@ class Plugin {
 
     // registries
     val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
+    val streakPetLevelRegistry: StreakPetLevelRegistry = StreakPetLevelRegistry()
 
     private var openedPetDialog: StreakPetDialog? = null
     private var openedPetDialogAccountId: Int? = null
@@ -391,6 +419,7 @@ class Plugin {
                 val dialog = StreakPetDialog(
                     fragment,
                     uiState,
+                    resourcesProvider,
                     translator,
                     onRenameRequested = { newName ->
                         backgroundScope.launch {
@@ -459,7 +488,7 @@ class Plugin {
 
                 val context =
                     currentChat.parentActivity ?: currentChat.context ?: return@runOnUIThread
-                val dialog = StreakPetFabDialog(context, uiState) {
+                val dialog = StreakPetFabDialog(context, uiState, resourcesProvider) {
                     dismissPetFab()
                     openPetDialog(accountId, peerUserId)
                 }

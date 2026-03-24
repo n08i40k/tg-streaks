@@ -1,0 +1,1044 @@
+        <!DOCTYPE html>
+        <html lang="ru">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <style>
+                :root {
+                    --bg-start: #F9B746;
+                    --bg-end: #FFF8E8;
+                    --accent: #8D4A00;
+                    --accent-secondary: #FFF2C8;
+                    --pet-start: #FFCB68;
+                    --pet-end: #FF9C24;
+                    --safe-top: {{SAFE_TOP}}px;
+                }
+
+                * {
+                    box-sizing: border-box;
+                    -webkit-tap-highlight-color: transparent;
+                }
+
+                html, body {
+                    margin: 0;
+                    min-height: 100%;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    color: #111827;
+                    background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
+                }
+
+                body {
+                    padding-top: calc(var(--safe-top) + 12px);
+                    overflow-y: auto;
+                }
+
+                .shell {
+                    width: 100%;
+                    min-height: 100vh;
+                    padding: 0 0 28px;
+                }
+
+                .app {
+                    width: 100vw;
+                    max-width: none;
+                    padding: 0 8px;
+                }
+
+                .topbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 18px;
+                }
+
+                .icon-btn {
+                    width: 40px;
+                    height: 40px;
+                    border: 0;
+                    border-radius: 999px;
+                    background: rgba(255,255,255,.22);
+                    color: #2A1605;
+                    font-size: 24px;
+                }
+
+                .avatars {
+                    display: flex;
+                    align-items: center;
+                }
+
+                .avatar {
+                    position: relative;
+                    overflow: hidden;
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 999px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    font-weight: 800;
+                    color: white;
+                    border: 2px solid rgba(255,255,255,.55);
+                    box-shadow: 0 4px 16px rgba(0,0,0,.12);
+                }
+
+                .avatar img {
+                    position: absolute;
+                    inset: 0;
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    display: none;
+                }
+
+                .avatar.has-image img {
+                    display: block;
+                }
+
+                .avatar + .avatar {
+                    margin-left: -10px;
+                }
+
+                .avatar.owner {
+                    background: linear-gradient(135deg, #FF86A5 0%, #FF5F7C 100%);
+                }
+
+                .avatar.peer {
+                    background: linear-gradient(135deg, #5E76FF 0%, #3548C8 100%);
+                }
+
+                .headline-label {
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #543716;
+                }
+
+                .headline {
+                    padding-left: 7.5%;
+                }
+
+                .headline-days {
+                    font-size: 60px;
+                    line-height: .95;
+                    font-weight: 900;
+                    margin: 2px 0 0;
+                    color: #000;
+                }
+
+                .hero {
+                    position: relative;
+                    height: 248px;
+                    margin-top: 8px;
+                }
+
+                .stage-btn {
+                    position: absolute;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 44px;
+                    height: 44px;
+                    border: 0;
+                    border-radius: 999px;
+                    background: rgba(255,255,255,.18);
+                    color: #6A4A23;
+                    font-size: 32px;
+                    font-weight: 900;
+                    z-index: 2;
+                }
+
+                .stage-btn.hidden {
+                    visibility: hidden;
+                }
+
+                #prev-btn { left: 0; }
+                #next-btn { right: 0; }
+
+                .pet-wrap {
+                    position: absolute;
+                    inset: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .pet {
+                    position: relative;
+                    width: 220px;
+                    height: 220px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transform: scale(1);
+                    transition: transform .24s cubic-bezier(.34,1.56,.64,1);
+                    animation: bob 2.4s ease-in-out infinite;
+                }
+
+                @keyframes bob {
+                    0%, 100% { transform: translateY(0px); }
+                    50% { transform: translateY(-6px); }
+                }
+
+                .pet-shadow {
+                    position: absolute;
+                    left: 50%;
+                    bottom: 26px;
+                    width: 98px;
+                    height: 26px;
+                    transform: translateX(-50%);
+                    border-radius: 999px;
+                    background: radial-gradient(circle, rgba(0,0,0,.16) 0%, rgba(0,0,0,0) 72%);
+                }
+
+                .pet-media {
+                    position: absolute;
+                    inset: 0;
+                    width: 100%;
+                    height: 100%;
+                    pointer-events: none;
+                    object-fit: contain;
+                    background-color: transparent;
+                    z-index: 2;
+                    opacity: 0;
+                    transition: opacity .18s ease;
+                }
+
+                .pet.locked {
+                    opacity: .78;
+                }
+
+                .pet.locked .pet-media {
+                    opacity: .82;
+                }
+
+                .lock-badge {
+                    position: absolute;
+                    left: 50%;
+                    bottom: 24px;
+                    transform: translateX(-50%);
+                    padding: 8px 12px;
+                    border-radius: 999px;
+                    background: rgba(17,24,39,.48);
+                    backdrop-filter: blur(10px);
+                    color: #fff;
+                    font-size: 12px;
+                    font-weight: 800;
+                    display: none;
+                }
+
+                .lock-badge.visible {
+                    display: block;
+                }
+
+                .name-row {
+                    width: fit-content;
+                    margin: 4px auto 0;
+                    padding: 8px 14px;
+                    border-radius: 999px;
+                    background: rgba(255,255,255,.22);
+                    color: #000;
+                    font-size: 18px;
+                    font-weight: 800;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .progress-track {
+                    margin: 16px 16px 0;
+                    height: 22px;
+                    border-radius: 999px;
+                    background: rgba(255,255,255,.9);
+                    overflow: hidden;
+                    position: relative;
+                    box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
+                }
+
+                .progress-fill {
+                    position: absolute;
+                    inset: 0 auto 0 0;
+                    width: 0%;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, var(--accent-secondary), color-mix(in srgb, var(--accent) 82%, white 18%));
+                    transition: width .35s ease;
+                }
+
+                .progress-text {
+                    position: absolute;
+                    inset: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: var(--accent);
+                }
+
+                .progress-subtext {
+                    margin-top: 12px;
+                    text-align: center;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: rgba(55,65,81,.78);
+                }
+
+                .card {
+                    margin-top: 18px;
+                    padding: 20px;
+                    border-radius: 28px;
+                    background: #fff;
+                    box-shadow: 0 14px 36px rgba(15,23,42,.08);
+                }
+
+                .card h3 {
+                    margin: 0 0 16px;
+                    font-size: 16px;
+                    font-weight: 800;
+                }
+
+                .task {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 12px;
+                }
+
+                .task + .task {
+                    margin-top: 14px;
+                    padding-top: 14px;
+                    border-top: 1px solid #F3F4F6;
+                }
+
+                .task-icon {
+                    flex: 0 0 32px;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 999px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 16px;
+                    font-weight: 900;
+                    background: #F3F4F6;
+                    color: #9CA3AF;
+                    box-shadow: inset 0 0 0 1px #E5E7EB;
+                }
+
+                .task.done .task-icon {
+                    background: var(--accent);
+                    color: #fff;
+                    box-shadow: none;
+                }
+
+                .task-body {
+                    flex: 1 1 auto;
+                    min-width: 0;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+
+                .task-head {
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: space-between;
+                    gap: 12px;
+                }
+
+                .task-title {
+                    flex: 1 1 auto;
+                    font-size: 15px;
+                    font-weight: 800;
+                    color: #111827;
+                }
+
+                .task-reward {
+                    flex: 0 0 auto;
+                    font-weight: 800;
+                    color: #9CA3AF;
+                    font-size: 12px;
+                }
+
+                .task.done .task-reward,
+                .task.done .task-metric-label,
+                .task.done .task-metric-value {
+                    color: var(--accent);
+                }
+
+                .task-metrics {
+                    display: grid;
+                    gap: 8px;
+                }
+
+                .task-metric {
+                    display: grid;
+                    gap: 4px;
+                }
+
+                .task-metric-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                }
+
+                .task-metric-label {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #6B7280;
+                }
+
+                .task-metric-value {
+                    font-size: 12px;
+                    font-weight: 800;
+                    white-space: nowrap;
+                    color: #374151;
+                }
+
+                .task-metric-track {
+                    height: 6px;
+                    border-radius: 999px;
+                    overflow: hidden;
+                    background: #F3F4F6;
+                }
+
+                .task-metric-fill {
+                    height: 100%;
+                    border-radius: inherit;
+                    background: linear-gradient(90deg, var(--accent-secondary), var(--accent));
+                }
+
+                .badges {
+                    display: flex;
+                    width: 100%;
+                    justify-content: space-around;
+                    gap: 0;
+                    overflow-x: hidden;
+                    padding-bottom: 2px;
+                }
+
+                .badges::-webkit-scrollbar {
+                    display: none;
+                }
+
+                .badge {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 8px;
+                    min-width: 44px;
+                    flex: 1 1 0;
+                }
+
+                .badge-circle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 999px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: 800;
+                    font-size: 13px;
+                    color: #94A3B8;
+                    background: #fff;
+                    box-shadow: inset 0 0 0 1px #E5E7EB;
+                }
+
+                .badge.earned .badge-circle {
+                    background: var(--accent);
+                    color: #fff;
+                    box-shadow: none;
+                }
+
+                .badge-label {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #9CA3AF;
+                }
+
+                .badge.earned .badge-label {
+                    color: #374151;
+                }
+
+                .modal {
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(15,23,42,.42);
+                    display: none;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                    backdrop-filter: blur(12px);
+                }
+
+                .modal.visible {
+                    display: flex;
+                }
+
+                .modal-card {
+                    width: min(360px, 100%);
+                    border-radius: 24px;
+                    background: #fff;
+                    padding: 20px;
+                    box-shadow: 0 18px 42px rgba(15,23,42,.18);
+                }
+
+                .modal-title {
+                    font-size: 18px;
+                    font-weight: 800;
+                    margin: 0 0 14px;
+                }
+
+                .modal-input {
+                    width: 100%;
+                    border: 0;
+                    outline: none;
+                    border-radius: 18px;
+                    background: #F3F4F6;
+                    padding: 14px 16px;
+                    font-size: 16px;
+                    color: #111827;
+                }
+
+                .modal-actions {
+                    margin-top: 14px;
+                    display: flex;
+                    gap: 10px;
+                    justify-content: flex-end;
+                }
+
+                .modal-btn {
+                    border: 0;
+                    border-radius: 16px;
+                    padding: 12px 16px;
+                    font-size: 14px;
+                    font-weight: 800;
+                }
+
+                .modal-btn.secondary {
+                    background: #F3F4F6;
+                    color: #374151;
+                }
+
+                .modal-btn.primary {
+                    background: #111827;
+                    color: white;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="shell">
+                <div class="app">
+                    <div class="topbar">
+                        <button class="icon-btn" onclick="closeApp()">×</button>
+                        <div class="avatars">
+                            <div class="avatar owner" id="owner-avatar">
+                                <img id="owner-avatar-img" alt="">
+                                <span id="owner-avatar-text"></span>
+                            </div>
+                            <div class="avatar peer" id="peer-avatar">
+                                <img id="peer-avatar-img" alt="">
+                                <span id="peer-avatar-text"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="headline">
+                        <div class="headline-label" id="streak-label"></div>
+                        <div class="headline-days" id="streak-days">0</div>
+                    </div>
+
+                    <div class="hero">
+                        <button id="prev-btn" class="stage-btn" onclick="prevStage()">‹</button>
+                        <button id="next-btn" class="stage-btn" onclick="nextStage()">›</button>
+                        <div class="pet-wrap">
+                            <div class="pet" id="pet">
+                                <div class="pet-shadow"></div>
+                                <video class="pet-media" id="pet-video" muted loop autoplay playsinline preload="auto"></video>
+                            </div>
+                            <div class="lock-badge" id="lock-badge"></div>
+                        </div>
+                    </div>
+
+                    <div class="name-row" onclick="openRename()">
+                        <span id="pet-name"></span>
+                        <span>✎</span>
+                    </div>
+
+                    <div class="progress-track">
+                        <div class="progress-fill" id="progress-fill"></div>
+                        <div class="progress-text" id="progress-text"></div>
+                    </div>
+                    <div class="progress-subtext" id="progress-subtext"></div>
+
+                    <div class="card">
+                        <h3 id="tasks-title"></h3>
+                        <div id="tasks"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3 id="badges-title"></h3>
+                        <div class="badges" id="badges"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal" id="rename-modal" onclick="closeRename(event)">
+                <div class="modal-card" onclick="event.stopPropagation()">
+                    <h3 class="modal-title" id="rename-title"></h3>
+                    <input id="rename-input" class="modal-input" maxlength="20">
+                    <div class="modal-actions">
+                        <button class="modal-btn secondary" id="rename-cancel" onclick="closeRename()"></button>
+                        <button class="modal-btn primary" id="rename-save" onclick="submitRename()"></button>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                var state = null;
+                var selectedStageIndex = 0;
+                var currentStageMediaSrc = null;
+                var currentStageIsVideo = false;
+                var petVideo = null;
+
+                function bridgeCall(name, value) {
+                    try {
+                        if (!window.AndroidBridge || typeof window.AndroidBridge[name] !== 'function') {
+                            return;
+                        }
+
+                        if (typeof value === 'undefined') {
+                            window.AndroidBridge[name]();
+                        } else {
+                            window.AndroidBridge[name](String(value));
+                        }
+                    } catch (_) {}
+                }
+
+                function logToAndroid(message) {
+                    bridgeCall('log', message);
+                }
+
+                function errorToAndroid(message) {
+                    bridgeCall('error', message);
+                }
+
+                function describeError(error) {
+                    if (!error) {
+                        return 'unknown error';
+                    }
+
+                    if (error.stack) {
+                        return String(error.stack);
+                    }
+
+                    if (error.message) {
+                        return String(error.message);
+                    }
+
+                    return String(error);
+                }
+
+                function safeCall(name, callback) {
+                    try {
+                        return callback();
+                    } catch (error) {
+                        errorToAndroid(name + ': ' + describeError(error));
+                        return null;
+                    }
+                }
+
+                window.onerror = function(message, source, lineno, colno, error) {
+                    var location = source ? source + ':' + lineno + ':' + (colno || 0) : 'inline';
+                    var payload = String(message) + ' @ ' + location;
+                    if (error) {
+                        payload += '\n' + describeError(error);
+                    }
+                    errorToAndroid(payload);
+                    return false;
+                };
+
+                function closeApp() {
+                    bridgeCall('close');
+                }
+
+                function isVideoSrc(src) {
+                    return /\.webm(?:$|\?)/i.test(src || '');
+                }
+
+                function ensurePetMediaHandles() {
+                    if (!petVideo) {
+                        petVideo = document.getElementById('pet-video');
+                    }
+                }
+
+                function stopPetVideo() {
+                    ensurePetMediaHandles();
+
+                    try {
+                        petVideo.pause();
+                    } catch (_) {}
+
+                    petVideo.removeAttribute('src');
+                    petVideo.style.opacity = '0';
+                    petVideo.load();
+                }
+
+                function applyPetMedia(stage) {
+                    var mediaSrc;
+                    var isVideo;
+                    var playPromise;
+
+                    ensurePetMediaHandles();
+
+                    mediaSrc = stage && stage.mediaSrc ? stage.mediaSrc : '';
+                    isVideo = isVideoSrc(mediaSrc);
+
+                    if (
+                        currentStageMediaSrc === mediaSrc &&
+                        currentStageIsVideo === isVideo
+                    ) {
+                        if (isVideo) {
+                            playPromise = petVideo.play();
+                            if (playPromise && typeof playPromise.catch === 'function') {
+                                playPromise.catch(function() {});
+                            }
+                        }
+                        return;
+                    }
+
+                    currentStageMediaSrc = mediaSrc;
+                    currentStageIsVideo = isVideo;
+
+                    if (isVideo && mediaSrc) {
+                        petVideo.onloadeddata = function() {
+                            petVideo.style.opacity = '1';
+                        };
+                        petVideo.onerror = function() {
+                            stopPetVideo();
+                        };
+                        petVideo.src = mediaSrc;
+                        petVideo.load();
+                        playPromise = petVideo.play();
+                        if (playPromise && typeof playPromise.catch === 'function') {
+                            playPromise.catch(function() {});
+                        }
+                        return;
+                    }
+
+                    stopPetVideo();
+                }
+
+                function openRename() {
+                    return safeCall('openRename', function() {
+                        if (!state) {
+                            return;
+                        }
+
+                        document.getElementById('rename-title').textContent = state.texts.renameTitle;
+                        document.getElementById('rename-input').placeholder = state.texts.renameHint;
+                        document.getElementById('rename-input').value = state.petName || '';
+                        document.getElementById('rename-cancel').textContent = state.texts.renameCancel;
+                        document.getElementById('rename-save').textContent = state.texts.renameSave;
+                        document.getElementById('rename-modal').classList.add('visible');
+                        document.getElementById('rename-input').focus();
+                        document.getElementById('rename-input').select();
+                    });
+                }
+
+                function closeRename(event) {
+                    return safeCall('closeRename', function() {
+                        if (event) {
+                            event.stopPropagation();
+                        }
+                        document.getElementById('rename-modal').classList.remove('visible');
+                    });
+                }
+
+                function submitRename() {
+                    return safeCall('submitRename', function() {
+                        var input = document.getElementById('rename-input');
+                        var value = (input.value || '').trim();
+                        if (!value) {
+                            return;
+                        }
+
+                        bridgeCall('rename', value);
+                        closeRename();
+                    });
+                }
+
+                function resolveUnlockedIndex(points) {
+                    var unlocked = 0;
+                    var index;
+
+                    for (index = 0; index < state.stages.length; index += 1) {
+                        if (points >= state.stages[index].maxPoints && index < state.stages.length - 1) {
+                            unlocked = index + 1;
+                        }
+                    }
+
+                    return unlocked;
+                }
+
+                function prevStage() {
+                    return safeCall('prevStage', function() {
+                        if (selectedStageIndex <= 0) {
+                            return;
+                        }
+
+                        selectedStageIndex -= 1;
+                        render(false);
+                    });
+                }
+
+                function nextStage() {
+                    return safeCall('nextStage', function() {
+                        var unlockedIndex;
+
+                        if (!state) {
+                            return;
+                        }
+
+                        unlockedIndex = resolveUnlockedIndex(state.points);
+                        if (selectedStageIndex >= state.stages.length - 1 || selectedStageIndex > unlockedIndex) {
+                            return;
+                        }
+
+                        selectedStageIndex += 1;
+                        render(true);
+                    });
+                }
+
+                function doApplyState(nextState) {
+                    var hadState = state !== null;
+                    var unlockedIndex;
+                    var preferredStageIndex;
+
+                    state = nextState;
+                    unlockedIndex = resolveUnlockedIndex(state.points);
+
+                    if (!hadState) {
+                        preferredStageIndex =
+                            state.preferredStageIndex !== null && typeof state.preferredStageIndex !== 'undefined'
+                                ? state.preferredStageIndex
+                                : unlockedIndex;
+
+                        selectedStageIndex = Math.min(
+                            preferredStageIndex,
+                            state.stages.length - 1
+                        );
+                    } else {
+                        selectedStageIndex = Math.min(
+                            selectedStageIndex,
+                            Math.min(unlockedIndex + 1, state.stages.length - 1)
+                        );
+                    }
+
+                    logToAndroid(
+                        'applyState: points=' + state.points +
+                        ', streakDays=' + state.streakDays +
+                        ', tasks=' + (state.tasks ? state.tasks.length : 0)
+                    );
+                    render(false);
+                }
+
+                window.applyState = function(nextState) {
+                    return safeCall('applyState', function() {
+                        doApplyState(nextState);
+                    });
+                };
+
+                function render(animatePet) {
+                    if (typeof animatePet === 'undefined') {
+                        animatePet = false;
+                    }
+
+                    return safeCall('render', function() {
+                        var unlockedIndex;
+                        var stage;
+                        var locked;
+                        var root;
+                        var pet;
+                        var lockBadge;
+                        var prevBtn;
+                        var nextBtn;
+
+                        if (!state) {
+                            return;
+                        }
+
+                        unlockedIndex = resolveUnlockedIndex(state.points);
+                        stage = state.stages[selectedStageIndex];
+                        locked = selectedStageIndex > unlockedIndex;
+                        root = document.documentElement;
+
+                        root.style.setProperty('--bg-start', locked ? '#D1D5DB' : stage.gradientStart);
+                        root.style.setProperty('--bg-end', locked ? '#F3F4F6' : stage.gradientEnd);
+                        root.style.setProperty('--pet-start', stage.petStart);
+                        root.style.setProperty('--pet-end', stage.petEnd);
+                        root.style.setProperty('--accent', locked ? '#667085' : stage.accent);
+                        root.style.setProperty('--accent-secondary', locked ? '#CBD5E1' : stage.accentSecondary);
+
+                        bindAvatar('owner', state.ownerInitial, state.ownerAvatarSrc);
+                        bindAvatar('peer', state.peerInitial, state.peerAvatarSrc);
+                        document.getElementById('streak-label').textContent = state.texts.streakDays;
+                        document.getElementById('streak-days').textContent = String(state.streakDays);
+                        document.getElementById('pet-name').textContent = state.petName;
+                        document.getElementById('tasks-title').textContent = state.texts.tasksTitle;
+                        document.getElementById('badges-title').textContent = state.texts.badgesTitle;
+
+                        pet = document.getElementById('pet');
+                        applyPetMedia(stage);
+                        pet.classList.toggle('locked', locked);
+                        if (animatePet) {
+                            pet.style.transform = 'scale(0.92)';
+                            requestAnimationFrame(function() {
+                                pet.style.transform = 'scale(1)';
+                            });
+                        } else {
+                            pet.style.transform = 'scale(1)';
+                        }
+
+                        lockBadge = document.getElementById('lock-badge');
+                        lockBadge.textContent = state.texts.locked;
+                        lockBadge.classList.toggle('visible', locked);
+
+                        prevBtn = document.getElementById('prev-btn');
+                        nextBtn = document.getElementById('next-btn');
+                        prevBtn.classList.toggle('hidden', selectedStageIndex <= 0);
+                        nextBtn.classList.toggle(
+                            'hidden',
+                            !(selectedStageIndex < state.stages.length - 1 && selectedStageIndex <= unlockedIndex)
+                        );
+
+                        renderProgress(stage, locked);
+                        renderTasks();
+                        renderBadges();
+                    });
+                }
+
+                function bindAvatar(prefix, initial, src) {
+                    var root = document.getElementById(prefix + '-avatar');
+                    var text = document.getElementById(prefix + '-avatar-text');
+                    var img = document.getElementById(prefix + '-avatar-img');
+
+                    text.textContent = initial || '';
+
+                    if (src) {
+                        img.src = src;
+                        root.classList.add('has-image');
+                    } else {
+                        img.removeAttribute('src');
+                        root.classList.remove('has-image');
+                    }
+                }
+
+                function renderProgress(stage, locked) {
+                    var fill = document.getElementById('progress-fill');
+                    var text = document.getElementById('progress-text');
+                    var subtext = document.getElementById('progress-subtext');
+                    var prevMax;
+                    var range;
+                    var pointsInStage;
+                    var progress;
+
+                    if (locked) {
+                        fill.style.width = '0%';
+                        text.textContent = state.texts.locked;
+                        subtext.textContent = state.texts.lockedSubtext;
+                        return;
+                    }
+
+                    prevMax = selectedStageIndex > 0 ? state.stages[selectedStageIndex - 1].maxPoints : 0;
+                    range = stage.maxPoints - prevMax;
+                    pointsInStage = Math.max(0, Math.min(range, state.points - prevMax));
+                    progress = range === 0 ? 100 : (pointsInStage / range) * 100;
+                    fill.style.width = progress + '%';
+
+                    if (selectedStageIndex === state.stages.length - 1 && state.points >= stage.maxPoints) {
+                        text.textContent = state.texts.maxLevel;
+                        subtext.textContent = state.texts.maxLevel;
+                    } else {
+                        text.textContent = pointsInStage + '/' + range;
+                        subtext.textContent =
+                            state.texts.pointsToEvolution.replace('{count}', String(range - pointsInStage));
+                    }
+                }
+
+                function renderTasks() {
+                    var tasks = document.getElementById('tasks');
+                    var index;
+                    var task;
+                    var html = '';
+                    var icon;
+
+                    for (index = 0; index < state.tasks.length; index += 1) {
+                        task = state.tasks[index];
+                        icon = task.completed ? '✓' : '○';
+
+                        html += ''
+                            + '<div class="task ' + (task.completed ? 'done' : '') + '">'
+                            +   '<div class="task-icon">' + icon + '</div>'
+                            +   '<div class="task-body">'
+                            +     '<div class="task-head">'
+                            +       '<div class="task-title">' + escapeHtml(task.title) + '</div>'
+                            +       '<div class="task-reward">+' + task.reward + '</div>'
+                            +     '</div>'
+                            +     '<div class="task-metrics">'
+                            +       renderTaskMetric(state.texts.progressYou, task.ownerProgress, task.target)
+                            +       renderTaskMetric(state.texts.progressPeer, task.peerProgress, task.target)
+                            +     '</div>'
+                            +   '</div>'
+                            + '</div>';
+                    }
+
+                    tasks.innerHTML = html;
+                }
+
+                function renderTaskMetric(label, value, target) {
+                    var safeTarget = target > 0 ? target : 1;
+                    var safeValue = Math.max(0, Math.min(value, safeTarget));
+                    var percent = Math.max(0, Math.min(100, (safeValue / safeTarget) * 100));
+
+                    return ''
+                        + '<div class="task-metric">'
+                        +   '<div class="task-metric-row">'
+                        +     '<div class="task-metric-label">' + escapeHtml(label) + '</div>'
+                        +     '<div class="task-metric-value">' + safeValue + '/' + safeTarget + '</div>'
+                        +   '</div>'
+                        +   '<div class="task-metric-track">'
+                        +     '<div class="task-metric-fill" style="width: ' + percent + '%"></div>'
+                        +   '</div>'
+                        + '</div>';
+                }
+
+                function renderBadges() {
+                    var badges = document.getElementById('badges');
+                    var index;
+                    var day;
+                    var html = '';
+
+                    for (index = 0; index < state.badges.length; index += 1) {
+                        day = state.badges[index];
+                        html += ''
+                            + '<div class="badge ' + (state.streakDays >= day ? 'earned' : '') + '">'
+                            + '<div class="badge-circle">' + day + '</div>'
+                            + '<div class="badge-label">' + day + 'd</div>'
+                            + '</div>';
+                    }
+
+                    badges.innerHTML = html;
+                }
+
+                function escapeHtml(value) {
+                    return String(value)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                logToAndroid('script loaded');
+            </script>
+        </body>
+        </html>

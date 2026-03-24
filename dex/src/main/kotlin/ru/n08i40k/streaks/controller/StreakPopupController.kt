@@ -6,21 +6,23 @@
 
 package ru.n08i40k.streaks.controller
 
+import android.annotation.SuppressLint
 import android.app.Dialog
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.ColorDrawable
-import android.net.Uri
 import android.os.Build
 import android.view.Gravity
 import android.view.ViewGroup
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.VideoView
 import kotlinx.coroutines.launch
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
@@ -28,12 +30,14 @@ import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
+import org.json.JSONObject
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.ScheduledStreakPopup
 import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreakPopupController(
@@ -215,7 +219,7 @@ class StreakPopupController(
                     )
                 }
 
-                var videoView: VideoView? = null
+                var mediaWebView: WebView? = null
                 var imageView: ImageView? = null
                 var animatedDrawable: AnimatedImageDrawable? = null
                 val resourceFile = resourcesProvider.resolvePopupResource(popup.popupResourceName)
@@ -254,25 +258,10 @@ class StreakPopupController(
                             }
                         )
                     } else {
-                        videoView = VideoView(context).apply {
-                            setVideoURI(Uri.fromFile(resourceFile))
-                            setOnPreparedListener { mediaPlayer ->
-                                mediaPlayer.isLooping = false
-                                start()
-                            }
-                            setOnCompletionListener { _ ->
-                                try {
-                                    val lastFramePositionMs = (duration - 1).coerceAtLeast(0)
-                                    if (lastFramePositionMs > 0) {
-                                        seekTo(lastFramePositionMs)
-                                    }
-                                } catch (_: Throwable) {
-                                }
-                            }
-                        }
+                        mediaWebView = createPopupVideoWebView(context, resourceFile)
 
                         container.addView(
-                            videoView,
+                            mediaWebView,
                             LinearLayout.LayoutParams(
                                 AndroidUtilities.dp(POPUP_MEDIA_SIZE_DP),
                                 AndroidUtilities.dp(POPUP_MEDIA_SIZE_DP),
@@ -316,7 +305,10 @@ class StreakPopupController(
                     } catch (_: Throwable) {
                     }
                     try {
-                        videoView?.stopPlayback()
+                        mediaWebView?.onPause()
+                        mediaWebView?.stopLoading()
+                        mediaWebView?.loadUrl("about:blank")
+                        mediaWebView?.destroy()
                     } catch (_: Throwable) {
                     }
                     try {
@@ -350,6 +342,129 @@ class StreakPopupController(
         }
 
         return true
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createPopupVideoWebView(
+        context: android.content.Context,
+        resourceFile: File,
+    ): WebView {
+        val baseUrl = resourceFile.parentFile?.toURI()?.toString() ?: "file:///"
+        val html = buildPopupVideoHtml(resourceFile.name)
+
+        return WebView(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = false
+            settings.cacheMode = WebSettings.LOAD_DEFAULT
+            settings.allowFileAccess = true
+            settings.allowFileAccessFromFileURLs = true
+            settings.allowContentAccess = false
+            settings.mediaPlaybackRequiresUserGesture = false
+            settings.builtInZoomControls = false
+            settings.displayZoomControls = false
+            settings.setSupportZoom(false)
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    view?.evaluateJavascript("window.startPlayback && window.startPlayback();", null)
+                }
+            }
+
+            loadDataWithBaseURL(
+                baseUrl,
+                html,
+                "text/html",
+                "utf-8",
+                null
+            )
+        }
+    }
+
+    private fun buildPopupVideoHtml(fileName: String): String {
+        val escapedFileName = JSONObject.quote(fileName)
+
+        return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                <style>
+                    html, body {
+                        width: 100%;
+                        height: 100%;
+                        margin: 0;
+                        overflow: hidden;
+                        background: transparent;
+                    }
+
+                    body {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+
+                    #video {
+                        width: 100%;
+                        height: 100%;
+                        object-fit: contain;
+                        background: transparent;
+                        opacity: 0;
+                        transition: opacity .16s ease;
+                        pointer-events: none;
+                    }
+                </style>
+            </head>
+            <body>
+                <video id="video" muted autoplay playsinline preload="auto"></video>
+                <script>
+                    var video = document.getElementById('video');
+                    var src = $escapedFileName;
+
+                    function freezeLastFrame() {
+                        var duration = Number(video.duration || 0);
+                        video.pause();
+                        if (isFinite(duration) && duration > 0) {
+                            try {
+                                video.currentTime = Math.max(duration - 0.001, 0);
+                            } catch (_) {}
+                        }
+                    }
+
+                    window.startPlayback = function() {
+                        if (!video.src) {
+                            video.src = src;
+                        }
+
+                        video.onloadeddata = function() {
+                            video.style.opacity = '1';
+                        };
+
+                        video.onended = function() {
+                            freezeLastFrame();
+                        };
+
+                        video.onerror = function() {
+                            video.style.opacity = '0';
+                        };
+
+                        var playPromise = video.play();
+                        if (playPromise && typeof playPromise.catch === 'function') {
+                            playPromise.catch(function() {});
+                        }
+                    };
+
+                    window.startPlayback();
+                </script>
+            </body>
+            </html>
+        """.trimIndent()
     }
 
     private fun resolvePopupContext(): android.content.Context? {

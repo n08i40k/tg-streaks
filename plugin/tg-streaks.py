@@ -600,11 +600,11 @@ class StreakLevel:
 
 class StreakLevels(Enum):
     COLD = StreakLevel(0, 5285071881815235305, "", (175, 175, 175))
-    DAYS_3 = StreakLevel(3, 5285079178964672780, "3.webp", (255, 154, 0))
-    DAYS_10 = StreakLevel(10, 5285274844789777412, "10.webp", (255, 100, 0))
-    DAYS_30 = StreakLevel(30, 5285076623459129616, "30.webp", (255, 61, 0))
-    DAYS_100 = StreakLevel(100, 5285003347022093599, "100.webp", (255, 0, 200))
-    DAYS_200 = StreakLevel(200, 5285514817497504375, "200.webp", (176, 0, 255))
+    DAYS_3 = StreakLevel(3, 5285079178964672780, "3.webm", (255, 154, 0))
+    DAYS_10 = StreakLevel(10, 5285274844789777412, "10.webm", (255, 100, 0))
+    DAYS_30 = StreakLevel(30, 5285076623459129616, "30.webm", (255, 61, 0))
+    DAYS_100 = StreakLevel(100, 5285003347022093599, "100.webm", (255, 0, 200))
+    DAYS_200 = StreakLevel(200, 5285514817497504375, "200.webm", (176, 0, 255))
 
     @staticmethod
     def pick_by_length(length: int, cold: bool = False) -> StreakLevel:
@@ -621,6 +621,52 @@ class StreakLevels(Enum):
             return StreakLevels.DAYS_100.value
 
         return StreakLevels.DAYS_200.value
+
+
+class StreakPetLevel:
+    max_points: int
+    image_resource_path: str
+    gradient_start: str
+    gradient_end: str
+    pet_start: str
+    pet_end: str
+    accent: str
+    accent_secondary: str
+
+    def __init__(
+        self,
+        max_points: int,
+        image_resource_path: str,
+        gradient_start: str,
+        gradient_end: str,
+        pet_start: str,
+        pet_end: str,
+        accent: str,
+        accent_secondary: str,
+    ):
+        self.max_points = int(max_points)
+        self.image_resource_path = str(image_resource_path)
+        self.gradient_start = str(gradient_start)
+        self.gradient_end = str(gradient_end)
+        self.pet_start = str(pet_start)
+        self.pet_end = str(pet_end)
+        self.accent = str(accent)
+        self.accent_secondary = str(accent_secondary)
+
+
+class StreakPetLevels(Enum):
+    POINTS_100 = StreakPetLevel(
+        100, "points-100.webm", "#F9B746", "#FFF8E8", "#FFCB68", "#FF9C24", "#8D4A00", "#FFF2C8"
+    )
+    POINTS_300 = StreakPetLevel(
+        300, "points-300.webm", "#FEA386", "#FFF2EC", "#FFC0A9", "#F9724F", "#8A2E19", "#FFE1D6"
+    )
+    POINTS_500 = StreakPetLevel(
+        500, "points-500.webm", "#FF8EFA", "#FFF0FF", "#FFB6FC", "#FF63E3", "#842C7A", "#FFE3FB"
+    )
+    POINTS_900 = StreakPetLevel(
+        900, "points-900.webm", "#6873FF", "#EEF0FF", "#98A1FF", "#4A56F0", "#2230A3", "#DFE3FF"
+    )
 
 
 class JvmPluginBridge:
@@ -1825,6 +1871,41 @@ class TgStreaksPlugin(BasePlugin):
         except Exception as e:
             self.log_exception("Failed to register streak levels", e)
 
+    def _register_streak_pet_levels(self):
+        if self.jvm_plugin.klass is None:
+            return
+
+        try:
+            register_method = self.jvm_plugin.klass.getDeclaredMethod(
+                String("registerStreakPetLevel"),
+                Integer.TYPE,
+                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),  # ty:ignore[unresolved-attribute]
+            )
+
+            for level in StreakPetLevels:
+                streak_pet_level = cast("StreakPetLevel", level.value)
+                register_method.invoke(
+                    None,  # ty:ignore[invalid-argument-type]
+                    Integer(streak_pet_level.max_points),
+                    String(streak_pet_level.image_resource_path),
+                    String(streak_pet_level.gradient_start),
+                    String(streak_pet_level.gradient_end),
+                    String(streak_pet_level.pet_start),
+                    String(streak_pet_level.pet_end),
+                    String(streak_pet_level.accent),
+                    String(streak_pet_level.accent_secondary),
+                )
+
+            self.log(f"Registered {len(StreakPetLevels)} streak pet levels")
+        except Exception as e:
+            self.log_exception("Failed to register streak pet levels", e)
+
     def _finalize_jvm_plugin_inject(self):
         if self.jvm_plugin.klass is None:
             return
@@ -1921,6 +2002,7 @@ class TgStreaksPlugin(BasePlugin):
         self._load_jvm_plugin()
 
         self._register_streak_levels()
+        self._register_streak_pet_levels()
 
         self.settings_actions = SettingsActions(self)
         self.chat_context_menu = ChatContextMenu(self)

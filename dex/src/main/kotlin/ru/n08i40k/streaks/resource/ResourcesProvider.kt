@@ -11,10 +11,17 @@ class ResourcesProvider(
             ?.takeIf { it.isNotEmpty() }
             ?.let(::File)
 
-    fun resolvePopupResource(resourceName: String?): File? {
+    fun resolveResource(relativePath: String?): File? {
         return resourcesRoot
-            ?.resolve("upgrade-popups")
-            ?.resolve(resourceName?.trim().orEmpty())
+            ?.resolve(relativePath?.trim().orEmpty())
             ?.takeIf { it.isFile }
+    }
+
+    fun readTextResource(relativePath: String?): String? {
+        return resolveResource(relativePath)?.readText()
+    }
+
+    fun resolvePopupResource(resourceName: String?): File? {
+        return resolveResource("upgrade-popups/${resourceName?.trim().orEmpty()}")
     }
 }
