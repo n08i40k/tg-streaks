@@ -88,6 +88,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Restore from latest backup",
         "ru": "Восстановить из последней копии",
     },
+    "settings.delete_db_and_reload": {
+        "en": "Delete database and reload plugin",
+        "ru": "Удалить базу и перезагрузить плагин",
+    },
     "settings.db_backups.hint": {
         "en": "Daily backups are created automatically. Import replaces current streak database.",
         "ru": "Ежедневные бэкапы создаются автоматически. Импорт заменяет текущую базу стриков.",
@@ -119,6 +123,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "ok.backup_imported": {
         "en": "Backup imported: {name}",
         "ru": "Бэкап импортирован: {name}",
+    },
+    "ok.db_deleted_and_reload_started": {
+        "en": "Database deleted. Full plugin reload started.",
+        "ru": "База удалена. Запущена полная перезагрузка плагина.",
     },
     "ok.jumped_to_streak_start_message": {
         "en": "Jumped to streak start message",
@@ -470,6 +478,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "db.err.failed_apply_backup": {
         "en": "Failed to apply backup: {reason}",
         "ru": "Не удалось применить бэкап: {reason}",
+    },
+    "db.err.failed_delete": {
+        "en": "Failed to delete database: {reason}",
+        "ru": "Не удалось удалить базу: {reason}",
     },
     "update.bulletin.text": {
         "en": "Plugin update available: {current} -> {latest}",
@@ -1376,6 +1388,7 @@ class SettingsActions:
     REBUILD_ALL = "rebuildAllPrivateChats"
     EXPORT_BACKUP_NOW = "exportBackupNow"
     IMPORT_LATEST_BACKUP = "importLatestBackup"
+    DELETE_DB_AND_RELOAD = "deleteDbAndReload"
 
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
@@ -1399,6 +1412,11 @@ class SettingsActions:
                 text=self.plugin._t("settings.import_latest_backup"),
                 icon="msg_reset",
                 on_click=lambda _: self._on_click(self.IMPORT_LATEST_BACKUP),
+            ),
+            Text(
+                text=self.plugin._t("settings.delete_db_and_reload"),
+                icon="msg_delete",
+                on_click=lambda _: self.plugin._schedule_database_reset_reload(),
             ),
             Divider(text=self.plugin._t("settings.db_backups.hint")),
         ]
@@ -1994,6 +2012,64 @@ class TgStreaksPlugin(BasePlugin):
         threading.Thread(
             target=worker,
             name="tg-streaks-full-reload",
+            daemon=True,
+        ).start()
+
+    def _database_file_paths(self) -> list[str]:
+        base_path = (
+            ApplicationLoader.applicationContext.getDatabasePath(String("tg-streaks"))
+            .getAbsolutePath()
+        )
+        return [
+            str(base_path),
+            f"{base_path}-wal",
+            f"{base_path}-shm",
+            f"{base_path}-journal",
+        ]
+
+    def _schedule_database_reset_reload(self):
+        reason = "Database reset requested from settings"
+
+        if not self._reload_lock.acquire(blocking=False):
+            self.log(f"Skipped duplicate database reset request: {reason}")
+            return
+
+        def worker():
+            try:
+                self.log(f"Starting database reset: {reason}")
+
+                try:
+                    self.on_plugin_unload()
+                except BaseException as e:
+                    self.log_exception("Failed during plugin unload before DB reset", e)
+
+                try:
+                    for path in self._database_file_paths():
+                        if os.path.exists(path):
+                            os.remove(path)
+                            self.log(f"Deleted database file: {path}")
+                except BaseException as e:
+                    self.log_exception("Failed to delete plugin database", e)
+                    self._show_error(
+                        self._t("db.err.failed_delete").format(reason=str(e))
+                    )
+                    return
+
+                self._show_success(self._t("ok.db_deleted_and_reload_started"))
+
+                try:
+                    self.on_plugin_load()
+                except BaseException as e:
+                    self.log_exception("Failed during plugin load after DB reset", e)
+                    return
+
+                self.log("Database reset and full plugin reload completed")
+            finally:
+                self._reload_lock.release()
+
+        threading.Thread(
+            target=worker,
+            name="tg-streaks-db-reset-reload",
             daemon=True,
         ).start()
 

@@ -390,6 +390,12 @@ class Plugin {
         chatContextMenuCallbackRegistry.clear()
         settingsActionCallbackRegistry.clear()
 
+        try {
+            db.close()
+        } catch (e: Throwable) {
+            logger.fatal("Failed to close database on eject", e)
+        }
+
         logger.info("Ejected!")
     }
 
