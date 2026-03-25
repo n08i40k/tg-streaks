@@ -443,10 +443,16 @@ class StreaksController(
 
             when (val action =
                 fetchStreakActionForDay(accountId, peer, currentDay, revives, false)) {
-                Action.GROW -> currentDay = currentDay.next()
+                Action.GROW -> {
+                    updateFromOwnerAt = currentDay
+                    updateFromPeerAt = currentDay
+                    currentDay = currentDay.next()
+                }
 
                 Action.REVIVE -> {
                     revives.add(currentDay)
+                    updateFromOwnerAt = currentDay
+                    updateFromPeerAt = currentDay
                     currentDay = currentDay.next()
                 }
 
@@ -486,14 +492,14 @@ class StreaksController(
                         return
                     }
 
-                    revives.add(currentDay.next())
+                    val reviveDay = currentDay.next()
+                    revives.add(reviveDay)
+                    updateFromOwnerAt = reviveDay
+                    updateFromPeerAt = reviveDay
                     // скипнуть текущий день смерти и следующий с reviveNow
-                    currentDay = currentDay.plusDays(2)
+                    currentDay = reviveDay.next()
                 }
             }
-
-            updateFromOwnerAt = currentDay
-            updateFromPeerAt = currentDay
         }
 
         db.withTransaction {
@@ -522,11 +528,12 @@ class StreaksController(
     suspend fun handleUpdate(
         accountId: Int,
         peerUserId: Long,
+        at: LocalDate,
         out: Boolean,
         message: String?,
         sendServiceMessages: Boolean = true
     ): HandleUpdateResult {
-        val now = LocalDate.now()
+        val now = minOf(at, LocalDate.now(), compareBy { it.toEpochDay() })
         val existingStreak = get(accountId, peerUserId)
 
         if (ServiceMessage.isServiceText(message)) {

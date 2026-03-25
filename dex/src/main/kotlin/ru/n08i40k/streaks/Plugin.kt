@@ -2051,7 +2051,7 @@ class Plugin {
                 var changed = false
 
                 for ((peerUserId, at, out, messageId, message) in entries) {
-                    val result = streaksController.handleUpdate(accountId, peerUserId, out, message)
+                    val result = streaksController.handleUpdate(accountId, peerUserId, at, out, message)
                     streakPetsController.handleUpdate(
                         accountId,
                         peerUserId,
@@ -2112,6 +2112,7 @@ class Plugin {
                 val result = streaksController.handleUpdate(
                     accountId,
                     peerUserId,
+                    LocalDate.now(),
                     true,
                     sendMessageParams.message
                 )
