@@ -239,7 +239,7 @@ class StreakPetsController(
                 .toMutableList()
 
             if (ids.isEmpty()) {
-                currentDay = currentDay.prev()
+                currentDay = currentDay.next()
                 continue
             }
 
