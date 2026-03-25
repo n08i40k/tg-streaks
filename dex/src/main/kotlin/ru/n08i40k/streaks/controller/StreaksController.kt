@@ -637,6 +637,9 @@ class StreaksController(
     fun toggleServiceMessages(accountId: Int, peerUserId: Long): Boolean =
         serviceMessagesController.toggle(accountId, peerUserId)
 
+    fun setServiceMessagesEnabled(accountId: Int, peerUserId: Long, enabled: Boolean): Boolean =
+        serviceMessagesController.setEnabled(accountId, peerUserId, enabled)
+
     suspend fun flushCurrentChatPopup() =
         streakPopupController.flushCurrentChat()
 

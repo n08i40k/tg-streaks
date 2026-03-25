@@ -867,6 +867,7 @@ class Plugin {
                             .setPositiveButton(
                                 translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_YES)
                             ) { _, _ ->
+                                streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
                                 serviceMessagesController.sendPetInvite(accountId, peerUserId)
                             }
                             .setNegativeButton(
@@ -1634,6 +1635,7 @@ class Plugin {
                     backgroundScope.launch {
                         val accountId = UserConfig.selectedAccount
                         val peerUserId = messageObject.dialogId
+                        streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
 
                         when (streakPetsController.create(accountId, peerUserId)) {
                             is StreakPetsController.CreateResult.Created -> {
@@ -2011,6 +2013,19 @@ class Plugin {
                 val message: String?
             )
 
+            fun resolvePrivatePeerUserId(message: TLRPC.Message): Long? {
+                val peerUserId = message.peer_id?.user_id?.takeIf { it > 0L }
+                val fromUserId = message.from_id?.user_id?.takeIf { it > 0L }
+                val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+                return when {
+                    message.out -> peerUserId
+                    fromUserId != null && fromUserId != ownerUserId -> fromUserId
+                    peerUserId != null && peerUserId != ownerUserId -> peerUserId
+                    else -> null
+                }
+            }
+
             @Suppress("IMPOSSIBLE_IS_CHECK_WARNING", "KotlinConstantConditions")
             val entries = when (updates) {
                 is TLRPC.TL_updateShortMessage -> {
@@ -2030,15 +2045,18 @@ class Plugin {
                 is TLRPC.TL_updates -> {
                     updates.updates.mapNotNull {
                         when (it) {
-                            is TLRPC.TL_updateNewMessage -> Update(
-                                it.message.peer_id.user_id,
-                                Instant.ofEpochSecond(it.message.date.toLong())
-                                    .atZone(ZoneId.systemDefault())
-                                    .toLocalDate(),
-                                it.message.out,
-                                it.message.id,
-                                it.message.message
-                            )
+                            is TLRPC.TL_updateNewMessage -> resolvePrivatePeerUserId(it.message)
+                                ?.let { peerUserId ->
+                                    Update(
+                                        peerUserId,
+                                        Instant.ofEpochSecond(it.message.date.toLong())
+                                            .atZone(ZoneId.systemDefault())
+                                            .toLocalDate(),
+                                        it.message.out,
+                                        it.message.id,
+                                        it.message.message
+                                    )
+                                }
 
                             else -> null
                         }
@@ -2048,15 +2066,18 @@ class Plugin {
                 is TLRPC.TL_updatesCombined -> {
                     updates.updates.mapNotNull {
                         when (it) {
-                            is TLRPC.TL_updateNewMessage -> Update(
-                                it.message.peer_id.user_id,
-                                Instant.ofEpochSecond(it.message.date.toLong())
-                                    .atZone(ZoneId.systemDefault())
-                                    .toLocalDate(),
-                                it.message.out,
-                                it.message.id,
-                                it.message.message
-                            )
+                            is TLRPC.TL_updateNewMessage -> resolvePrivatePeerUserId(it.message)
+                                ?.let { peerUserId ->
+                                    Update(
+                                        peerUserId,
+                                        Instant.ofEpochSecond(it.message.date.toLong())
+                                            .atZone(ZoneId.systemDefault())
+                                            .toLocalDate(),
+                                        it.message.out,
+                                        it.message.id,
+                                        it.message.message
+                                    )
+                                }
 
                             else -> null
                         }

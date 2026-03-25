@@ -33,7 +33,10 @@ class ServiceMessagesController {
 
     fun toggle(accountId: Int, peerUserId: Long): Boolean {
         val enabled = !isEnabled(accountId, peerUserId)
+        return setEnabled(accountId, peerUserId, enabled)
+    }
 
+    fun setEnabled(accountId: Int, peerUserId: Long, enabled: Boolean): Boolean {
         if (accountId < 0 || peerUserId <= 0L)
             return enabled
 
