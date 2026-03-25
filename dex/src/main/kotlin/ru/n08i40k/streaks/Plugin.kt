@@ -242,6 +242,7 @@ class Plugin {
     private var petFabDialog: StreakPetFabDialog? = null
     private var petFabAccountId: Int? = null
     private var petFabPeerUserId: Long? = null
+    private var petFabEnabled: Boolean = true
     private var petFabOffsetX: Int = 20
     private var petFabOffsetY: Int = 250
 
@@ -466,6 +467,11 @@ class Plugin {
     }
 
     private fun refreshPetFabForOpenChat() {
+        if (!petFabEnabled) {
+            AndroidUtilities.runOnUIThread { dismissPetFab() }
+            return
+        }
+
         val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity ?: run {
             AndroidUtilities.runOnUIThread { dismissPetFab() }
             return
@@ -815,12 +821,26 @@ class Plugin {
             logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
         }
 
-        add(ChatContextMenuButton.OPEN_PET) { peerUserId ->
+        add(ChatContextMenuButton.TOGGLE_PET_FAB) { peerUserId ->
             val accountId = UserConfig.selectedAccount
             validatePrivatePeer(accountId, peerUserId) ?: return@add
-            openPetDialog(accountId, peerUserId)
+            petFabEnabled = !petFabEnabled
 
-            logger.info("[Context Menu] Open pet clicked on $peerUserId")
+            if (petFabEnabled) {
+                refreshPetFabForOpenChat()
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_STREAK_PET_FAB_ENABLED,
+                    "msg_reactions"
+                )
+            } else {
+                AndroidUtilities.runOnUIThread { dismissPetFab() }
+                bulletinHelper.showTranslated(
+                    TranslationKey.OK_STREAK_PET_FAB_DISABLED,
+                    "msg_reactions"
+                )
+            }
+
+            logger.info("[Context Menu] Toggle pet fab clicked on $peerUserId; enabled=$petFabEnabled")
         }
 
         add(ChatContextMenuButton.CREATE_PET) { peerUserId ->

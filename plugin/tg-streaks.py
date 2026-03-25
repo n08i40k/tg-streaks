@@ -167,6 +167,14 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "ru": "Сервисные сообщения об апгрейде выключены для этого чата",
     },
     "ok.streak_restored": {"en": "Streak restored", "ru": "Стрик восстановлен"},
+    "ok.streak_pet_fab_enabled": {
+        "en": "Streak pet button enabled in all chats",
+        "ru": "Кнопка стрик-питомца включена во всех чатах",
+    },
+    "ok.streak_pet_fab_disabled": {
+        "en": "Streak pet button hidden in all chats",
+        "ru": "Кнопка стрик-питомца скрыта во всех чатах",
+    },
     "info.private_user_only": {
         "en": "This action works only for private user chats",
         "ru": "Это действие работает только в личных чатах с пользователями",
@@ -271,13 +279,13 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Check the chat history again and update the streak length",
         "ru": "Ещё раз проверить историю чата и обновить длину стрика",
     },
-    "menu.open_streak_pet.text": {
-        "en": "Open streak pet",
-        "ru": "Открыть стрик-питомца",
+    "menu.toggle_streak_pet_fab.text": {
+        "en": "Toggle streak pet button",
+        "ru": "Переключить кнопку стрик-питомца",
     },
-    "menu.open_streak_pet.subtext": {
-        "en": "View your streak pet, today's tasks, and current progress",
-        "ru": "Посмотреть питомца, сегодняшние задания и текущий прогресс",
+    "menu.toggle_streak_pet_fab.subtext": {
+        "en": "Show or hide the floating streak pet button in all chats",
+        "ru": "Показать или скрыть плавающую кнопку стрик-питомца во всех чатах",
     },
     "menu.rebuild_streak_pet.text": {
         "en": "Rebuild streak pet",
@@ -1111,7 +1119,7 @@ class ZipResourcesBridge:
 
 
 class ChatContextMenu:
-    OPEN_PET = "openPet"
+    TOGGLE_PET_FAB = "togglePetFab"
     REBUILD = "rebuild"
     REBUILD_PET = "rebuildPet"
     CREATE_PET = "createPet"
@@ -1154,9 +1162,9 @@ class ChatContextMenu:
     def _menu_items(cls) -> tuple[dict[str, Any], ...]:
         return (
             {
-                "key": cls.OPEN_PET,
-                "text_key": "menu.open_streak_pet.text",
-                "subtext_key": "menu.open_streak_pet.subtext",
+                "key": cls.TOGGLE_PET_FAB,
+                "text_key": "menu.toggle_streak_pet_fab.text",
+                "subtext_key": "menu.toggle_streak_pet_fab.subtext",
                 "icon": "menu_premium_main",
                 "priority": 1001,
             },

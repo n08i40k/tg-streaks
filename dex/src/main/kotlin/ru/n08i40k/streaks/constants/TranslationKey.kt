@@ -9,6 +9,8 @@ object TranslationKey {
     const val OK_UPGRADE_SERVICE_MESSAGES_ENABLED = "ok.upgrade_service_messages_enabled"
     const val OK_UPGRADE_SERVICE_MESSAGES_DISABLED = "ok.upgrade_service_messages_disabled"
     const val OK_STREAK_RESTORED = "ok.streak_restored"
+    const val OK_STREAK_PET_FAB_ENABLED = "ok.streak_pet_fab_enabled"
+    const val OK_STREAK_PET_FAB_DISABLED = "ok.streak_pet_fab_disabled"
     const val OK_STREAK_PET_CREATED = "ok.streak_pet_created"
     const val OK_JUMPED_TO_STREAK_START_MESSAGE = "ok.jumped_to_streak_start_message"
     const val OK_BACKUP_EXPORTED = "ok.backup_exported"

@@ -1,7 +1,7 @@
 package ru.n08i40k.streaks.constants
 
 object ChatContextMenuButton {
-    const val OPEN_PET = "openPet"
+    const val TOGGLE_PET_FAB = "togglePetFab"
     const val REBUILD = "rebuild"
     const val REBUILD_PET = "rebuildPet"
     const val CREATE_PET = "createPet"
