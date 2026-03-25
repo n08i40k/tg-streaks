@@ -33,6 +33,8 @@ data class StreakPetTask(
     val payload: StreakPetTaskPayload = dbPayload ?: type.defaultPayload
 
     companion object {
+        const val MAX_PER_SIDE = 1 + 4 + 10
+
         fun getNewTasksList(
             ownerUserId: Long,
             peerUserId: Long,

@@ -55,7 +55,9 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
     override suspend fun fetchIds(
         accountId: Int,
         peerUserId: Long,
-        day: LocalDate
+        day: LocalDate,
+        fromOwnerMax: Int,
+        fromPeerMax: Int,
     ): List<Pair<Int, Boolean>> {
         val startLocalEpoch = day.toEpochSecondSystem()
         val endLocalEpoch = day.next().toEpochSecondSystem()

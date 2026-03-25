@@ -10,6 +10,9 @@ sealed interface StreakPetTaskPayload {
         override val isCompleted: Boolean
             get() = fromOwnerMessageId != null && fromPeerMessageId != null
 
+        val remainingFromOwner get() = if (fromOwnerMessageId == null) 1 else 0
+        val remainingFromPeer get() = if (fromPeerMessageId == null) 1 else 0
+
         companion object {
             val empty
                 get() = ExchangeOneMessage(
@@ -27,6 +30,9 @@ sealed interface StreakPetTaskPayload {
     ) : StreakPetTaskPayload {
         override val isCompleted: Boolean
             get() = fromOwnerMessagesCount == 4 && fromPeerMessagesCount == 4
+
+        val remainingFromOwner get() = 4 - fromOwnerMessagesCount
+        val remainingFromPeer get() = 4 - fromPeerMessagesCount
 
         companion object {
             val empty
@@ -47,6 +53,9 @@ sealed interface StreakPetTaskPayload {
     ) : StreakPetTaskPayload {
         override val isCompleted: Boolean
             get() = fromOwnerMessagesCount == 10 && fromPeerMessagesCount == 10
+
+        val remainingFromOwner get() = 10 - fromOwnerMessagesCount
+        val remainingFromPeer get() = 10 - fromPeerMessagesCount
 
         companion object {
             val empty

@@ -119,14 +119,24 @@ class StreakPetsController(
         var currentDay = startDay
 
         val tasks = mutableSetOf<StreakPetTask>()
+        val maxPerSide = StreakPetTask.MAX_PER_SIDE
 
         while (true) {
             if (currentDay < endDay)
                 break
 
-            val ids = cachedFetcher.fetchIds(accountId, peerUserId, currentDay)
-                .ifEmpty { remoteFetcher.fetchIds(accountId, peerUserId, currentDay) }
-                .toMutableList()
+            val ids =
+                cachedFetcher.fetchIds(accountId, peerUserId, currentDay, maxPerSide, maxPerSide)
+                    .ifEmpty {
+                        remoteFetcher.fetchIds(
+                            accountId,
+                            peerUserId,
+                            currentDay,
+                            maxPerSide,
+                            maxPerSide
+                        )
+                    }
+                    .toMutableList()
 
             if (ids.isEmpty()) {
                 currentDay = currentDay.prev()
@@ -234,9 +244,38 @@ class StreakPetsController(
             if (currentDay > now)
                 break
 
-            val ids = cachedFetcher.fetchIds(accountId, peerUserId, currentDay)
-                .ifEmpty { remoteFetcher.fetchIds(accountId, peerUserId, currentDay) }
-                .toMutableList()
+            val fromOwnerMax = notCompletedTasks
+                .filter { it.createdAt == currentDay }
+                .sumOf {
+                    when (it.payload) {
+                        is StreakPetTaskPayload.ExchangeOneMessage -> it.payload.remainingFromOwner
+                        is StreakPetTaskPayload.SendFourMessagesEach -> it.payload.remainingFromOwner
+                        is StreakPetTaskPayload.SendTenMessagesEach -> it.payload.remainingFromOwner
+                    }
+                }
+
+            val fromPeerMax = notCompletedTasks
+                .filter { it.createdAt == currentDay }
+                .sumOf {
+                    when (it.payload) {
+                        is StreakPetTaskPayload.ExchangeOneMessage -> it.payload.remainingFromPeer
+                        is StreakPetTaskPayload.SendFourMessagesEach -> it.payload.remainingFromPeer
+                        is StreakPetTaskPayload.SendTenMessagesEach -> it.payload.remainingFromPeer
+                    }
+                }
+
+            val ids =
+                cachedFetcher.fetchIds(accountId, peerUserId, currentDay, fromOwnerMax, fromPeerMax)
+                    .ifEmpty {
+                        remoteFetcher.fetchIds(
+                            accountId,
+                            peerUserId,
+                            currentDay,
+                            fromOwnerMax,
+                            fromPeerMax
+                        )
+                    }
+                    .toMutableList()
 
             if (ids.isEmpty()) {
                 currentDay = currentDay.next()

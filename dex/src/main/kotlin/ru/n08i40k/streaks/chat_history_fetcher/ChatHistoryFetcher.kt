@@ -22,5 +22,7 @@ interface ChatHistoryFetcher {
         accountId: Int,
         peerUserId: Long,
         day: LocalDate,
+        fromOwnerMax: Int,
+        fromPeerMax: Int,
     ): List<Pair<Int, Boolean>>
 }
