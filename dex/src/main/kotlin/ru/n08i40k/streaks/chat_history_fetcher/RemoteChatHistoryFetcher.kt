@@ -72,7 +72,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
             val deferred = CompletableDeferred<RequestOutcome>()
 
-            val requestId = connectionsManager.sendRequest(req) { response, error ->
+            val requestId = connectionsManager.sendRequest(req, { response, error ->
                 deferred.complete(
                     when {
                         error != null -> RequestOutcome.Failure(error)
@@ -80,7 +80,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                         else -> RequestOutcome.Empty
                     }
                 )
-            }
+            }, 2 or 64 or 1024)
 
             val result = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
 
