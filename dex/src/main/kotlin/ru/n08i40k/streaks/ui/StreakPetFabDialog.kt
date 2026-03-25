@@ -74,7 +74,6 @@ class StreakPetFabDialog(
         pageReady = false
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.onPause()
-        webView.pauseTimers()
         webView.stopLoading()
         webView.loadUrl("about:blank")
         webView.clearHistory()
@@ -86,6 +85,8 @@ class StreakPetFabDialog(
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(): WebView {
         return WebView(context).apply {
+            resumeTimers()
+            onResume()
             setBackgroundColor(Color.TRANSPARENT)
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
@@ -95,7 +96,6 @@ class StreakPetFabDialog(
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.loadsImagesAutomatically = true
             settings.allowFileAccess = true
-            settings.allowFileAccessFromFileURLs = true
             settings.allowContentAccess = false
             settings.mediaPlaybackRequiresUserGesture = false
             settings.builtInZoomControls = false

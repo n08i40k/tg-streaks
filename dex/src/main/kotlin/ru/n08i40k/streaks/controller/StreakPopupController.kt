@@ -361,7 +361,6 @@ class StreakPopupController(
             settings.domStorageEnabled = false
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.allowFileAccess = true
-            settings.allowFileAccessFromFileURLs = true
             settings.allowContentAccess = false
             settings.mediaPlaybackRequiresUserGesture = false
             settings.builtInZoomControls = false

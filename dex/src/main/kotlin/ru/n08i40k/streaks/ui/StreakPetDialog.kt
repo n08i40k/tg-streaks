@@ -81,7 +81,6 @@ class StreakPetDialog(
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setDimAmount(0.18f)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             decorView?.setPadding(0, 0, 0, 0)
         }
 
@@ -130,7 +129,6 @@ class StreakPetDialog(
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.removeJavascriptInterface("AndroidBridge")
         webView.onPause()
-        webView.pauseTimers()
         webView.stopLoading()
         webView.loadUrl("about:blank")
         webView.clearHistory()
@@ -142,6 +140,8 @@ class StreakPetDialog(
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(): WebView {
         return WebView(context).apply {
+            resumeTimers()
+            onResume()
             setBackgroundColor(Color.TRANSPARENT)
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
@@ -155,7 +155,6 @@ class StreakPetDialog(
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.loadsImagesAutomatically = true
             settings.allowFileAccess = true
-            settings.allowFileAccessFromFileURLs = true
             settings.allowContentAccess = false
             settings.mediaPlaybackRequiresUserGesture = false
             settings.builtInZoomControls = false
