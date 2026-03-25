@@ -411,6 +411,7 @@ class StreakPetDialog(
     private fun buildHtml(safeTopPx: Int): String =
         StreakPetUiResources.loadSheetHtml(resourcesProvider, safeTopPx)
 
+    @Suppress("unused")
     private inner class Bridge {
         @JavascriptInterface
         fun close() {
@@ -435,12 +436,12 @@ class StreakPetDialog(
 
         @JavascriptInterface
         fun log(value: String?) {
-            log("js: ${value?.trim().orEmpty()}")
+            this@StreakPetDialog.log("js: ${value?.trim().orEmpty()}")
         }
 
         @JavascriptInterface
         fun error(value: String?) {
-            log("js-error: ${value?.trim().orEmpty()}")
+            this@StreakPetDialog.log("js-error: ${value?.trim().orEmpty()}")
         }
     }
 }
