@@ -1636,13 +1636,13 @@ class Plugin {
                         val accountId = UserConfig.selectedAccount
                         val peerUserId = messageObject.dialogId
                         streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
+                        serviceMessagesController.sendPetInviteAccepted(
+                            accountId,
+                            peerUserId
+                        )
 
                         when (streakPetsController.create(accountId, peerUserId)) {
                             is StreakPetsController.CreateResult.Created -> {
-                                serviceMessagesController.sendPetInviteAccepted(
-                                    accountId,
-                                    peerUserId
-                                )
                                 syncPeerUi(accountId, peerUserId)
                                 refreshPetFabForOpenChat()
                                 bulletinHelper.showTranslated(
