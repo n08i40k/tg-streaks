@@ -416,6 +416,19 @@ class Plugin {
                     return@runOnUIThread
                 }
 
+                if (
+                    openedPetDialog?.isShowing == true
+                    && openedPetDialogAccountId == accountId
+                    && openedPetDialogPeerUserId == peerUserId
+                ) {
+                    openedPetDialog?.updateState(uiState)
+                    return@runOnUIThread
+                }
+
+                openedPetDialog?.dismiss()
+                clearTrackedPetDialog()
+                dismissPetFab()
+
                 val dialog = StreakPetDialog(
                     fragment,
                     uiState,

@@ -72,8 +72,14 @@ class StreakPetFabDialog(
         super.dismiss()
         destroyed = true
         pageReady = false
+        (webView.parent as? ViewGroup)?.removeView(webView)
+        webView.onPause()
+        webView.pauseTimers()
         webView.stopLoading()
         webView.loadUrl("about:blank")
+        webView.clearHistory()
+        webView.clearCache(true)
+        webView.removeAllViews()
         webView.destroy()
     }
 
