@@ -10,10 +10,10 @@ import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.extension.next
-import ru.n08i40k.streaks.extension.toEpochSecondUtc
+import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import java.time.LocalDate
 
 
@@ -145,8 +145,8 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         day: LocalDate,
         untilRevive: Boolean
     ): ChatHistoryFetcher.Status {
-        val startLocalEpoch = day.toEpochSecondUtc().toInt()
-        var endLocalEpoch = day.next().toEpochSecondUtc().toInt()
+        val startLocalEpoch = day.toEpochSecondSystem().toInt()
+        var endLocalEpoch = day.next().toEpochSecondSystem().toInt()
 
         var fromOwner = false
         var fromPeer = false
@@ -204,8 +204,8 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         peerUserId: Long,
         day: LocalDate
     ): List<Pair<Int, Boolean>> {
-        val startLocalEpoch = day.toEpochSecondUtc().toInt()
-        var endLocalEpoch = day.next().toEpochSecondUtc().toInt()
+        val startLocalEpoch = day.toEpochSecondSystem().toInt()
+        var endLocalEpoch = day.next().toEpochSecondSystem().toInt()
 
         val ids = arrayListOf<Pair<Int, Boolean>>()
 
