@@ -13,6 +13,7 @@ import requests
 from android.content import Intent
 from android.graphics import Color
 from android.net import Uri
+from android.util import Log
 from android.webkit import ValueCallback
 from android_utils import run_on_ui_thread
 from base_plugin import BasePlugin, MenuItemData, MenuItemType
@@ -37,6 +38,7 @@ __icon__ = "exteraPlugins/0"
 __min_version__ = "12.1.1"
 
 DEBUG_MODE = False
+LOGCAT_TAG = "tg-streaks"
 
 
 REPO_OWNER = "n08i40k"
@@ -1592,8 +1594,24 @@ class TgStreaksPlugin(BasePlugin):
 
     settings_actions: SettingsActions
 
+    def log(self, message: Any):
+        text = str(message)
+        super().log(text)
+
+        try:
+            Log.i(LOGCAT_TAG, text)
+        except Exception:
+            pass
+
     def log_exception(self, message: str, exception: BaseException):
-        self.log(f"{message}: {exception}")
+        text = f"{message}: {exception}"
+        self.log(text)
+
+        if DEBUG_MODE:
+            try:
+                Log.e(LOGCAT_TAG, text)
+            except Exception:
+                pass
 
         for chunk in traceback.format_exception(
             type(exception),
@@ -1603,6 +1621,11 @@ class TgStreaksPlugin(BasePlugin):
             for line in chunk.rstrip().splitlines():
                 if len(line) > 0:
                     self.log(line)
+                    if DEBUG_MODE:
+                        try:
+                            Log.e(LOGCAT_TAG, line)
+                        except Exception:
+                            pass
 
     def create_settings(self) -> list[Any]:
         if not hasattr(self, "settings_actions"):
