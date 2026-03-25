@@ -1,6 +1,7 @@
 package ru.n08i40k.streaks.database
 
 import android.content.Context
+import android.os.Environment
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -39,18 +40,6 @@ class DatabaseBackupManager(
     fun exportNow(): File = synchronized(lock) {
         val backup = createBackup("manual")
         logger("Database backup exported: ${backup.absolutePath}")
-        backup
-    }
-
-    fun restoreLatest(): File = synchronized(lock) {
-        val backup = latestBackup()
-            ?: throw IllegalStateException("db.err.no_backups_found")
-        val target = context.getDatabasePath(DATABASE_NAME)
-
-        db.close()
-        replaceDatabaseFile(target, backup)
-
-        logger("Database backup restored: ${backup.absolutePath}")
         backup
     }
 
@@ -126,28 +115,14 @@ class DatabaseBackupManager(
         return backup
     }
 
-    private fun latestBackup(): File? =
-        backupsDir()
-            .listFiles()
-            ?.asSequence()
-            ?.filter { it.isFile && it.extension == BACKUP_EXTENSION }
-            ?.maxByOrNull(File::lastModified)
-
+    @Suppress("DEPRECATION")
     private fun backupsDir(): File =
-        File(context.filesDir, "chaquopy/plugins/tg-streaks/backups").apply {
+        File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "tg-streaks"
+        ).apply {
             mkdirs()
         }
-
-    private fun replaceDatabaseFile(target: File, backup: File) {
-        target.parentFile?.mkdirs()
-
-        File(target.absolutePath + "-wal").delete()
-        File(target.absolutePath + "-shm").delete()
-        File(target.absolutePath + "-journal").delete()
-        target.delete()
-
-        backup.copyTo(target, overwrite = true)
-    }
 
     private fun pruneOldBackups(backupsDir: File, keep: Int) {
         backupsDir.listFiles()

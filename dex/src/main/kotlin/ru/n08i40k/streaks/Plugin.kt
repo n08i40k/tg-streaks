@@ -1212,34 +1212,6 @@ class Plugin {
             }
         }
 
-        addSettingAction(SettingsActionButton.IMPORT_LATEST_BACKUP) {
-            backgroundScope.launch {
-                try {
-                    val backup = databaseBackupManager.restoreLatest()
-                    logger.info("Database backup restore completed, reloading plugin: ${backup.name}")
-                    requestFullPluginReload("Reload requested after database backup restore")
-                } catch (e: IllegalStateException) {
-                    if (e.message == TranslationKey.DB_ERR_NO_BACKUPS_FOUND) {
-                        bulletinHelper.showTranslated(TranslationKey.DB_ERR_NO_BACKUPS_FOUND)
-                    } else {
-                        logger.fatal("Failed to restore latest database backup", e)
-                        bulletinHelper.showTranslated(
-                            TranslationKey.DB_ERR_FAILED_APPLY_BACKUP,
-                            mapOf("reason" to (e.message ?: e.javaClass.simpleName)),
-                            "msg_reset"
-                        )
-                    }
-                } catch (e: Throwable) {
-                    logger.fatal("Failed to restore latest database backup", e)
-                    bulletinHelper.showTranslated(
-                        TranslationKey.DB_ERR_FAILED_APPLY_BACKUP,
-                        mapOf("reason" to (e.message ?: e.javaClass.simpleName)),
-                        "msg_reset"
-                    )
-                }
-            }
-        }
-
         chatContextMenuCallbackRegistry.freeze()
         settingsActionCallbackRegistry.freeze()
     }

@@ -10,21 +10,24 @@ from enum import Enum
 from typing import Optional, cast
 
 import requests
+from java import dynamic_proxy, jarray
 from android.content import Intent
+from android.content import DialogInterface
 from android.graphics import Color
 from android.net import Uri
+from android.os import Environment
 from android.util import Log
 from android.webkit import ValueCallback
 from android_utils import run_on_ui_thread
 from base_plugin import BasePlugin, MenuItemData, MenuItemType
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
-from java import dynamic_proxy
 from java.lang import Class, Integer, Long, Runnable, String
 from java.nio import ByteBuffer  # ty:ignore[unresolved-import]
 from java.util.function import Function
 from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
+from org.telegram.ui.ActionBar import AlertDialog
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Switch, Text
@@ -86,17 +89,17 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Create backup now",
         "ru": "Создать резервную копию сейчас",
     },
-    "settings.import_latest_backup": {
-        "en": "Restore from latest backup",
-        "ru": "Восстановить из последней копии",
+    "settings.restore_backup_file": {
+        "en": "Restore from backup file",
+        "ru": "Восстановить из файла бэкапа",
     },
     "settings.delete_db_and_reload": {
         "en": "Delete database and reload plugin",
         "ru": "Удалить базу и перезагрузить плагин",
     },
     "settings.db_backups.hint": {
-        "en": "Daily backups are created automatically. Import replaces current streak database.",
-        "ru": "Ежедневные бэкапы создаются автоматически. Импорт заменяет текущую базу стриков.",
+        "en": "Backups are stored in Downloads/tg-streaks. Restore replaces the current streak database.",
+        "ru": "Бэкапы сохраняются в Downloads/tg-streaks. Восстановление заменяет текущую базу стриков.",
     },
     "err.cannot_detect_current_chat": {
         "en": "Cannot detect current chat",
@@ -488,6 +491,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     "db.err.failed_apply_backup": {
         "en": "Failed to apply backup: {reason}",
         "ru": "Не удалось применить бэкап: {reason}",
+    },
+    "dialog.restore_backup_file.title": {
+        "en": "Choose backup file",
+        "ru": "Выберите файл бэкапа",
     },
     "db.err.failed_delete": {
         "en": "Failed to delete database: {reason}",
@@ -1397,7 +1404,6 @@ class ChatContextMenu:
 class SettingsActions:
     REBUILD_ALL = "rebuildAllPrivateChats"
     EXPORT_BACKUP_NOW = "exportBackupNow"
-    IMPORT_LATEST_BACKUP = "importLatestBackup"
     DELETE_DB_AND_RELOAD = "deleteDbAndReload"
 
     def __init__(self, plugin: "TgStreaksPlugin"):
@@ -1419,9 +1425,9 @@ class SettingsActions:
                 on_click=lambda _: self._on_click(self.EXPORT_BACKUP_NOW),
             ),
             Text(
-                text=self.plugin._t("settings.import_latest_backup"),
+                text=self.plugin._t("settings.restore_backup_file"),
                 icon="msg_reset",
-                on_click=lambda _: self._on_click(self.IMPORT_LATEST_BACKUP),
+                on_click=lambda _: self.plugin._show_restore_backup_file_dialog(),
             ),
             Text(
                 text=self.plugin._t("settings.delete_db_and_reload"),
@@ -2047,16 +2053,147 @@ class TgStreaksPlugin(BasePlugin):
         ).start()
 
     def _database_file_paths(self) -> list[str]:
-        base_path = (
-            ApplicationLoader.applicationContext.getDatabasePath(String("tg-streaks"))
-            .getAbsolutePath()
-        )
+        base_path = ApplicationLoader.applicationContext.getDatabasePath(
+            String("tg-streaks")
+        ).getAbsolutePath()
         return [
             str(base_path),
             f"{base_path}-wal",
             f"{base_path}-shm",
             f"{base_path}-journal",
         ]
+
+    def _backups_dir(self) -> str:
+        downloads_dir = Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS
+        ).getAbsolutePath()
+        backups_dir = os.path.join(str(downloads_dir), "tg-streaks")
+        os.makedirs(backups_dir, exist_ok=True)
+        return backups_dir
+
+    def _list_backup_files(self) -> list[str]:
+        backups_dir = self._backups_dir()
+        files = []
+
+        try:
+            for name in os.listdir(backups_dir):
+                path = os.path.join(backups_dir, name)
+                if os.path.isfile(path) and name.endswith(".sqlite3"):
+                    files.append(path)
+        except Exception as e:
+            self.log_exception("Failed to list backup files", e)
+            return []
+
+        files.sort(key=os.path.getmtime, reverse=True)
+        return files
+
+    def _show_restore_backup_file_dialog(self):
+        backup_files = self._list_backup_files()
+        if len(backup_files) == 0:
+            self._show_error(self._t("db.err.no_backups_found"))
+            return
+
+        def show():
+            try:
+                fragment = get_last_fragment()
+            except Exception:
+                fragment = None
+
+            if fragment is None:
+                self._show_error(
+                    self._t("db.err.failed_apply_backup").format(reason="No UI context")
+                )
+                return
+
+            names = [os.path.basename(path) for path in backup_files]
+
+            try:
+                class BackupClickListener(
+                    dynamic_proxy(DialogInterface.OnClickListener)
+                ):
+                    def onClick(self, _dialog, which):
+                        self_outer._schedule_restore_backup_reload(
+                            backup_files[int(which)]
+                        )
+
+                self_outer = self
+                fragment.showDialog(
+                    AlertDialog.Builder(fragment.getContext())
+                    .setTitle(self._t("dialog.restore_backup_file.title"))
+                    .setItems(
+                        jarray(String)([String(name) for name in names]),
+                        BackupClickListener(),
+                    )
+                    .create()
+                )
+            except Exception as e:
+                self.log_exception("Failed to show restore backup dialog", e)
+                self._show_error(
+                    self._t("db.err.failed_apply_backup").format(reason=str(e))
+                )
+
+        run_on_ui_thread(show)
+
+    def _schedule_restore_backup_reload(self, backup_path: str):
+        reason = f"Backup restore requested from settings: {os.path.basename(backup_path)}"
+
+        if not self._reload_lock.acquire(blocking=False):
+            self.log(f"Skipped duplicate backup restore request: {reason}")
+            return
+
+        def worker():
+            try:
+                self.log(f"Starting backup restore: {reason}")
+
+                if not os.path.isfile(backup_path):
+                    self._show_error(self._t("db.err.no_backups_found"))
+                    return
+
+                try:
+                    self.on_plugin_unload()
+                except BaseException as e:
+                    self.log_exception(
+                        "Failed during plugin unload before backup restore", e
+                    )
+
+                try:
+                    target_path = self._database_file_paths()[0]
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+
+                    for path in self._database_file_paths()[1:]:
+                        if os.path.exists(path):
+                            os.remove(path)
+
+                    if os.path.exists(target_path):
+                        os.remove(target_path)
+
+                    shutil.copy2(backup_path, target_path)
+                    self.log(f"Database restored from backup: {backup_path}")
+                except BaseException as e:
+                    self.log_exception("Failed to apply backup file", e)
+                    self._show_error(
+                        self._t("db.err.failed_apply_backup").format(reason=str(e))
+                    )
+                    return
+
+                try:
+                    self.on_plugin_load()
+                except BaseException as e:
+                    self.log_exception("Failed during plugin load after backup restore", e)
+                    return
+
+                self._show_success(
+                    self._t("ok.backup_imported", name=os.path.basename(backup_path))
+                )
+                self.log("Backup restore and full plugin reload completed")
+            finally:
+                self._reload_lock.release()
+
+        threading.Thread(
+            target=worker,
+            name="tg-streaks-backup-restore-reload",
+            daemon=True,
+        ).start()
 
     def _schedule_database_reset_reload(self):
         reason = "Database reset requested from settings"
