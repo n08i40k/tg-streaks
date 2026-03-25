@@ -10,8 +10,8 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         const val CHECK_QUERY =
             """
             SELECT
-                MAX(CASE WHEN out = 1 THEN 1 ELSE 0 END),
-                MAX(CASE WHEN out = 0 THEN 1 ELSE 0 END)
+                COALESCE(MAX(CASE WHEN out = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(MAX(CASE WHEN out = 0 THEN 1 ELSE 0 END), 0)
             FROM messages_v2
             WHERE uid = ? AND date >= ? AND date < ?
             """
@@ -41,17 +41,8 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         if (!cursor.next())
             return ChatHistoryFetcher.Status.NoActivity()
 
-        val fromOwner =
-            if (cursor.isNull(0))
-                false
-            else
-                cursor.intValue(0) > 0
-
-        val fromPeer =
-            if (cursor.isNull(1))
-                false
-            else
-                cursor.intValue(1) > 0
+        val fromOwner = cursor.intValue(0) > 0
+        val fromPeer = cursor.intValue(1) > 0
 
         return when {
             fromOwner && fromPeer -> ChatHistoryFetcher.Status.FromBoth(false)
