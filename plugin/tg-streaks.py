@@ -93,9 +93,9 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Restore from backup file",
         "ru": "Восстановить из файла бэкапа",
     },
-    "settings.delete_db_and_reload": {
-        "en": "Delete database and reload plugin",
-        "ru": "Удалить базу и перезагрузить плагин",
+    "settings.delete_db_and_reinitialize": {
+        "en": "Delete database and reinitialize plugin",
+        "ru": "Удалить базу и переинициализировать плагин",
     },
     "settings.db_backups.hint": {
         "en": "Backups are stored in Downloads/tg-streaks. Restore replaces the current streak database.",
@@ -129,9 +129,9 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Backup imported: {name}",
         "ru": "Бэкап импортирован: {name}",
     },
-    "ok.db_deleted_and_reload_started": {
-        "en": "Database deleted. Full plugin reload started.",
-        "ru": "База удалена. Запущена полная перезагрузка плагина.",
+    "ok.db_deleted_and_reinitialize_started": {
+        "en": "Database deleted. Plugin reinitialization started.",
+        "ru": "База удалена. Запущена переинициализация плагина.",
     },
     "ok.jumped_to_streak_start_message": {
         "en": "Jumped to streak start message",
@@ -1430,9 +1430,9 @@ class SettingsActions:
                 on_click=lambda _: self.plugin._show_restore_backup_file_dialog(),
             ),
             Text(
-                text=self.plugin._t("settings.delete_db_and_reload"),
+                text=self.plugin._t("settings.delete_db_and_reinitialize"),
                 icon="msg_delete",
-                on_click=lambda _: self.plugin._schedule_database_reset_reload(),
+                on_click=lambda _: self.plugin._schedule_database_reset_reinitialize(),
             ),
             Divider(text=self.plugin._t("settings.db_backups.hint")),
         ]
@@ -1604,7 +1604,7 @@ class PluginUpdateChecker:
 
 
 class TgStreaksPlugin(BasePlugin):
-    _reload_lock = threading.Lock()
+    _reinitialize_lock = threading.Lock()
 
     settings_actions: SettingsActions
 
@@ -2001,56 +2001,20 @@ class TgStreaksPlugin(BasePlugin):
                         return ""
                     return ref._t(str(t))
 
-            class ReloadCallback(dynamic_proxy(Runnable)):
-                def run(self):
-                    ref._schedule_full_reload("Reload requested by JVM plugin")
-
             self.jvm_plugin.klass.getDeclaredMethod(
                 String("inject"),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
                 String.getClass(),  # ty:ignore[unresolved-attribute]
-                Runnable.getClass(),  # ty:ignore[unresolved-attribute]
             ).invoke(
                 None,
                 Logger(),
                 TranslationResolver(),
                 String(self.resources_bridge.resources_root),
-                ReloadCallback(),
             )  # ty:ignore[no-matching-overload]
             self.log("JVM plugin injected successfully")
         except Exception as e:
             self.log_exception("Failed to inject JVM plugin", e)
-
-    def _schedule_full_reload(self, reason: str):
-        if not self._reload_lock.acquire(blocking=False):
-            self.log(f"Skipped duplicate plugin reload request: {reason}")
-            return
-
-        def worker():
-            try:
-                self.log(f"Starting full plugin reload: {reason}")
-
-                try:
-                    self.on_plugin_unload()
-                except BaseException as e:
-                    self.log_exception("Failed during plugin unload while reloading", e)
-
-                try:
-                    self.on_plugin_load()
-                except BaseException as e:
-                    self.log_exception("Failed during plugin load while reloading", e)
-                    return
-
-                self.log("Full plugin reload completed")
-            finally:
-                self._reload_lock.release()
-
-        threading.Thread(
-            target=worker,
-            name="tg-streaks-full-reload",
-            daemon=True,
-        ).start()
 
     def _database_file_paths(self) -> list[str]:
         base_path = ApplicationLoader.applicationContext.getDatabasePath(
@@ -2108,11 +2072,12 @@ class TgStreaksPlugin(BasePlugin):
             names = [os.path.basename(path) for path in backup_files]
 
             try:
+
                 class BackupClickListener(
                     dynamic_proxy(DialogInterface.OnClickListener)
                 ):
                     def onClick(self, _dialog, which):
-                        self_outer._schedule_restore_backup_reload(
+                        self_outer._schedule_restore_backup_reinitialize(
                             backup_files[int(which)]
                         )
 
@@ -2134,10 +2099,12 @@ class TgStreaksPlugin(BasePlugin):
 
         run_on_ui_thread(show)
 
-    def _schedule_restore_backup_reload(self, backup_path: str):
-        reason = f"Backup restore requested from settings: {os.path.basename(backup_path)}"
+    def _schedule_restore_backup_reinitialize(self, backup_path: str):
+        reason = (
+            f"Backup restore requested from settings: {os.path.basename(backup_path)}"
+        )
 
-        if not self._reload_lock.acquire(blocking=False):
+        if not self._reinitialize_lock.acquire(blocking=False):
             self.log(f"Skipped duplicate backup restore request: {reason}")
             return
 
@@ -2185,20 +2152,20 @@ class TgStreaksPlugin(BasePlugin):
                 self._show_success(
                     self._t("ok.backup_imported", name=os.path.basename(backup_path))
                 )
-                self.log("Backup restore and full plugin reload completed")
+                self.log("Backup restore and plugin reinitialization completed")
             finally:
-                self._reload_lock.release()
+                self._reinitialize_lock.release()
 
         threading.Thread(
             target=worker,
-            name="tg-streaks-backup-restore-reload",
+            name="tg-streaks-backup-restore-reinitialize",
             daemon=True,
         ).start()
 
-    def _schedule_database_reset_reload(self):
+    def _schedule_database_reset_reinitialize(self):
         reason = "Database reset requested from settings"
 
-        if not self._reload_lock.acquire(blocking=False):
+        if not self._reinitialize_lock.acquire(blocking=False):
             self.log(f"Skipped duplicate database reset request: {reason}")
             return
 
@@ -2223,7 +2190,7 @@ class TgStreaksPlugin(BasePlugin):
                     )
                     return
 
-                self._show_success(self._t("ok.db_deleted_and_reload_started"))
+                self._show_success(self._t("ok.db_deleted_and_reinitialize_started"))
 
                 try:
                     self.on_plugin_load()
@@ -2231,13 +2198,13 @@ class TgStreaksPlugin(BasePlugin):
                     self.log_exception("Failed during plugin load after DB reset", e)
                     return
 
-                self.log("Database reset and full plugin reload completed")
+                self.log("Database reset and plugin reinitialization completed")
             finally:
-                self._reload_lock.release()
+                self._reinitialize_lock.release()
 
         threading.Thread(
             target=worker,
-            name="tg-streaks-db-reset-reload",
+            name="tg-streaks-db-reset-reinitialize",
             daemon=True,
         ).start()
 

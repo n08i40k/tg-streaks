@@ -14,7 +14,6 @@ object TranslationKey {
     const val OK_STREAK_PET_CREATED = "ok.streak_pet_created"
     const val OK_JUMPED_TO_STREAK_START_MESSAGE = "ok.jumped_to_streak_start_message"
     const val OK_BACKUP_EXPORTED = "ok.backup_exported"
-    const val OK_BACKUP_IMPORTED = "ok.backup_imported"
     const val ERR_CANNOT_OPEN_CHAT_CONTEXT = "err.cannot_open_chat_context"
     const val ERR_FAILED_JUMP_TO_STREAK_START = "err.failed_jump_to_streak_start"
     const val ERR_FORCE_CHECK_FAILED_LOGS = "err.force_check_failed_logs"
@@ -44,8 +43,6 @@ object TranslationKey {
     const val OK_DEBUG_STREAK_FROZEN = "ok.debug_streak_frozen"
     const val OK_DEBUG_STREAK_DELETED = "ok.debug_streak_deleted"
     const val OK_DEBUG_STREAK_PET_DELETED = "ok.debug_streak_pet_deleted"
-    const val DB_ERR_NO_BACKUPS_FOUND = "db.err.no_backups_found"
-    const val DB_ERR_FAILED_APPLY_BACKUP = "db.err.failed_apply_backup"
 
     const val SERVICE_MESSAGE_CREATE_TEXT = "service_message.create.text"
     const val SERVICE_MESSAGE_UPGRADE_TEXT = "service_message.upgrade.text"

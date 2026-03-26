@@ -64,7 +64,6 @@ import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
-import ru.n08i40k.streaks.database.LegacyUsersDbImporter
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
 import ru.n08i40k.streaks.database.MIGRATION_3_5
@@ -119,17 +118,16 @@ class Plugin {
             logReceiver: LogReceiver,
             translationResolver: TranslationResolver,
             resourcesRootPath: String,
-            reloadPluginCallback: Runnable,
         ) {
             if (INSTANCE != null)
                 return
 
-            INSTANCE = Plugin(
-                logReceiver,
-                translationResolver,
-                ResourcesProvider(resourcesRootPath),
-                reloadPluginCallback,
-            )
+
+                INSTANCE = Plugin(
+                    logReceiver,
+                    translationResolver,
+                    ResourcesProvider(resourcesRootPath),
+                )
             INSTANCE!!.onInject()
         }
 
@@ -212,7 +210,6 @@ class Plugin {
     private val databaseBackupManager: DatabaseBackupManager
 
     // helpers
-    private val reloadPluginCallback: Runnable
     val logger: Logger
     val translator: Translator
     val resourcesProvider: ResourcesProvider
@@ -264,12 +261,10 @@ class Plugin {
         logReceiver: LogReceiver,
         translationResolver: TranslationResolver,
         resourcesProvider: ResourcesProvider,
-        reloadPluginCallback: Runnable,
     ) {
         this.logger = Logger(logReceiver)
         this.translator = Translator(translationResolver)
         this.resourcesProvider = resourcesProvider
-        this.reloadPluginCallback = reloadPluginCallback
         this.bulletinHelper = BulletinHelper(this.translator)
 
         this.db = Room.databaseBuilder(
@@ -287,16 +282,6 @@ class Plugin {
             StreakPetsController(this.logger, this.db, this.streaksController)
     }
 
-    private fun requestFullPluginReload(reason: String) {
-        logger.info(reason)
-
-        try {
-            reloadPluginCallback.run()
-        } catch (e: Throwable) {
-            logger.fatal("Failed to request full plugin reload", e)
-        }
-    }
-
 
     private fun onInject() {
         try {
@@ -311,22 +296,9 @@ class Plugin {
     private fun onFinalizeInject() {
         val uiLock = CompletableDeferred<Unit>()
 
-        try {
-            val importedLegacyDb = runBlocking {
-                LegacyUsersDbImporter(db, logger::info).importIfNeeded()
-            }
-
-            if (importedLegacyDb) {
-                requestFullPluginReload("Legacy database import finished, reloading plugin")
-                return
-            }
-
-            backgroundScope.launch {
-                userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
-                uiLock.complete(Unit)
-            }
-        } catch (e: Throwable) {
-            logger.fatal("Failed to import legacy database", e)
+        backgroundScope.launch {
+            userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
+            uiLock.complete(Unit)
         }
 
         try {
