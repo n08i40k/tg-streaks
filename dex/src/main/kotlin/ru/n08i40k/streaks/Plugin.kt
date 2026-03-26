@@ -99,6 +99,7 @@ class Plugin {
     @Suppress("unused")
     companion object {
         private var INSTANCE: Plugin? = null
+        private const val DEFAULT_PET_FAB_SIZE_DP = 80
 
         fun isInjected(): Boolean = INSTANCE != null
 
@@ -198,6 +199,11 @@ class Plugin {
         }
 
         @JvmStatic
+        fun setPetFabSizeDp(sizeDp: Int) {
+            INSTANCE?.applyPetFabSizeDp(sizeDp)
+        }
+
+        @JvmStatic
         fun eject() {
             // do not run on threads that may be destructed
             AndroidUtilities.runOnUIThread {
@@ -248,6 +254,7 @@ class Plugin {
     private var openedPetDialog: StreakPetDialog? = null
     private var petFabDialog: StreakPetFabDialog? = null
     private var petFabEnabled: Boolean = true
+    private var petFabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
@@ -388,6 +395,18 @@ class Plugin {
         petFabDialog = null
     }
 
+    private fun applyPetFabSizeDp(sizeDp: Int) {
+        if (petFabSizeDp == sizeDp)
+            return
+
+        petFabSizeDp = sizeDp
+
+        AndroidUtilities.runOnUIThread {
+            petFabDialog?.updateSizeDp(sizeDp)
+            petFabDialog?.configureWindow()
+        }
+    }
+
     private fun openPetDialog(accountId: Int, peerUserId: Long) {
         val uiState = streakPetsController.getViewStateSnapshotBlocking(accountId, peerUserId)
 
@@ -497,6 +516,7 @@ class Plugin {
                 peerUserId,
                 uiState,
                 resourcesProvider,
+                petFabSizeDp,
             ) {
                 dismissPetFab()
                 openPetDialog(accountId, peerUserId)

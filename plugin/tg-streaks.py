@@ -30,7 +30,7 @@ from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
 from org.telegram.ui.ActionBar import AlertDialog
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
-from ui.settings import Divider, Header, Switch, Text
+from ui.settings import Divider, Header, Selector, Switch, Text
 
 __id__ = "tg-streaks"
 __name__ = "Streaks"
@@ -58,6 +58,8 @@ PLUGIN_UPDATE_API_URL = (
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
+SETTING_PET_FAB_SIZE_INDEX = "pet_fab_size_index"
+PET_FAB_SIZE_OPTIONS_DP = (64, 80, 96, 112, 128)
 
 
 def get_plugin_cache_dir(*parts: str) -> str:
@@ -76,6 +78,12 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "ru": "При загрузке плагина в фоне проверяет последний релиз на GitHub.",
     },
     "settings.streak_tools": {"en": "Streak Tools", "ru": "Инструменты стрика"},
+    "settings.pet_fab": {"en": "Pet FAB", "ru": "Стрик-питомец"},
+    "settings.pet_fab_size": {"en": "Pet FAB size", "ru": "Размер FAB питомца"},
+    "settings.pet_fab_size.hint": {
+        "en": "Changes the floating pet button size in chat.",
+        "ru": "Меняет размер плавающей кнопки питомца в чате.",
+    },
     "settings.force_check_all_private_chats": {
         "en": "Recalculate streaks in all private chats",
         "ru": "Пересчитать стрики во всех личных чатах",
@@ -1411,6 +1419,16 @@ class SettingsActions:
 
     def build_settings(self) -> list[Any]:
         return [
+            Header(text=self.plugin._t("settings.pet_fab")),
+            Selector(
+                key=SETTING_PET_FAB_SIZE_INDEX,
+                text=self.plugin._t("settings.pet_fab_size"),
+                default=self.plugin._get_pet_fab_size_index(),
+                items=[f"{size} dp" for size in PET_FAB_SIZE_OPTIONS_DP],
+                icon="msg_customize",
+                on_change=lambda value: self.plugin._on_pet_fab_size_changed(value),
+            ),
+            Divider(text=self.plugin._t("settings.pet_fab_size.hint")),
             Header(text=self.plugin._t("settings.streak_tools")),
             Text(
                 text=self.plugin._t("settings.force_check_all_private_chats"),
@@ -1775,6 +1793,45 @@ class TgStreaksPlugin(BasePlugin):
         except Exception:
             return True
 
+    def _get_pet_fab_size_index(self) -> int:
+        default_index = 1
+
+        try:
+            raw_value = int(self.get_setting(SETTING_PET_FAB_SIZE_INDEX, default_index))
+        except Exception:
+            return default_index
+
+        return max(0, min(raw_value, len(PET_FAB_SIZE_OPTIONS_DP) - 1))
+
+    def _get_pet_fab_size_dp(self) -> int:
+        return PET_FAB_SIZE_OPTIONS_DP[self._get_pet_fab_size_index()]
+
+    def _apply_pet_fab_size_dp(self, size_dp: int):
+        if self.jvm_plugin.klass is None:
+            self.log("Pet FAB size update skipped: JVM plugin is not loaded")
+            return
+
+        try:
+            self.jvm_plugin.klass.getDeclaredMethod(
+                String("setPetFabSizeDp"),
+                Integer.TYPE,
+            ).invoke(
+                None,
+                Integer(int(size_dp)),
+            )
+        except Exception as e:
+            self.log_exception("Failed to apply pet FAB size", e)
+
+    def _on_pet_fab_size_changed(self, value: int):
+        size_index = max(0, min(int(value), len(PET_FAB_SIZE_OPTIONS_DP) - 1))
+
+        try:
+            self.set_setting(SETTING_PET_FAB_SIZE_INDEX, size_index)
+        except Exception as e:
+            self.log_exception("Failed to persist pet FAB size setting", e)
+
+        self._apply_pet_fab_size_dp(PET_FAB_SIZE_OPTIONS_DP[size_index])
+
     def _on_update_check_setting_changed(self, enabled: bool):
         enabled = bool(enabled)
 
@@ -2013,6 +2070,7 @@ class TgStreaksPlugin(BasePlugin):
                 String(self.resources_bridge.resources_root),
             )  # ty:ignore[no-matching-overload]
             self.log("JVM plugin injected successfully")
+            self._apply_pet_fab_size_dp(self._get_pet_fab_size_dp())
         except Exception as e:
             self.log_exception("Failed to inject JVM plugin", e)
 

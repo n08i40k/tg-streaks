@@ -23,12 +23,14 @@ import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import kotlin.math.abs
 
+@SuppressLint("DiscouragedApi", "InternalInsetResource")
 class StreakPetFabDialog(
     context: android.content.Context,
     val accountId: Int,
     val peerUserId: Long,
     initialState: StreakPetsController.ViewStateSnapshot,
     private val resourcesProvider: ResourcesProvider,
+    initialSizeDp: Int,
     private val onOpenRequested: () -> Unit,
 ) : Dialog(context) {
     private val stages = Plugin.getInstance().streakPetLevelRegistry.levels().ifEmpty {
@@ -41,6 +43,7 @@ class StreakPetFabDialog(
     private var lastPushedStateJson: String? = null
     private var offsetX = DEFAULT_OFFSET_X
     private var offsetY = DEFAULT_OFFSET_Y
+    private var sizeDp = initialSizeDp
 
     private val webView: WebView = createWebView()
 
@@ -71,6 +74,10 @@ class StreakPetFabDialog(
 
     fun open() {
         onOpenRequested()
+    }
+
+    fun updateSizeDp(newSizeDp: Int) {
+        sizeDp = newSizeDp.coerceIn(MIN_PET_FAB_SIZE_DP, MAX_PET_FAB_SIZE_DP)
     }
 
     fun configureWindow() {
@@ -258,7 +265,7 @@ class StreakPetFabDialog(
     private fun buildHtml(): String =
         StreakPetUiResources.loadFabHtml(resourcesProvider)
 
-    private fun fabSizePx(): Int = AndroidUtilities.dp(76f)
+    private fun fabSizePx(): Int = AndroidUtilities.dp(sizeDp.toFloat())
 
     private fun resolveDragBounds(size: Int): DragBounds {
         val displayMetrics = context.resources.displayMetrics
@@ -304,6 +311,9 @@ class StreakPetFabDialog(
     }
 
     companion object {
+        private const val MIN_PET_FAB_SIZE_DP = 48
+        private const val MAX_PET_FAB_SIZE_DP = 128
+
         private const val DEFAULT_OFFSET_X = 20
         private const val DEFAULT_OFFSET_Y = 250
     }
