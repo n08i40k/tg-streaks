@@ -30,6 +30,7 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.util.Logger
 import java.time.LocalDate
 import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -38,6 +39,7 @@ import kotlin.comparisons.compareBy
 @OptIn(DelicateCoroutinesApi::class)
 class StreaksController(
     private val db: PluginDatabase,
+    private val logger: Logger,
     resourcesProvider: ResourcesProvider,
 ) {
     companion object {
@@ -270,7 +272,7 @@ class StreaksController(
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
         if (!ignoreLock && !rebuildLock.compareAndSet(false, true)) {
-            Plugin.getInstance().logger.info("Unable to rebuild peer $accountId:${peer.id} because another rebuild is already running")
+            logger.info("Unable to rebuild peer $accountId:${peer.id} because another rebuild is already running")
             return
         }
 
@@ -331,9 +333,8 @@ class StreaksController(
             val rebuildFrom = currentDay
             val rebuildTo = if (startDayIsFrozen) startDay.prev() else startDay
 
-            if (sendServiceMessages) {
-                Plugin.getInstance().logger.info("Rebuild service messages policy is unexpectedly enabled")
-            }
+            if (sendServiceMessages)
+                logger.info("Rebuild service messages policy is unexpectedly enabled")
 
             db.withTransaction {
                 dao.deleteByRelation(ownerUserId, peerUserId)
@@ -359,7 +360,7 @@ class StreaksController(
 
             // TODO: service message abt upgrade?
         } catch (e: Throwable) {
-            Plugin.getInstance().logger.fatal("Failed to rebuild peer $accountId:${peer.id}", e)
+            logger.fatal("Failed to rebuild peer $accountId:${peer.id}", e)
         } finally {
             if (!ignoreLock)
                 rebuildLock.set(false)
@@ -372,7 +373,7 @@ class StreaksController(
         onProgressUpdate: (index: Int, total: Int, peer: TLRPC.User, progress: RebuildProgress) -> Unit
     ): RebuildAllResult {
         if (!rebuildLock.compareAndSet(false, true)) {
-            Plugin.getInstance().logger.info("Unable to rebuild all peers for $accountId because another rebuild is already running")
+            logger.info("Unable to rebuild all peers for $accountId because another rebuild is already running")
             return RebuildAllResult(0, emptyList())
         }
 

@@ -291,7 +291,7 @@ class Plugin {
 
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
 
-        this.streaksController = StreaksController(this.db, this.resourcesProvider)
+        this.streaksController = StreaksController(this.db, this.logger, this.resourcesProvider)
         this.streakPetsController =
             StreakPetsController(this.logger, this.db, this.streaksController)
     }
