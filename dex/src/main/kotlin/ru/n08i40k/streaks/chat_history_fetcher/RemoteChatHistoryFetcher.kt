@@ -183,13 +183,22 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 if (message.date !in startLocalEpoch..endLocalEpoch)
                     break@reqLoop // no more messages for today
 
+                if (message.message == ServiceMessage.RESTORE_TEXT) {
+                    wasRevived = true
+
+                    if (fromOwner && fromPeer && untilRevive)
+                        break@reqLoop // no need to check other messages more
+
+                    continue
+                }
+
+                if (ServiceMessage.isServiceText(message.message))
+                    continue
+
                 if (message.out)
                     fromOwner = true
                 else
                     fromPeer = true
-
-                if (message.message == ServiceMessage.RESTORE_TEXT)
-                    wasRevived = true
 
                 if (fromOwner && fromPeer && (!untilRevive || wasRevived))
                     break@reqLoop // no need to check other messages more
@@ -199,7 +208,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             if (oldestMessage.date == endLocalEpoch && oldestMessage.id == offsetId) {
                 Plugin.getInstance().logger.info(
                     "History cursor stalled for $accountId:$peerUserId on $day " +
-                        "(offset_date=$endLocalEpoch, offset_id=$offsetId), stopping to avoid loop"
+                            "(offset_date=$endLocalEpoch, offset_id=$offsetId), stopping to avoid loop"
                 )
                 break@reqLoop
             }
@@ -219,18 +228,18 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         }
     }
 
-    override suspend fun fetchIds(
+    override suspend fun fetchRawMessages(
         accountId: Int,
         peerUserId: Long,
         day: LocalDate,
         fromOwnerMax: Int,
         fromPeerMax: Int,
-    ): List<Pair<Int, Boolean>> {
+    ): List<TLRPC.Message> {
         val startLocalEpoch = day.toEpochSecondSystem().toInt()
         var endLocalEpoch = day.next().toEpochSecondSystem().toInt()
         var offsetId = 0
 
-        val ids = arrayListOf<Pair<Int, Boolean>>()
+        val messages = arrayListOf<TLRPC.Message>()
 
         val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
         val connectionsManager = ConnectionsManager.getInstance(accountId)
@@ -258,7 +267,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 if (message.date !in startLocalEpoch..endLocalEpoch)
                     break@reqLoop // no more messages for today
 
-                ids.add(Pair(message.id, message.out))
+                messages.add(message)
 
                 if (message.out)
                     ++fromOwnerCount
@@ -273,7 +282,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             if (oldestMessage.date == endLocalEpoch && oldestMessage.id == offsetId) {
                 Plugin.getInstance().logger.info(
                     "History ids cursor stalled for $accountId:$peerUserId on $day " +
-                        "(offset_date=$endLocalEpoch, offset_id=$offsetId), stopping to avoid loop"
+                            "(offset_date=$endLocalEpoch, offset_id=$offsetId), stopping to avoid loop"
                 )
                 break@reqLoop
             }
@@ -282,6 +291,6 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             offsetId = oldestMessage.id
         }
 
-        return ids.toList()
+        return messages.toList()
     }
 }

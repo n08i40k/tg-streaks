@@ -20,12 +20,5 @@ object ServiceMessage {
 
     fun PET_SET_NAME_TEXT(name: String) = "tg-streaks:pet:set-name:$name"
 
-    fun isServiceText(text: String?): Boolean =
-        text == CREATE_TEXT
-                || text == DEATH_TEXT
-                || text == RESTORE_TEXT
-                || text == PET_INVITE_TEXT
-                || text == PET_INVITE_ACCEPTED_TEXT
-                || text?.let { UPGRADE_REGEX.matches(it) } == true
-                || text?.let { PET_SET_NAME_REGEX.matches(it) } == true
+    fun isServiceText(text: String?): Boolean = text?.startsWith("tg-streaks:") ?: false
 }

@@ -27,6 +27,7 @@ import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.util.Logger
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreakPetsController(
@@ -132,20 +133,26 @@ class StreakPetsController(
             if (currentDay < endDay)
                 break
 
-            val ids =
-                cachedFetcher.fetchIds(accountId, peerUserId, currentDay, maxPerSide, maxPerSide)
-                    .ifEmpty {
-                        remoteFetcher.fetchIds(
-                            accountId,
-                            peerUserId,
-                            currentDay,
-                            maxPerSide,
-                            maxPerSide
-                        )
-                    }
-                    .toMutableList()
+            val messages = cachedFetcher.fetchRawMessages(
+                accountId,
+                peerUserId,
+                currentDay,
+                maxPerSide,
+                maxPerSide
+            )
+                .ifEmpty {
+                    remoteFetcher.fetchRawMessages(
+                        accountId,
+                        peerUserId,
+                        currentDay,
+                        maxPerSide,
+                        maxPerSide
+                    )
+                }
+                .filterNot { ServiceMessage.isServiceText(it.message) }
+                .toMutableList()
 
-            if (ids.isEmpty()) {
+            if (messages.isEmpty()) {
                 currentDay = currentDay.prev()
                 continue
             }
@@ -154,32 +161,32 @@ class StreakPetsController(
                 val payload = when (task.type) {
                     StreakPetTaskType.EXCHANGE_ONE_MESSAGE -> {
                         StreakPetTaskPayload.ExchangeOneMessage(
-                            ids.removeFirstBy { (_, out) -> out }?.first,
-                            ids.removeFirstBy { (_, out) -> !out }?.first,
+                            messages.removeFirstBy { it.out }?.id,
+                            messages.removeFirstBy { !it.out }?.id,
                         )
                     }
 
                     StreakPetTaskType.SEND_FOUR_MESSAGES_EACH -> {
-                        val fromOwner = ids.removeCountBy(4) { (_, out) -> out }
-                        val fromPeer = ids.removeCountBy(4) { (_, out) -> !out }
+                        val fromOwner = messages.removeCountBy(4) { it.out }
+                        val fromPeer = messages.removeCountBy(4) { !it.out }
 
                         StreakPetTaskPayload.SendFourMessagesEach(
                             fromOwner.size,
-                            fromOwner.lastOrNull()?.first,
+                            fromOwner.lastOrNull()?.id,
                             fromPeer.size,
-                            fromPeer.lastOrNull()?.first,
+                            fromPeer.lastOrNull()?.id,
                         )
                     }
 
                     StreakPetTaskType.SEND_TEN_MESSAGES_EACH -> {
-                        val fromOwner = ids.removeCountBy(10) { (_, out) -> out }
-                        val fromPeer = ids.removeCountBy(10) { (_, out) -> !out }
+                        val fromOwner = messages.removeCountBy(10) { it.out }
+                        val fromPeer = messages.removeCountBy(10) { !it.out }
 
                         StreakPetTaskPayload.SendTenMessagesEach(
                             fromOwner.size,
-                            fromOwner.lastOrNull()?.first,
+                            fromOwner.lastOrNull()?.id,
                             fromPeer.size,
-                            fromPeer.lastOrNull()?.first,
+                            fromPeer.lastOrNull()?.id,
                         )
                     }
                 }
@@ -238,6 +245,8 @@ class StreakPetsController(
         streakPet: StreakPet,
         notCompletedTasks: List<StreakPetTask>
     ) {
+        var streakPet = streakPet
+
         val lastCheckedDay = streakPet.lastCheckedAt
         val now = LocalDate.now()
 
@@ -271,20 +280,41 @@ class StreakPetsController(
                     }
                 }
 
-            val ids =
-                cachedFetcher.fetchIds(accountId, peerUserId, currentDay, fromOwnerMax, fromPeerMax)
-                    .ifEmpty {
-                        remoteFetcher.fetchIds(
-                            accountId,
-                            peerUserId,
-                            currentDay,
-                            fromOwnerMax,
-                            fromPeerMax
-                        )
-                    }
-                    .toMutableList()
+            val messages = cachedFetcher.fetchRawMessages(
+                accountId,
+                peerUserId,
+                currentDay,
+                fromOwnerMax,
+                fromPeerMax
+            )
+                .ifEmpty {
+                    remoteFetcher.fetchRawMessages(
+                        accountId,
+                        peerUserId,
+                        currentDay,
+                        fromOwnerMax,
+                        fromPeerMax
+                    )
+                }
+                .sortedBy { it.id }
+                .filterNot { message ->
+                    if (ServiceMessage.isServiceText(message.message)) {
+                        ServiceMessage.PET_SET_NAME_REGEX.matchEntire(message.message.orEmpty())
+                            ?.groupValues
+                            ?.getOrNull(1)
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let {
+                                streakPet = streakPet.copy(name = it)
+                                dao.update(streakPet)
+                            }
 
-            if (ids.isEmpty()) {
+                        true
+                    } else false
+                }
+                .toMutableList()
+
+            if (messages.isEmpty()) {
                 currentDay = currentDay.next()
                 continue
             }
@@ -296,32 +326,32 @@ class StreakPetsController(
                 val payload = when (task.type) {
                     StreakPetTaskType.EXCHANGE_ONE_MESSAGE -> {
                         StreakPetTaskPayload.ExchangeOneMessage(
-                            ids.removeFirstBy { (_, out) -> out }?.first,
-                            ids.removeFirstBy { (_, out) -> !out }?.first,
+                            messages.removeFirstBy { it.out }?.id,
+                            messages.removeFirstBy { !it.out }?.id,
                         )
                     }
 
                     StreakPetTaskType.SEND_FOUR_MESSAGES_EACH -> {
-                        val fromOwner = ids.removeCountBy(4) { (_, out) -> out }
-                        val fromPeer = ids.removeCountBy(4) { (_, out) -> !out }
+                        val fromOwner = messages.removeCountBy(4) { it.out }
+                        val fromPeer = messages.removeCountBy(4) { !it.out }
 
                         StreakPetTaskPayload.SendFourMessagesEach(
                             fromOwner.size,
-                            fromOwner.lastOrNull()?.first,
+                            fromOwner.lastOrNull()?.id,
                             fromPeer.size,
-                            fromPeer.lastOrNull()?.first,
+                            fromPeer.lastOrNull()?.id,
                         )
                     }
 
                     StreakPetTaskType.SEND_TEN_MESSAGES_EACH -> {
-                        val fromOwner = ids.removeCountBy(10) { (_, out) -> out }
-                        val fromPeer = ids.removeCountBy(10) { (_, out) -> !out }
+                        val fromOwner = messages.removeCountBy(10) { it.out }
+                        val fromPeer = messages.removeCountBy(10) { !it.out }
 
                         StreakPetTaskPayload.SendTenMessagesEach(
                             fromOwner.size,
-                            fromOwner.lastOrNull()?.first,
+                            fromOwner.lastOrNull()?.id,
                             fromPeer.size,
-                            fromPeer.lastOrNull()?.first,
+                            fromPeer.lastOrNull()?.id,
                         )
                     }
                 }
@@ -334,11 +364,8 @@ class StreakPetsController(
 
         val points = tasks.sumOf { if (it.isCompleted) it.type.points else 0 }
 
-        db.withTransaction {
-            dao.update(streakPet.copy(lastCheckedAt = now, points = streakPet.points + points))
-
-            tasks.forEach { taskDao.insertOrUpdateAll(it) }
-        }
+        dao.update(streakPet.copy(lastCheckedAt = now, points = streakPet.points + points))
+        tasks.forEach { taskDao.insertOrUpdateAll(it) }
     }
 
     suspend fun checkAllForUpdates() {
@@ -393,7 +420,7 @@ class StreakPetsController(
                     continue
                 }
 
-                checkForUpdates(accountId, streakPet, notCompletedTasks)
+                db.withTransaction { checkForUpdates(accountId, streakPet, notCompletedTasks) }
             }
         }
     }
@@ -407,6 +434,7 @@ class StreakPetsController(
         out: Boolean
     ) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
         val streakPet = get(accountId, peerUserId)
             ?: run {
                 // !out because if it is true, user already accepted and created streak-pet locally

@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.chat_history_fetcher
 
+import org.telegram.tgnet.TLRPC
 import java.time.LocalDate
 
 
@@ -18,11 +19,11 @@ interface ChatHistoryFetcher {
         untilRevive: Boolean = false
     ): Status
 
-    suspend fun fetchIds(
+    suspend fun fetchRawMessages(
         accountId: Int,
         peerUserId: Long,
         day: LocalDate,
         fromOwnerMax: Int,
         fromPeerMax: Int,
-    ): List<Pair<Int, Boolean>>
+    ): List<TLRPC.Message>
 }
