@@ -651,7 +651,7 @@ class Plugin {
 
         add(ChatContextMenuButton.REBUILD) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return@add
+            val peer = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("rebuild streak for $accountId:$peerUserId") {
                 streaksController.rebuild(accountId, peer) { progress -> progress.showBulletin() }
