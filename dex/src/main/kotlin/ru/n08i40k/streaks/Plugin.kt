@@ -122,13 +122,26 @@ class Plugin {
             if (INSTANCE != null)
                 return
 
-
+            try {
                 INSTANCE = Plugin(
                     logReceiver,
                     translationResolver,
                     ResourcesProvider(resourcesRootPath),
+
                 )
-            INSTANCE!!.onInject()
+            } catch (e: Throwable) {
+                logReceiver.onReceiveValue("Failed to create plugin instance")
+                logReceiver.onReceiveValue(e.toString())
+                logReceiver.onReceiveValue(e.stackTrace.joinToString("\n"))
+                return
+            }
+
+
+            try {
+                INSTANCE!!.onInject()
+            } catch (e: Throwable) {
+                INSTANCE!!.logger.fatal("Failed to inject plugin", e)
+            }
         }
 
         @JvmStatic
@@ -284,11 +297,7 @@ class Plugin {
 
 
     private fun onInject() {
-        try {
-            registerCallbacks()
-        } catch (e: Throwable) {
-            logger.fatal("Failed to register callbacks", e)
-        }
+        registerCallbacks()
 
         logger.info("Injected!")
     }
