@@ -1,11 +1,13 @@
 import com.android.build.api.variant.BuildConfigField
-import org.gradle.api.file.DuplicatesStrategy
-import org.gradle.api.Project
-import org.gradle.api.tasks.Sync
-import org.gradle.kotlin.dsl.coreLibraryDesugaring
+import dev.reformator.stacktracedecoroutinator.gradleplugin.DecoroutinatorPluginExtension
 import java.io.File
-import java.util.zip.ZipFile
 import java.util.Properties
+import java.util.zip.ZipFile
+import org.gradle.api.Project
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.Sync
+import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.coreLibraryDesugaring
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 private val COMPILE_SDK = 36
@@ -15,12 +17,13 @@ private val TARGET_SDK = 36
 private val BUILD_TOOLS_VERSION = "36.1.0"
 private val PROGUARD_RULES_FILE = "proguard-rules.pro"
 private val TELEGRAM_JAR_PATH = "libs/Telegram.jar"
-private val TELEGRAM_COMPILE_PACKAGE_PREFIXES = listOf(
-    "org/telegram/",
-    "com/exteragram/",
-    "androidx/recyclerview/",
-    "java/",
-)
+private val TELEGRAM_COMPILE_PACKAGE_PREFIXES =
+    listOf(
+        "org/telegram/",
+        "com/exteragram/",
+        "androidx/recyclerview/",
+        "java/",
+    )
 
 private fun File.isJarFile(): Boolean = isFile && extension.equals("jar", ignoreCase = true)
 
@@ -33,7 +36,8 @@ private fun File.artifactKey(): String {
     return if (cacheIndex >= 0 && pathSegments.size > cacheIndex + 3) {
         pathSegments[cacheIndex + 2]
     } else {
-        name.removeSuffix(".jar")
+        name
+            .removeSuffix(".jar")
             .let { jarName ->
                 MODULE_NAME_WITH_VERSION.matchEntire(jarName)?.groupValues?.get(1) ?: jarName
             }
@@ -59,11 +63,12 @@ private fun File.extractAarJars(outputDir: File): List<String> {
     artifactDir.mkdirs()
 
     return ZipFile(this).use { zip ->
-        zip.entries().asSequence()
+        zip.entries()
+            .asSequence()
             .filter {
-                !it.isDirectory && (it.name == "classes.jar" || it.name.startsWith("libs/")) && it.name.endsWith(
-                    ".jar"
-                )
+                !it.isDirectory &&
+                        (it.name == "classes.jar" || it.name.startsWith("libs/")) &&
+                        it.name.endsWith(".jar")
             }
             .map { entry ->
                 val outputFile = artifactDir.resolve(entry.name.removePrefix("libs/"))
@@ -131,6 +136,25 @@ plugins {
     id("com.android.library") version "9.0.1"
     id("com.google.devtools.ksp") version "2.3.5"
     id("dev.reformator.stacktracedecoroutinator") version "2.6.1"
+}
+
+configure<DecoroutinatorPluginExtension> {
+    // Android 11 ART rejects some transformed coroutine/runtime bytecode.
+    // Keep decoroutinator active only for debug-oriented tasks/configurations.
+    tasks.include = setOf(""".*Debug.*""")
+    tasks.exclude = setOf(""".*Release.*""")
+    tasksSkippingSpecMethods.exclude = setOf(""".*Release.*""")
+
+    regularDependencyConfigurations.include = setOf("""debug.*""")
+    regularDependencyConfigurations.exclude = setOf("""release.*""")
+    androidDependencyConfigurations.include = setOf("""debug.*""")
+    androidDependencyConfigurations.exclude = setOf("""release.*""")
+    androidRuntimeDependencyConfigurations.include = setOf("""debug.*""")
+    androidRuntimeDependencyConfigurations.exclude = setOf("""release.*""")
+    transformedClassesConfigurations.include = setOf("""debug.*""")
+    transformedClassesConfigurations.exclude = setOf("""release.*""")
+    transformedClassesSkippingSpecMethodsConfigurations.exclude = setOf("""release.*""")
+    embeddedDebugProbesConfigurations.exclude = setOf("""release.*""")
 }
 
 android {
@@ -289,9 +313,7 @@ fun registerBuildDexTask(variant: String) {
 
             val embeddedModules = embeddedJars.map { File(it).artifactKey() }.toSet()
             val filteredRuntimeJars =
-                runtimeJars.filterNot { jarPath ->
-                    File(jarPath).artifactKey() in embeddedModules
-                }
+                runtimeJars.filterNot { jarPath -> File(jarPath).artifactKey() in embeddedModules }
 
             val dexInputs = (classInputs + filteredRuntimeJars + embeddedJars).distinct()
             if (dexInputs.isEmpty()) {
@@ -304,8 +326,7 @@ fun registerBuildDexTask(variant: String) {
             val classpathJars = compileJars
                 .filterNot {
                     val jar = File(it)
-                    it == androidJar.absolutePath ||
-                            jar.artifactKey() in dexInputKeys
+                    it == androidJar.absolutePath || jar.artifactKey() in dexInputKeys
                 }
                 .distinct()
 
