@@ -5,6 +5,7 @@ package ru.n08i40k.streaks.controller
 import androidx.room.withTransaction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
@@ -251,7 +252,8 @@ class StreaksController(
         )
             return Action.GROW
 
-        return when (val status = remoteFetcher.fetchActivity(accountId, peer.id, day, untilRevive)) {
+        return when (val status =
+            remoteFetcher.fetchActivity(accountId, peer.id, day, untilRevive)) {
             is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) Action.REVIVE else Action.GROW
             is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
             is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER
@@ -315,7 +317,7 @@ class StreaksController(
                     Action.REVIVE -> {
                         // Добавляем reviveNow, что бы след индексация была быстрее
                         revives.add(checkedDay)
-                        // Скипаем текущий и предыдущий день, т.к. сегодня reviveNow, а вчера 100% сдох
+                        // Скипаем текущий и предыдущий день, так как сегодня reviveNow, а вчера 100% сдох
                         currentDay = checkedDay.minusDays(2)
                     }
                 }
@@ -646,6 +648,25 @@ class StreaksController(
     suspend fun get(accountId: Int, peerUserId: Long): Streak? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
+    suspend fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? {
+        val streak =
+            dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
+                ?.let { if (it.dead || !isVisibleLength(it.length)) null else it }
+                ?: return null
+
+        val streakLevel = streak.level
+
+        return StreakViewData(
+            streak.length,
+            streakLevel.documentId,
+            streakLevel.color,
+            streak.length == streakLevel.length || streak.length % 100 == 0
+        )
+    }
+
+    fun getViewDataBlocking(accountId: Int, peerUserId: Long): StreakViewData? =
+        runBlocking { getViewData(accountId, peerUserId) }
+
     suspend fun findStartMessageId(accountId: Int, peerUserId: Long): Int? {
         val streak = get(accountId, peerUserId) ?: return null
         val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId) ?: return null
@@ -676,7 +697,9 @@ class StreaksController(
                     )
                 } else {
                     deferred.complete(
-                        Result.success(response ?: throw NullPointerException("History response is null"))
+                        Result.success(
+                            response ?: throw NullPointerException("History response is null")
+                        )
                     )
                 }
             }
@@ -716,21 +739,6 @@ class StreaksController(
         return firstId.takeIf { it > 0 }
     }
 
-    suspend fun getAlive(accountId: Int, peerUserId: Long): Streak? =
-        dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
-            ?.let { if (it.dead || !isVisibleLength(it.length)) null else it }
-
-    suspend fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? {
-        val streak = getAlive(accountId, peerUserId) ?: return null
-        val streakLevel = streak.level
-
-        return StreakViewData(
-            streak.length,
-            streakLevel.documentId,
-            streakLevel.color,
-            streak.length == streakLevel.length || streak.length % 100 == 0
-        )
-    }
 
     suspend fun syncUserState(accountId: Int, peerUserId: Long) {
         val messagesController = MessagesController.getInstance(accountId)
@@ -908,10 +916,10 @@ class StreaksController(
         val streakViewData = getViewData(accountId, user.id) ?: return
         val currentEmojiStatusDocumentId = UserObject.getEmojiStatusDocumentId(user.emoji_status)
         val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
-            Plugin.getInstance()
-                .streakLevelRegistry
-                .levels()
-                .any { it.documentId == currentEmojiStatusDocumentId }
+                Plugin.getInstance()
+                    .streakLevelRegistry
+                    .levels()
+                    .any { it.documentId == currentEmojiStatusDocumentId }
 
         if (!isCurrentEmojiStatusPatched) {
             originalUserStates.putIfAbsent(

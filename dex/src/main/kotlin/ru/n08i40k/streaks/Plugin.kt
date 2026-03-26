@@ -6,6 +6,7 @@
 
 package ru.n08i40k.streaks
 
+import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
@@ -19,7 +20,6 @@ import androidx.room.Room
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -85,6 +85,7 @@ import ru.n08i40k.streaks.ui.StreakPetDialog
 import ru.n08i40k.streaks.ui.StreakPetFabDialog
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
@@ -203,12 +204,15 @@ class Plugin {
 
         @JvmStatic
         fun eject() {
-            INSTANCE?.let {
-                it.onEject()
-                BulletinHelper.show(null, "Streaks plugin has been ejected!")
-            }
+            // do not run on threads that may be destructed
+            AndroidUtilities.runOnUIThread {
+                INSTANCE?.let {
+                    it.onEject()
+                    BulletinHelper.show(null, "Streaks plugin has been ejected!")
+                }
 
-            INSTANCE = null
+                INSTANCE = null
+            }
         }
     }
 
@@ -220,6 +224,7 @@ class Plugin {
     // database
     private val db: PluginDatabase
     private val databaseBackupManager: DatabaseBackupManager
+    private val taskQueue: TaskQueue
 
     // helpers
     val logger: Logger
@@ -276,6 +281,7 @@ class Plugin {
     ) {
         this.logger = Logger(logReceiver)
         this.translator = Translator(translationResolver)
+        this.taskQueue = TaskQueue(this.logger)
         this.resourcesProvider = resourcesProvider
         this.bulletinHelper = BulletinHelper(this.translator)
 
@@ -294,7 +300,12 @@ class Plugin {
             StreakPetsController(this.logger, this.db, this.streaksController)
     }
 
+    fun enqueueTask(name: String, callback: suspend () -> Unit) =
+        taskQueue.enqueueTask(name, callback)
+
     private fun onInject() {
+        taskQueue.startWorker(backgroundScope)
+
         registerChatContextMenuCallbacks()
         registerSettingsMenuCallbacks()
 
@@ -302,11 +313,8 @@ class Plugin {
     }
 
     private fun onFinalizeInject() {
-        val uiLock = CompletableDeferred<Unit>()
-
-        backgroundScope.launch {
+        enqueueTask("patch user's emoji statuses on load") {
             userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
-            uiLock.complete(Unit)
         }
 
         try {
@@ -315,17 +323,16 @@ class Plugin {
             logger.fatal("Failed to hook methods!", e)
         }
 
-        backgroundScope.launch {
-            uiLock.await()
-
+        enqueueTask("check for updates and update UI") {
             // refresh dialogs cells and show saved streaks
-            delay(250)
+            delay(500)
             AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
 
-            syncPeersUi(streaksController.checkAllForUpdates(), refreshAll = true)
+            syncPeersUi(streaksController.checkAllForUpdates())
 
             // refresh dialogs cells and show new streaks
             AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+
             streakPetsController.checkAllForUpdates()
             streaksController.flushCurrentChatPopup()
         }
@@ -345,7 +352,12 @@ class Plugin {
 
     private fun onEject() {
         logger.setFatalSuppression(true)
+
+        if (taskQueue.isWorkerRunning)
+            taskQueue.stopWorker()
+
         backgroundScope.cancel()
+
         AndroidUtilities.runOnUIThread {
             openedPetDialog?.dismiss()
             clearTrackedPetDialog()
@@ -363,7 +375,7 @@ class Plugin {
             streakEmojiRegistry.restoreAll()
             safeParticlesDrawableRegistry.restoreAll()
 
-            runBlocking { streaksController.restorePatchedUsers() }
+            streaksController.restorePatchedUsers()
         } catch (e: Throwable) {
             logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
@@ -388,61 +400,59 @@ class Plugin {
     }
 
     private fun openPetDialog(accountId: Int, peerUserId: Long) {
-        backgroundScope.launch {
-            val uiState = streakPetsController.getUiState(accountId, peerUserId)
+        val uiState = streakPetsController.getViewStateSnapshotBlocking(accountId, peerUserId)
 
-            if (uiState == null) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
-                return@launch
+        if (uiState == null) {
+            bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
+            return
+        }
+
+        AndroidUtilities.runOnUIThread {
+            val fragment = LaunchActivity.getSafeLastFragment()
+            if (fragment == null) {
+                bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
+                return@runOnUIThread
             }
 
-            AndroidUtilities.runOnUIThread {
-                val fragment = LaunchActivity.getSafeLastFragment()
-                if (fragment == null) {
-                    bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
-                    return@runOnUIThread
-                }
+            if (
+                openedPetDialog?.isShowing == true
+                && openedPetDialogAccountId == accountId
+                && openedPetDialogPeerUserId == peerUserId
+            ) {
+                openedPetDialog?.updateState(uiState)
+                return@runOnUIThread
+            }
 
-                if (
-                    openedPetDialog?.isShowing == true
-                    && openedPetDialogAccountId == accountId
-                    && openedPetDialogPeerUserId == peerUserId
-                ) {
-                    openedPetDialog?.updateState(uiState)
-                    return@runOnUIThread
-                }
+            openedPetDialog?.dismiss()
+            clearTrackedPetDialog()
+            dismissPetFab()
 
-                openedPetDialog?.dismiss()
-                clearTrackedPetDialog()
-                dismissPetFab()
-
-                val dialog = StreakPetDialog(
-                    fragment,
-                    uiState,
-                    resourcesProvider,
-                    translator,
-                    onRenameRequested = { newName ->
-                        backgroundScope.launch {
-                            if (!streakPetsController.rename(accountId, peerUserId, newName)) {
-                                return@launch
-                            }
-
-                            serviceMessagesController.sendPetSetName(
-                                accountId,
-                                peerUserId,
-                                newName
-                            )
-                            refreshOpenedPetDialog(accountId, peerUserId)
+            val dialog = StreakPetDialog(
+                fragment,
+                uiState,
+                resourcesProvider,
+                translator,
+                onRenameRequested = { newName ->
+                    enqueueTask("rename pet for $accountId:$peerUserId") {
+                        if (!streakPetsController.rename(accountId, peerUserId, newName)) {
+                            return@enqueueTask
                         }
-                    },
-                    onDismissed = {
-                        refreshPetFabForOpenChat()
-                    }
-                )
 
-                trackPetDialog(accountId, peerUserId, dialog)
-                fragment.showDialog(dialog)
-            }
+                        serviceMessagesController.sendPetSetName(
+                            accountId,
+                            peerUserId,
+                            newName
+                        )
+                        refreshOpenedPetDialog(accountId, peerUserId)
+                    }
+                },
+                onDismissed = {
+                    refreshPetFabForOpenChat()
+                }
+            )
+
+            trackPetDialog(accountId, peerUserId, dialog)
+            fragment.showDialog(dialog)
         }
     }
 
@@ -465,109 +475,108 @@ class Plugin {
             return
         }
 
-        backgroundScope.launch {
-            val uiState = streakPetsController.getUiState(accountId, peerUserId)
+        val uiState = streakPetsController.getViewStateSnapshotBlocking(accountId, peerUserId)
 
-            AndroidUtilities.runOnUIThread {
-                val currentChat = LaunchActivity.getSafeLastFragment() as? ChatActivity
-                if (currentChat == null || currentChat.dialogId != peerUserId) {
-                    dismissPetFab()
-                    return@runOnUIThread
-                }
-
-                if (uiState == null) {
-                    dismissPetFab()
-                    return@runOnUIThread
-                }
-
-                if (
-                    petFabDialog?.isShowing == true
-                    && petFabAccountId == accountId
-                    && petFabPeerUserId == peerUserId
-                ) {
-                    petFabDialog?.updateState(uiState)
-                    return@runOnUIThread
-                }
-
+        AndroidUtilities.runOnUIThread {
+            val currentChat = LaunchActivity.getSafeLastFragment() as? ChatActivity
+            if (currentChat == null || currentChat.dialogId != peerUserId) {
                 dismissPetFab()
+                return@runOnUIThread
+            }
 
-                val context =
-                    currentChat.parentActivity ?: currentChat.context ?: return@runOnUIThread
-                val dialog = StreakPetFabDialog(context, uiState, resourcesProvider) {
-                    dismissPetFab()
-                    openPetDialog(accountId, peerUserId)
-                }
-                val size = AndroidUtilities.dp(76f)
+            if (uiState == null) {
+                dismissPetFab()
+                return@runOnUIThread
+            }
 
-                dialog.touchView.setOnTouchListener(object : View.OnTouchListener {
-                    private var startX = 0f
-                    private var startY = 0f
-                    private var initialX = 0
-                    private var initialY = 0
-                    private var moved = false
+            if (
+                petFabDialog?.isShowing == true
+                && petFabAccountId == accountId
+                && petFabPeerUserId == peerUserId
+            ) {
+                petFabDialog?.updateState(uiState)
+                return@runOnUIThread
+            }
 
-                    override fun onTouch(v: View, event: MotionEvent): Boolean {
-                        val window = dialog.window ?: return false
-                        val attrs = window.attributes
+            dismissPetFab()
 
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
-                                startX = event.rawX
-                                startY = event.rawY
-                                initialX = attrs.x
-                                initialY = attrs.y
-                                moved = false
-                                return true
-                            }
+            val context =
+                currentChat.parentActivity ?: currentChat.context ?: return@runOnUIThread
+            val dialog = StreakPetFabDialog(context, uiState, resourcesProvider) {
+                dismissPetFab()
+                openPetDialog(accountId, peerUserId)
+            }
+            val size = AndroidUtilities.dp(76f)
 
-                            MotionEvent.ACTION_MOVE -> {
-                                val dx = (event.rawX - startX).toInt()
-                                val dy = (event.rawY - startY).toInt()
+            dialog.touchView.setOnTouchListener(object : View.OnTouchListener {
+                private var startX = 0f
+                private var startY = 0f
+                private var initialX = 0
+                private var initialY = 0
+                private var moved = false
 
-                                if (
-                                    abs(dx) > AndroidUtilities.dp(6f)
-                                    || abs(dy) > AndroidUtilities.dp(6f)
-                                ) {
-                                    moved = true
-                                    attrs.x = initialX - dx
-                                    attrs.y = initialY + dy
-                                    petFabOffsetX = attrs.x
-                                    petFabOffsetY = attrs.y
-                                    window.attributes = attrs
-                                }
+                @SuppressLint("ClickableViewAccessibility")
+                override fun onTouch(v: View, event: MotionEvent): Boolean {
+                    val window = dialog.window ?: return false
+                    val attrs = window.attributes
 
-                                return true
-                            }
-
-                            MotionEvent.ACTION_UP -> {
-                                if (!moved) {
-                                    dialog.open()
-                                }
-                                return true
-                            }
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            startX = event.rawX
+                            startY = event.rawY
+                            initialX = attrs.x
+                            initialY = attrs.y
+                            moved = false
+                            return true
                         }
 
-                        return false
-                    }
-                })
+                        MotionEvent.ACTION_MOVE -> {
+                            val dx = (event.rawX - startX).toInt()
+                            val dy = (event.rawY - startY).toInt()
 
-                dialog.show()
-                dialog.window?.apply {
-                    clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                    addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
-                    addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
-                    addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                    setLayout(size, size)
-                    setGravity(Gravity.TOP or Gravity.END)
-                    attributes = attributes.apply {
-                        x = petFabOffsetX
-                        y = petFabOffsetY
+                            if (
+                                abs(dx) > AndroidUtilities.dp(6f)
+                                || abs(dy) > AndroidUtilities.dp(6f)
+                            ) {
+                                moved = true
+                                attrs.x = initialX - dx
+                                attrs.y = initialY + dy
+                                petFabOffsetX = attrs.x
+                                petFabOffsetY = attrs.y
+                                window.attributes = attrs
+                            }
+
+                            return true
+                        }
+
+                        MotionEvent.ACTION_UP -> {
+                            if (!moved) {
+                                dialog.open()
+                            }
+                            return true
+                        }
                     }
+
+                    return false
                 }
-                petFabDialog = dialog
-                petFabAccountId = accountId
-                petFabPeerUserId = peerUserId
+            })
+
+            dialog.show()
+            dialog.window?.apply {
+                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+                addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                setLayout(size, size)
+                setGravity(Gravity.TOP or Gravity.END)
+                attributes = attributes.apply {
+                    x = petFabOffsetX
+                    y = petFabOffsetY
+                }
             }
+            petFabDialog = dialog
+            petFabAccountId = accountId
+            petFabPeerUserId = peerUserId
         }
     }
 
@@ -595,28 +604,27 @@ class Plugin {
             return
         }
 
-        backgroundScope.launch {
-            val refreshedState = streakPetsController.getUiState(accountId, peerUserId)
+        val refreshedState =
+            streakPetsController.getViewStateSnapshotBlocking(accountId, peerUserId)
 
-            AndroidUtilities.runOnUIThread {
-                val dialog = openedPetDialog ?: return@runOnUIThread
-                if (
-                    openedPetDialogAccountId != accountId
-                    || openedPetDialogPeerUserId != peerUserId
-                    || !dialog.isShowing
-                ) {
-                    clearTrackedPetDialog(dialog)
-                    return@runOnUIThread
-                }
-
-                if (refreshedState == null) {
-                    dialog.dismiss()
-                    clearTrackedPetDialog(dialog)
-                    return@runOnUIThread
-                }
-
-                dialog.updateState(refreshedState)
+        AndroidUtilities.runOnUIThread {
+            val dialog = openedPetDialog ?: return@runOnUIThread
+            if (
+                openedPetDialogAccountId != accountId
+                || openedPetDialogPeerUserId != peerUserId
+                || !dialog.isShowing
+            ) {
+                clearTrackedPetDialog(dialog)
+                return@runOnUIThread
             }
+
+            if (refreshedState == null) {
+                dialog.dismiss()
+                clearTrackedPetDialog(dialog)
+                return@runOnUIThread
+            }
+
+            dialog.updateState(refreshedState)
         }
     }
 
@@ -629,27 +637,14 @@ class Plugin {
         }
     }
 
-    private suspend fun syncPeersUi(
-        targets: Iterable<StreaksController.UiSyncTarget>,
-        refreshAll: Boolean = false,
-    ) {
+    private suspend fun syncPeersUi(targets: Iterable<StreaksController.UiSyncTarget>) {
         val syncTargets = targets.distinct()
 
         syncTargets.forEach { streaksController.syncUserState(it.accountId, it.peerUserId) }
 
         AndroidUtilities.runOnUIThread {
-            if (refreshAll) {
-                streakEmojiRegistry.refreshAll()
-                return@runOnUIThread
-            }
-
-            syncTargets
-                .asSequence()
-                .map { it.peerUserId }
-                .toSet()
-                .forEach(streakEmojiRegistry::refreshByPeerUserId)
-
-            streakEmojiRegistry.refreshDialogCells()
+            streakEmojiRegistry.refreshAll()
+            return@runOnUIThread
         }
     }
 
@@ -717,19 +712,10 @@ class Plugin {
 
         add(ChatContextMenuButton.REBUILD) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
             val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return@add
 
-            backgroundScope.launch {
-                val revives = db
-                    .streakReviveDao()
-                    .findByRelation(ownerUserId, peerUserId)
-                    .map { it.revivedAt }
-                    .toSet()
-
-                streaksController.rebuild(accountId, peer, revives) { progress ->
-                    progress.showBulletin()
-                }
+            enqueueTask("rebuild streak for $accountId:$peerUserId") {
+                streaksController.rebuild(accountId, peer) { progress -> progress.showBulletin() }
 
                 streaksController.syncUserState(accountId, peerUserId)
 
@@ -768,19 +754,19 @@ class Plugin {
                 return@add
             }
 
-            backgroundScope.launch {
+            enqueueTask("rebuild streak-pet for $accountId:$peerUserId") {
                 val streakPet = streakPetsController.get(accountId, peerUserId)
 
                 if (streakPet == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 streakPetsController.rebuild(accountId, peer) { progress ->
@@ -817,10 +803,10 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             validatePrivatePeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("try to create streak-pet for $accountId:$peerUserId") {
                 if (streakPetsController.get(accountId, peerUserId) != null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 AndroidUtilities.runOnUIThread {
@@ -847,7 +833,7 @@ class Plugin {
                             .setNegativeButton(
                                 translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_NO)
                             ) { _, _ ->
-                                backgroundScope.launch {
+                                enqueueTask("create streak-pet for $accountId:$peerUserId") {
                                     when (streakPetsController.create(accountId, peerUserId)) {
                                         is StreakPetsController.CreateResult.Created -> {
                                             refreshPetFabForOpenChat()
@@ -893,13 +879,13 @@ class Plugin {
 
             bulletinHelper.showTranslated(TranslationKey.INFO_SEARCHING_STREAK_START_MESSAGE)
 
-            backgroundScope.launch {
+            enqueueTask("go to streak start for $accountId:$peerUserId") {
                 try {
                     val streak = streaksController.get(accountId, peerUserId)
 
                     if (streak == null) {
                         bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                        return@launch
+                        return@enqueueTask
                     }
 
                     val jumpTs = streak.createdAt.toEpochSecondSystem().toInt()
@@ -966,27 +952,27 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peer = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("revive streak for $accountId:$peerUserId") {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 if (!streak.dead) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 if (!streak.canRevive) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 if (!streaksController.reviveNow(accountId, peerUserId)) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 streaksController.patchUser(accountId, peer)
@@ -1004,7 +990,7 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("create debug streak for $accountId:$peerUserId") {
                 streaksController.debugSetThreeDayStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
@@ -1020,12 +1006,12 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("upgrade debug streak for $accountId:$peerUserId") {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 val nextLevel = streakLevelRegistry
@@ -1034,11 +1020,12 @@ class Plugin {
 
                 if (nextLevel == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_STREAK_ALREADY_MAX)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 val newLength =
-                    streaksController.debugUpgradeStreak(accountId, peerUserId) ?: return@launch
+                    streaksController.debugUpgradeStreak(accountId, peerUserId)
+                        ?: return@enqueueTask
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
                     TranslationKey.OK_DEBUG_STREAK_UPGRADED,
@@ -1054,7 +1041,7 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("freeze debug streak for $accountId:$peerUserId") {
                 streaksController.debugFreezeStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
@@ -1070,7 +1057,7 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("kill debug streak for $accountId:$peerUserId") {
                 streaksController.debugMarkDead(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
@@ -1086,10 +1073,10 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("delete debug streak for $accountId:$peerUserId") {
                 if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 syncPeerUi(accountId, peerUserId)
@@ -1106,10 +1093,10 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            backgroundScope.launch {
+            enqueueTask("delete debug streak for $accountId:$peerUserId") {
                 if (!streakPetsController.delete(accountId, peerUserId)) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
-                    return@launch
+                    return@enqueueTask
                 }
 
                 AndroidUtilities.runOnUIThread { dismissPetFab() }
@@ -1155,7 +1142,7 @@ class Plugin {
                 "msg_retry"
             )
 
-            backgroundScope.launch {
+            enqueueTask("rebuild all streaks for $accountId") {
                 try {
                     val result =
                         streaksController.rebuildAll(accountId) { index, total, _, progress ->
@@ -1171,7 +1158,7 @@ class Plugin {
                             )
                         }
 
-                    syncPeersUi(result.uiSyncTargets, refreshAll = true)
+                    syncPeersUi(result.uiSyncTargets)
 
                     bulletinHelper.showTranslated(
                         TranslationKey.FORCE_CHECK_SUMMARY_ALL_SIMPLE,
@@ -1186,7 +1173,7 @@ class Plugin {
         }
 
         add(SettingsActionButton.EXPORT_BACKUP_NOW) {
-            backgroundScope.launch {
+            enqueueTask("export database backup") {
                 try {
                     val backup = databaseBackupManager.exportNow()
                     bulletinHelper.showTranslated(
@@ -1562,7 +1549,7 @@ class Plugin {
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
-                    backgroundScope.launch {
+                    enqueueTask("try to revive streak from notification") {
                         val accountId = UserConfig.selectedAccount
                         val peerUserId = messageObject.dialogId
 
@@ -1570,28 +1557,28 @@ class Plugin {
 
                         if (streak == null) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                            return@launch
+                            return@enqueueTask
                         }
 
                         if (!streak.dead) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
-                            return@launch
+                            return@enqueueTask
                         }
 
                         if (!streak.canRevive) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                            return@launch
+                            return@enqueueTask
                         }
 
                         if (!streaksController.reviveNow(accountId, peerUserId)) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                            return@launch
+                            return@enqueueTask
                         }
                     }
                 }
 
                 ServiceMessage.PET_INVITE_TEXT -> {
-                    backgroundScope.launch {
+                    enqueueTask("try to accept streak-pet invitation from notification") {
                         val accountId = UserConfig.selectedAccount
                         val peerUserId = messageObject.dialogId
                         streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
@@ -1937,12 +1924,10 @@ class Plugin {
                 "user"
             )!!
 
-            val streakViewData = runBlocking {
-                this@Plugin.streaksController.getViewData(
-                    UserConfig.selectedAccount,
-                    user.id
-                )
-            } ?: return@before
+            val streakViewData = streaksController.getViewDataBlocking(
+                UserConfig.selectedAccount,
+                user.id
+            ) ?: return@before
 
             param.args[0] = StreakInfoBottomSheet(dialog, user, streakViewData)
         }
@@ -2047,11 +2032,15 @@ class Plugin {
             }
 
             @Suppress("KotlinConstantConditions")
-            backgroundScope.launch {
+            if (entries.isEmpty())
+                return
+
+            enqueueTask("handle updates for $accountId") {
                 var changed = false
 
                 for ((peerUserId, at, out, messageId, message) in entries) {
-                    val result = streaksController.handleUpdate(accountId, peerUserId, at, out, message)
+                    val result =
+                        streaksController.handleUpdate(accountId, peerUserId, at, out, message)
                     streakPetsController.handleUpdate(
                         accountId,
                         peerUserId,
@@ -2093,7 +2082,7 @@ class Plugin {
 
             val updates = param.args[0] as TLRPC.Updates
 
-            handleUpdates(accountId, updates)
+            enqueueTask("handle incoming message") { handleUpdates(accountId, updates) }
         }
 
         // Обработка исходящих сообщений
@@ -2105,7 +2094,7 @@ class Plugin {
         ) { param ->
             val sendMessageParams = param.args[0] as SendMessagesHelper.SendMessageParams
 
-            backgroundScope.launch {
+            enqueueTask("handle outgoing message") {
                 val accountId = UserConfig.selectedAccount
                 val peerUserId = sendMessageParams.peer
 

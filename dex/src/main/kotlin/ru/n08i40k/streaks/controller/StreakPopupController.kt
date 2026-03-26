@@ -16,21 +16,20 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.Gravity
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import kotlinx.coroutines.launch
+import org.json.JSONObject
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
-import org.json.JSONObject
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.ScheduledStreakPopup
 import ru.n08i40k.streaks.data.Streak
@@ -172,7 +171,7 @@ class StreakPopupController(
         }
 
         val shown = showPopup(popup) {
-            Plugin.getInstance().backgroundScope.launch {
+            Plugin.getInstance().enqueueTask("delete pending popup from database") {
                 dao.delete(popup)
                 isShowing.set(false)
                 flushCurrentChat()

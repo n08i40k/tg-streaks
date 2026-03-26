@@ -11,8 +11,6 @@ import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import android.view.View
 import com.exteragram.messenger.badges.BadgesController
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
@@ -26,8 +24,8 @@ import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawabl
 import org.telegram.ui.Components.Premium.PremiumGradient
 import org.telegram.ui.Stars.StarsReactionsSheet
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.data.StreakViewData
+import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import java.lang.ref.WeakReference
@@ -371,37 +369,33 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
         val plugin = Plugin.getInstance()
 
-        runBlocking {
-            cachedStreakViewData =
-                if (clearStreak)
-                    null
-                else
-                    plugin.streaksController.getViewData(UserConfig.selectedAccount, peerUserId)
-        }
+        cachedStreakViewData =
+            if (!clearStreak)
+                plugin.streaksController.getViewDataBlocking(UserConfig.selectedAccount, peerUserId)
+            else
+                null
 
-        plugin.backgroundScope.launch {
-            AndroidUtilities.runOnUIThread {
-                if (cachedStreakViewData != null)
-                    applyStreakState(cachedStreakViewData!!)
-                else {
-                    if (hasCustomParticles) {
-                        // restore original particles class without custom color or etc.
-                        super.setParticles(false, false)
-                        hasCustomParticles = false
-                    }
-
-                    val dialog =
-                        MessagesController.getInstance(UserConfig.selectedAccount)
-                            .getUserOrChat(peerUserId)
-
-                    when (dialog) {
-                        is TLRPC.User -> applyUserState(dialog)
-                        is TLRPC.Chat -> applyChatState(dialog)
-                    }
+        AndroidUtilities.runOnUIThread {
+            if (cachedStreakViewData != null)
+                applyStreakState(cachedStreakViewData!!)
+            else {
+                if (hasCustomParticles) {
+                    // restore original particles class without custom color or etc.
+                    super.setParticles(false, false)
+                    hasCustomParticles = false
                 }
 
-                this@StreakEmoji.invalidateSelf()
+                val dialog =
+                    MessagesController.getInstance(UserConfig.selectedAccount)
+                        .getUserOrChat(peerUserId)
+
+                when (dialog) {
+                    is TLRPC.User -> applyUserState(dialog)
+                    is TLRPC.Chat -> applyChatState(dialog)
+                }
             }
+
+            this@StreakEmoji.invalidateSelf()
         }
     }
 

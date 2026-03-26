@@ -20,7 +20,7 @@ import ru.n08i40k.streaks.resource.ResourcesProvider
 
 class StreakPetFabDialog(
     context: android.content.Context,
-    initialState: StreakPetsController.UiState,
+    initialState: StreakPetsController.ViewStateSnapshot,
     private val resourcesProvider: ResourcesProvider,
     private val onOpenRequested: () -> Unit,
 ) : Dialog(context) {
@@ -55,7 +55,7 @@ class StreakPetFabDialog(
         )
     }
 
-    fun updateState(newState: StreakPetsController.UiState) {
+    fun updateState(newState: StreakPetsController.ViewStateSnapshot) {
         state = newState
         pushState()
     }

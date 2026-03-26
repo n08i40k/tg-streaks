@@ -40,7 +40,7 @@ import java.io.File
 
 class StreakPetDialog(
     private val fragment: BaseFragment,
-    initialState: StreakPetsController.UiState,
+    initialState: StreakPetsController.ViewStateSnapshot,
     private val resourcesProvider: ResourcesProvider,
     private val translator: Translator,
     private val onRenameRequested: (String) -> Unit,
@@ -103,7 +103,7 @@ class StreakPetDialog(
         }
     }
 
-    fun updateState(newState: StreakPetsController.UiState) {
+    fun updateState(newState: StreakPetsController.ViewStateSnapshot) {
         state = newState
         pushState()
     }
