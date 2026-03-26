@@ -127,7 +127,6 @@ class Plugin {
                     logReceiver,
                     translationResolver,
                     ResourcesProvider(resourcesRootPath),
-
                 )
             } catch (e: Throwable) {
                 logReceiver.onReceiveValue("Failed to create plugin instance")
@@ -295,9 +294,9 @@ class Plugin {
             StreakPetsController(this.logger, this.db, this.streaksController)
     }
 
-
     private fun onInject() {
-        registerCallbacks()
+        registerChatContextMenuCallbacks()
+        registerSettingsMenuCallbacks()
 
         logger.info("Injected!")
     }
@@ -655,23 +654,13 @@ class Plugin {
     }
 
     @OptIn(DelicateCoroutinesApi::class)
-    private fun registerCallbacks() {
+    private fun registerChatContextMenuCallbacks() {
         fun add(key: String, callback: (Long) -> Unit) {
             chatContextMenuCallbackRegistry.register(key) {
                 try {
                     callback(it)
                 } catch (e: Throwable) {
                     logger.fatal("An error occurred while handling context menu entry touch", e)
-                }
-            }
-        }
-
-        fun addSettingAction(key: String, callback: () -> Unit) {
-            settingsActionCallbackRegistry.register(key) {
-                try {
-                    callback()
-                } catch (e: Throwable) {
-                    logger.fatal("An error occurred while handling settings action", e)
                 }
             }
         }
@@ -848,7 +837,11 @@ class Plugin {
                             .setPositiveButton(
                                 translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_YES)
                             ) { _, _ ->
-                                streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
+                                streaksController.setServiceMessagesEnabled(
+                                    accountId,
+                                    peerUserId,
+                                    true
+                                )
                                 serviceMessagesController.sendPetInvite(accountId, peerUserId)
                             }
                             .setNegativeButton(
@@ -1134,12 +1127,27 @@ class Plugin {
             throw RuntimeException("Crash button was pressed")
         }
 
-        addSettingAction(SettingsActionButton.REBUILD_ALL) {
+        chatContextMenuCallbackRegistry.freeze()
+    }
+
+    private fun registerSettingsMenuCallbacks() {
+        fun add(key: String, callback: () -> Unit) {
+            settingsActionCallbackRegistry.register(key) {
+                try {
+                    callback()
+                } catch (e: Throwable) {
+                    logger.fatal("An error occurred while handling settings action", e)
+                }
+            }
+        }
+
+
+        add(SettingsActionButton.REBUILD_ALL) {
             val accountId = UserConfig.selectedAccount
 
             if (streaksController.isRebuildRunning()) {
                 bulletinHelper.showTranslated(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
-                return@addSettingAction
+                return@add
             }
 
             bulletinHelper.showTranslated(
@@ -1177,7 +1185,7 @@ class Plugin {
             }
         }
 
-        addSettingAction(SettingsActionButton.EXPORT_BACKUP_NOW) {
+        add(SettingsActionButton.EXPORT_BACKUP_NOW) {
             backgroundScope.launch {
                 try {
                     val backup = databaseBackupManager.exportNow()
@@ -1193,10 +1201,8 @@ class Plugin {
             }
         }
 
-        chatContextMenuCallbackRegistry.freeze()
         settingsActionCallbackRegistry.freeze()
     }
-
 
     private fun hookMethods() {
         fun add(method: Member, hook: XC_MethodHook) {
