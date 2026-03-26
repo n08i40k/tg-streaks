@@ -25,6 +25,8 @@ import kotlin.math.abs
 
 class StreakPetFabDialog(
     context: android.content.Context,
+    val accountId: Int,
+    val peerUserId: Long,
     initialState: StreakPetsController.ViewStateSnapshot,
     private val resourcesProvider: ResourcesProvider,
     private val onOpenRequested: () -> Unit,
@@ -41,6 +43,9 @@ class StreakPetFabDialog(
     private var offsetY = DEFAULT_OFFSET_Y
 
     private val webView: WebView = createWebView()
+
+    fun matches(accountId: Int, peerUserId: Long): Boolean =
+        this.accountId == accountId && this.peerUserId == peerUserId
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -174,7 +179,8 @@ class StreakPetFabDialog(
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - startX).toInt()
                         val dy = (event.rawY - startY).toInt()
-                        val bounds = resolveDragBounds(size = v.width.takeIf { it > 0 } ?: fabSizePx())
+                        val bounds =
+                            resolveDragBounds(size = v.width.takeIf { it > 0 } ?: fabSizePx())
 
                         if (
                             abs(dx) > AndroidUtilities.dp(6f)
@@ -258,13 +264,16 @@ class StreakPetFabDialog(
         val displayMetrics = context.resources.displayMetrics
         val statusBarHeight = resolveStatusBarHeight()
         val bottomInset = resolveBottomSystemInset()
-        val maxOffsetX = (displayMetrics.widthPixels - size).coerceAtLeast(0)
-        val minOffsetY = statusBarHeight
-        val maxOffsetY = (displayMetrics.heightPixels - bottomInset - size).coerceAtLeast(minOffsetY)
+
+        val maxOffsetX = (displayMetrics.widthPixels - size)
+            .coerceAtLeast(0)
+
+        val maxOffsetY = (displayMetrics.heightPixels - bottomInset - size)
+            .coerceAtLeast(statusBarHeight)
 
         return DragBounds(
             maxOffsetX = maxOffsetX,
-            minOffsetY = minOffsetY,
+            minOffsetY = statusBarHeight,
             maxOffsetY = maxOffsetY
         )
     }

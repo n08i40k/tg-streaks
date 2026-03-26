@@ -246,11 +246,7 @@ class Plugin {
     val streakPetLevelRegistry: StreakPetLevelRegistry = StreakPetLevelRegistry()
 
     private var openedPetDialog: StreakPetDialog? = null
-    private var openedPetDialogAccountId: Int? = null
-    private var openedPetDialogPeerUserId: Long? = null
     private var petFabDialog: StreakPetFabDialog? = null
-    private var petFabAccountId: Int? = null
-    private var petFabPeerUserId: Long? = null
     private var petFabEnabled: Boolean = true
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
@@ -390,8 +386,6 @@ class Plugin {
     private fun dismissPetFab() {
         petFabDialog?.dismiss()
         petFabDialog = null
-        petFabAccountId = null
-        petFabPeerUserId = null
     }
 
     private fun openPetDialog(accountId: Int, peerUserId: Long) {
@@ -411,8 +405,7 @@ class Plugin {
 
             if (
                 openedPetDialog?.isShowing == true
-                && openedPetDialogAccountId == accountId
-                && openedPetDialogPeerUserId == peerUserId
+                && openedPetDialog?.matches(accountId, peerUserId) == true
             ) {
                 openedPetDialog?.updateState(uiState)
                 return@runOnUIThread
@@ -424,6 +417,8 @@ class Plugin {
 
             val dialog = StreakPetDialog(
                 fragment,
+                accountId,
+                peerUserId,
                 uiState,
                 resourcesProvider,
                 translator,
@@ -446,7 +441,7 @@ class Plugin {
                 }
             )
 
-            trackPetDialog(accountId, peerUserId, dialog)
+            trackPetDialog(dialog)
             fragment.showDialog(dialog)
         }
     }
@@ -486,8 +481,7 @@ class Plugin {
 
             if (
                 petFabDialog?.isShowing == true
-                && petFabAccountId == accountId
-                && petFabPeerUserId == peerUserId
+                && petFabDialog?.matches(accountId, peerUserId) == true
             ) {
                 petFabDialog?.updateState(uiState)
                 return@runOnUIThread
@@ -497,15 +491,19 @@ class Plugin {
 
             val context =
                 currentChat.parentActivity ?: currentChat.context ?: return@runOnUIThread
-            val dialog = StreakPetFabDialog(context, uiState, resourcesProvider) {
+            val dialog = StreakPetFabDialog(
+                context,
+                accountId,
+                peerUserId,
+                uiState,
+                resourcesProvider,
+            ) {
                 dismissPetFab()
                 openPetDialog(accountId, peerUserId)
             }
             dialog.show()
             dialog.configureWindow()
-            petFabDiaog = dialog
-            petFabAccountId = accountId
-            petFabPeerUserId = peerUserId
+            petFabDialog = dialog
         }
     }
 
@@ -515,21 +513,17 @@ class Plugin {
         }
 
         openedPetDialog = null
-        openedPetDialogAccountId = null
-        openedPetDialogPeerUserId = null
     }
 
-    private fun trackPetDialog(accountId: Int, peerUserId: Long, dialog: StreakPetDialog) {
+    private fun trackPetDialog(dialog: StreakPetDialog) {
         openedPetDialog = dialog
-        openedPetDialogAccountId = accountId
-        openedPetDialogPeerUserId = peerUserId
         dialog.setOnDismissListener {
             clearTrackedPetDialog(dialog)
         }
     }
 
     private fun refreshOpenedPetDialog(accountId: Int, peerUserId: Long) {
-        if (openedPetDialogAccountId != accountId || openedPetDialogPeerUserId != peerUserId) {
+        if (openedPetDialog?.matches(accountId, peerUserId) != true) {
             return
         }
 
@@ -538,11 +532,7 @@ class Plugin {
 
         AndroidUtilities.runOnUIThread {
             val dialog = openedPetDialog ?: return@runOnUIThread
-            if (
-                openedPetDialogAccountId != accountId
-                || openedPetDialogPeerUserId != peerUserId
-                || !dialog.isShowing
-            ) {
+            if (!dialog.matches(accountId, peerUserId) || !dialog.isShowing) {
                 clearTrackedPetDialog(dialog)
                 return@runOnUIThread
             }
@@ -709,6 +699,7 @@ class Plugin {
         add(ChatContextMenuButton.TOGGLE_PET_FAB) { peerUserId ->
             val accountId = UserConfig.selectedAccount
             validatePrivatePeer(accountId, peerUserId) ?: return@add
+
             petFabEnabled = !petFabEnabled
 
             if (petFabEnabled) {

@@ -40,6 +40,8 @@ import java.io.File
 
 class StreakPetDialog(
     private val fragment: BaseFragment,
+    val accountId: Int,
+    val peerUserId: Long,
     initialState: StreakPetsController.ViewStateSnapshot,
     private val resourcesProvider: ResourcesProvider,
     private val translator: Translator,
@@ -70,6 +72,9 @@ class StreakPetDialog(
 
     private lateinit var webView: WebView
 
+    fun matches(accountId: Int, peerUserId: Long): Boolean =
+        this.accountId == accountId && this.peerUserId == peerUserId
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -81,7 +86,7 @@ class StreakPetDialog(
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setDimAmount(0.18f)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            decorView?.setPadding(0, 0, 0, 0)
+            decorView.setPadding(0, 0, 0, 0)
         }
 
         webView = createWebView()
@@ -99,7 +104,7 @@ class StreakPetDialog(
 
         window?.apply {
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            decorView?.setPadding(0, 0, 0, 0)
+            decorView.setPadding(0, 0, 0, 0)
         }
     }
 
