@@ -6,15 +6,11 @@
 
 package ru.n08i40k.streaks
 
-import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import android.webkit.ValueCallback
 import androidx.room.Room
 import de.robv.android.xposed.XC_MethodHook
@@ -95,7 +91,6 @@ import java.lang.reflect.Member
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import kotlin.math.abs
 
 typealias LogReceiver = ValueCallback<String>
 typealias TranslationResolver = java.util.function.Function<String, String?>
@@ -257,8 +252,6 @@ class Plugin {
     private var petFabAccountId: Int? = null
     private var petFabPeerUserId: Long? = null
     private var petFabEnabled: Boolean = true
-    private var petFabOffsetX: Int = 20
-    private var petFabOffsetY: Int = 250
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
@@ -392,6 +385,8 @@ class Plugin {
         logger.info("Ejected!")
     }
 
+    // pet fab methods
+
     private fun dismissPetFab() {
         petFabDialog?.dismiss()
         petFabDialog = null
@@ -506,75 +501,9 @@ class Plugin {
                 dismissPetFab()
                 openPetDialog(accountId, peerUserId)
             }
-            val size = AndroidUtilities.dp(76f)
-
-            dialog.touchView.setOnTouchListener(object : View.OnTouchListener {
-                private var startX = 0f
-                private var startY = 0f
-                private var initialX = 0
-                private var initialY = 0
-                private var moved = false
-
-                @SuppressLint("ClickableViewAccessibility")
-                override fun onTouch(v: View, event: MotionEvent): Boolean {
-                    val window = dialog.window ?: return false
-                    val attrs = window.attributes
-
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> {
-                            startX = event.rawX
-                            startY = event.rawY
-                            initialX = attrs.x
-                            initialY = attrs.y
-                            moved = false
-                            return true
-                        }
-
-                        MotionEvent.ACTION_MOVE -> {
-                            val dx = (event.rawX - startX).toInt()
-                            val dy = (event.rawY - startY).toInt()
-
-                            if (
-                                abs(dx) > AndroidUtilities.dp(6f)
-                                || abs(dy) > AndroidUtilities.dp(6f)
-                            ) {
-                                moved = true
-                                attrs.x = initialX - dx
-                                attrs.y = initialY + dy
-                                petFabOffsetX = attrs.x
-                                petFabOffsetY = attrs.y
-                                window.attributes = attrs
-                            }
-
-                            return true
-                        }
-
-                        MotionEvent.ACTION_UP -> {
-                            if (!moved) {
-                                dialog.open()
-                            }
-                            return true
-                        }
-                    }
-
-                    return false
-                }
-            })
-
             dialog.show()
-            dialog.window?.apply {
-                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
-                addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
-                addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                setLayout(size, size)
-                setGravity(Gravity.TOP or Gravity.END)
-                attributes = attributes.apply {
-                    x = petFabOffsetX
-                    y = petFabOffsetY
-                }
-            }
-            petFabDialog = dialog
+            dialog.configureWindow()
+            petFabDiaog = dialog
             petFabAccountId = accountId
             petFabPeerUserId = peerUserId
         }
