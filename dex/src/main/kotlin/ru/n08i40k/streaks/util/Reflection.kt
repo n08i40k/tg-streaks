@@ -14,7 +14,7 @@ fun cloneFields(
 
     while (c != null && c != Object::class.java) {
         for (f in c.declaredFields) {
-            if (Modifier.isStatic(f.modifiers)) continue;
+            if (Modifier.isStatic(f.modifiers)) continue
 
             f.isAccessible = true
             f.set(dest, f.get(src))

@@ -111,7 +111,7 @@ class DatabaseBackupManager(
         sqliteDb.query("PRAGMA wal_checkpoint(FULL)").close()
 
         target.copyTo(backup, overwrite = true)
-        pruneOldBackups(backupsDir, keep = MAX_BACKUPS)
+        pruneOldBackups(backupsDir)
         return backup
     }
 
@@ -124,11 +124,11 @@ class DatabaseBackupManager(
             mkdirs()
         }
 
-    private fun pruneOldBackups(backupsDir: File, keep: Int) {
+    private fun pruneOldBackups(backupsDir: File) {
         backupsDir.listFiles()
             ?.filter { it.isFile && it.extension == BACKUP_EXTENSION }
             ?.sortedByDescending(File::lastModified)
-            ?.drop(keep)
+            ?.drop(MAX_BACKUPS)
             ?.forEach(File::delete)
     }
 }

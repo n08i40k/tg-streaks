@@ -242,5 +242,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     }
 
     // idk what is this
-    override fun setLastVisible(p0: Boolean) {}
+    @Suppress("EmptyMethod", "unused")
+    override fun setLastVisible(p0: Boolean) {
+    }
 }

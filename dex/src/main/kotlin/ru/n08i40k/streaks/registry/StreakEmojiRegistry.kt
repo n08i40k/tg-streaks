@@ -15,24 +15,6 @@ class StreakEmojiRegistry {
 
     fun add(data: StreakEmoji.EjectData) = elements.add(data)
 
-    fun restoreByPeerUserId(peerUserId: Long) {
-        val it = elements.iterator()
-
-        while (it.hasNext()) {
-            val el = it.next()
-
-            val currentPeerUserId = el.drawable.get()?.getPeerUserId() ?: run {
-                it.remove()
-                continue
-            }
-
-            if (currentPeerUserId == peerUserId) {
-                it.remove()
-                el.restore()
-            }
-        }
-    }
-
     fun restoreAll() {
         elements.forEach { it.restore() }
         elements.clear()
