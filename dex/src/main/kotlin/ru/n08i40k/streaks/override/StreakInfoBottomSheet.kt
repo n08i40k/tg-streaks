@@ -221,6 +221,10 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         super.rowCount = 0
         super.updateRows()
 
+        super.recyclerListView.setOnItemClickListener { view, _ ->
+            onAdditionItemClicked(view)
+        }
+
         if (!UserConfig.getInstance(UserConfig.selectedAccount).isPremium)
             super.rowCount -= 1
 
