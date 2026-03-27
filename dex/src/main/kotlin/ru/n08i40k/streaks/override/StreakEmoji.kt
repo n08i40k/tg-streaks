@@ -517,11 +517,15 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             width + getTextWidth()
     }
 
-    fun getAdditionalWidth(): Int =
-        if (canDrawBadge)
-            getTextWidth() + 1
-        else
-            getTextWidth()
+    fun getAdditionalWidth(): Int {
+        if (!canDrawBadge)
+            return getTextWidth()
+
+        if (cachedStreakViewData == null)
+            return size + 1
+
+        return getTextWidth() + 1
+    }
 
     override fun setAlpha(alpha: Int) {
         badgeView?.alpha = alpha
