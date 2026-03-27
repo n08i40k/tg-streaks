@@ -242,6 +242,10 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
         "en": "Debug: streak is already at max level",
         "ru": "Debug: стрик уже на максимальном уровне",
     },
+    "dex_sheet.dialog_title": {
+        "en": "Streak info",
+        "ru": "Информация о стрике",
+    },
     "dex_sheet.feature_how.title": {
         "en": "How does this work?",
         "ru": "Как это работает?",

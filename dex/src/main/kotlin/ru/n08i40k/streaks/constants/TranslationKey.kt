@@ -1,6 +1,7 @@
 package ru.n08i40k.streaks.constants
 
 object TranslationKey {
+    const val DEX_SHEET_DIALOG_TITLE = "dex_sheet.dialog_title"
     const val FORCE_CHECK_DAY_PROGRESS_CHAT = "force_check.day_progress_chat"
     const val FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE = "force_check.day_progress_all_simple"
     const val FORCE_CHECK_SUMMARY_ALL_SIMPLE = "force_check.summary_all_simple"

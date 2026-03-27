@@ -249,6 +249,10 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         )?.visibility = View.GONE
     }
 
+    override fun getTitle(): CharSequence {
+        return t(TranslationKey.DEX_SHEET_DIALOG_TITLE)
+    }
+
     override fun onContainerDraw(canvas: Canvas?) {
         super.onContainerDraw(canvas)
 
