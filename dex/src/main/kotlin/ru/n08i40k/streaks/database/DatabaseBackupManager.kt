@@ -4,9 +4,9 @@ import android.content.Context
 import android.os.Environment
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.telegram.messenger.ApplicationLoader
+import ru.n08i40k.streaks.util.RuntimeGuard
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -44,10 +44,15 @@ class DatabaseBackupManager(
     }
 
     suspend fun runAutoBackupLoop() {
+        RuntimeGuard.awaitAppForeground("automatic database backup loop")
         ensureAutoBackupIfDue()
 
         while (currentCoroutineContext().isActive) {
-            delay(millisUntilNextAutoBackup())
+            RuntimeGuard.pauseAwareDelay(
+                millisUntilNextAutoBackup(),
+                "automatic database backup loop"
+            )
+            RuntimeGuard.awaitAppForeground("automatic database backup loop")
             ensureAutoBackupIfDue()
         }
     }

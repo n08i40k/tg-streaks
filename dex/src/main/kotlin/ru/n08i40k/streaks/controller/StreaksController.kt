@@ -35,6 +35,7 @@ import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.RuntimeGuard
 import java.time.LocalDate
 import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -243,7 +244,8 @@ class StreaksController(
 
             while (true) {
                 val checkedDay = currentDay
-                val action = fetchStreakActionForDay(accountId, peerUser, checkedDay, revives, false)
+                val action =
+                    fetchStreakActionForDay(accountId, peerUser, checkedDay, revives, false)
                 val progress = RebuildProgress(
                     peerUser = peerUser,
                     daysChecked = (startDay.toEpochDay() - checkedDay.toEpochDay()).toInt() + 1,
@@ -631,7 +633,8 @@ class StreaksController(
 
     suspend fun findStartMessageId(accountId: Int, peerUserId: Long): Int? {
         val streak = get(accountId, peerUserId) ?: return null
-        val peerUser = MessagesController.getInstance(accountId).getInputPeer(peerUserId) ?: return null
+        val peerUser =
+            MessagesController.getInstance(accountId).getInputPeer(peerUserId) ?: return null
         val connectionsManager = ConnectionsManager.getInstance(accountId)
 
         val startTs = streak.createdAt.toEpochSecondUtc().toInt()
@@ -643,6 +646,11 @@ class StreaksController(
         var firstDate = 0
 
         while (true) {
+            RuntimeGuard.awaitAppForegroundAndConnection(
+                accountId,
+                "streak start lookup for $accountId:$peerUserId",
+            )
+
             val req = TLRPC.TL_messages_getHistory().apply {
                 this.peer = peerUser
                 offset_id = offsetId
@@ -876,7 +884,8 @@ class StreaksController(
 
     suspend fun patchUser(accountId: Int, peerUser: TLRPC.User) {
         val streakViewData = getViewData(accountId, peerUser.id) ?: return
-        val currentEmojiStatusDocumentId = UserObject.getEmojiStatusDocumentId(peerUser.emoji_status)
+        val currentEmojiStatusDocumentId =
+            UserObject.getEmojiStatusDocumentId(peerUser.emoji_status)
         val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
                 Plugin.getInstance()
                     .streakLevelRegistry

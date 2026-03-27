@@ -82,6 +82,7 @@ import ru.n08i40k.streaks.ui.StreakPetDialog
 import ru.n08i40k.streaks.ui.StreakPetFabDialog
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.cloneFields
@@ -276,12 +277,17 @@ class Plugin {
         translationResolver: TranslationResolver,
         resourcesProvider: ResourcesProvider,
     ) {
+        // core utils
         this.logger = Logger(logReceiver)
         this.translator = Translator(translationResolver)
-        this.taskQueue = TaskQueue(this.logger)
         this.resourcesProvider = resourcesProvider
         this.bulletinHelper = BulletinHelper(this.translator)
 
+        // background work
+        RuntimeGuard.setLogger(this.logger)
+        this.taskQueue = TaskQueue(this.logger)
+
+        // database
         this.db = Room.databaseBuilder(
             ApplicationLoader.applicationContext,
             PluginDatabase::class.java,
@@ -292,6 +298,7 @@ class Plugin {
 
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
 
+        // controllers
         this.streaksController = StreaksController(this.db, this.logger, this.resourcesProvider)
         this.streakPetsController =
             StreakPetsController(this.logger, this.db, this.streaksController)
@@ -632,7 +639,10 @@ class Plugin {
             val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("rebuild streak for $accountId:$peerUserId") {
-                streaksController.rebuild(accountId, peerUser) { progress -> progress.showBulletin() }
+                streaksController.rebuild(
+                    accountId,
+                    peerUser
+                ) { progress -> progress.showBulletin() }
 
                 streaksController.syncUserState(accountId, peerUserId)
 

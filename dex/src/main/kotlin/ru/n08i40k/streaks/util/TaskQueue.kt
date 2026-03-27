@@ -24,6 +24,8 @@ class TaskQueue(private val logger: Logger) {
         suspend fun worker(channel: ReceiveChannel<WorkerTask>) {
             for (task in channel) {
                 try {
+                    RuntimeGuard.awaitAppForeground("task '${task.name}'")
+
                     logger.info("[TaskQueue] Processing task '${task.name}'...")
                     val start = Instant.now().toEpochMilli()
 

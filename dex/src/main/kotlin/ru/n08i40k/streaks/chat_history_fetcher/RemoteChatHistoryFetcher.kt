@@ -3,7 +3,6 @@
 package ru.n08i40k.streaks.chat_history_fetcher
 
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
@@ -14,6 +13,7 @@ import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
+import ru.n08i40k.streaks.util.RuntimeGuard
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -69,7 +69,14 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         var attempt = 0
 
         while (true) {
-            delay(200)
+            RuntimeGuard.awaitAppForegroundAndConnection(
+                accountId,
+                "history fetch for $accountId:$peerUserId",
+            )
+            RuntimeGuard.pauseAwareDelay(
+                200L,
+                "history fetch backoff for $accountId:$peerUserId",
+            )
 
             attempt++
 
@@ -97,7 +104,10 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
                 showRetryBulletin(RETRY_DELAY_MS)
 
-                delay(RETRY_DELAY_MS)
+                RuntimeGuard.pauseAwareDelay(
+                    RETRY_DELAY_MS,
+                    "history retry delay for $accountId:$peerUserId",
+                )
                 continue
             }
 
@@ -112,7 +122,10 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
                     showRetryBulletin(RETRY_DELAY_MS)
 
-                    delay(RETRY_DELAY_MS)
+                    RuntimeGuard.pauseAwareDelay(
+                        RETRY_DELAY_MS,
+                        "history retry delay for $accountId:$peerUserId",
+                    )
                     continue
                 }
 
@@ -132,7 +145,10 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
                         showRetryBulletin(retryDelayMs)
 
-                        delay(retryDelayMs)
+                        RuntimeGuard.pauseAwareDelay(
+                            retryDelayMs,
+                            "history retry delay for $accountId:$peerUserId",
+                        )
                         continue
                     }
 
