@@ -22,7 +22,6 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
@@ -209,12 +208,16 @@ class Plugin {
         fun eject() {
             // do not run on threads that may be destructed
             AndroidUtilities.runOnUIThread {
-                INSTANCE?.let {
-                    it.onEject()
-                    BulletinHelper.show(null, "Streaks plugin has been ejected!")
-                }
+                try {
+                    INSTANCE?.let {
+                        it.onEject()
+                        BulletinHelper.show(null, "Streaks plugin has been ejected!")
+                    }
 
-                INSTANCE = null
+                    INSTANCE = null
+                } catch (e: Throwable) {
+                    INSTANCE?.logger?.fatal("Failed to eject plugin", e, true)
+                }
             }
         }
     }
@@ -334,7 +337,6 @@ class Plugin {
 
         enqueueTask("check for updates and update UI") {
             // refresh dialogs cells and show saved streaks
-            delay(500)
             AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
 
             syncPeersUi(streaksController.checkAllForUpdates())
@@ -367,11 +369,9 @@ class Plugin {
 
         backgroundScope.cancel()
 
-        AndroidUtilities.runOnUIThread {
-            openedPetDialog?.dismiss()
-            clearTrackedPetDialog()
-            dismissPetFab()
-        }
+        openedPetDialog?.dismiss()
+        clearTrackedPetDialog()
+        dismissPetFab()
 
         try {
             hooks.forEach { it.unhook() }
