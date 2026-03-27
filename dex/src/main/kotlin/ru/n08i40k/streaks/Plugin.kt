@@ -1160,6 +1160,18 @@ class Plugin {
             )
         }
 
+        after(
+            AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable::class.java.getDeclaredMethod(
+                "setParticles",
+                Boolean::class.java,
+                Boolean::class.java
+            )
+        ) { param ->
+            SafeParticlesDrawable.ensureParticlesSafety(
+                param.thisObject as AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
+            )
+        }
+
         // Чат в списке, нужно ещё увеличить bounds по x, иначе текста не будет
         after(
             DialogCell::class.java.getConstructor(
@@ -1794,12 +1806,12 @@ class Plugin {
             if (userId < 0)
                 return@after
 
-            StreakEmoji.encapsulate(
+            param.result = StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatusDrawable"),
                 param.args[3] as Int,
                 userId
-            )
+            ) ?: param.result
         }
 
         after(
@@ -1819,6 +1831,9 @@ class Plugin {
         ) { param ->
             val thisObject = param.thisObject as ChatAvatarContainer
             val thisClass = ChatAvatarContainer::class.java
+            val titleTextView =
+                getFieldValue<SimpleTextView>(thisClass, thisObject, "titleTextView")
+                    ?: return@after
 
             val dialogId = getFieldValue<ChatActivity>(
                 thisClass,
@@ -1829,12 +1844,17 @@ class Plugin {
             if (dialogId < 0)
                 return@after
 
-            StreakEmoji.encapsulate(
+            val oldDrawable = titleTextView.rightDrawable
+            val newDrawable = StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatusDrawable"),
                 null,
                 dialogId
-            )
+            ) ?: return@after
+
+            if (oldDrawable !== newDrawable && oldDrawable is AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) {
+                titleTextView.rightDrawable = newDrawable
+            }
 
             backgroundScope.launch {
                 streaksController.flushCurrentChatPopup()

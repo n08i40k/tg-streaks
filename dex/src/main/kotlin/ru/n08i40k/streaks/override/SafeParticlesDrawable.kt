@@ -45,50 +45,44 @@ class SafeParticlesDrawable(base: SwapAnimatedEmojiDrawable) : SwapAnimatedEmoji
                 )
             }
         }
-    }
 
-    private val particlesField by lazy {
-        getField(SwapAnimatedEmojiDrawable::class.java, "particles")
-    }
-
-    private val hasParticlesField by lazy {
-        getField(SwapAnimatedEmojiDrawable::class.java, "hasParticles")
-    }
-
-    private val particlesAlphaField by lazy {
-        getField(SwapAnimatedEmojiDrawable::class.java, "particlesAlpha")
-    }
-
-    private fun ensureParticlesSafety() {
-        val particles = particlesField.get(this) as? StarsReactionsSheet.Particles
-        if (particles != null) {
-            return
+        private val particlesField by lazy {
+            getField(SwapAnimatedEmojiDrawable::class.java, "particles")
         }
 
-        val hasParticles = hasParticlesField.getBoolean(this)
-        val particlesAlpha = particlesAlphaField.get(this) as? AnimatedFloat ?: return
-
-        if (!hasParticles && particlesAlpha.get() <= 0f) {
-            return
+        private val hasParticlesField by lazy {
+            getField(SwapAnimatedEmojiDrawable::class.java, "hasParticles")
         }
 
-        particlesField.set(this, StarsReactionsSheet.Particles(1, 8))
+        private val particlesAlphaField by lazy {
+            getField(SwapAnimatedEmojiDrawable::class.java, "particlesAlpha")
+        }
+
+        fun ensureParticlesSafety(drawable: SwapAnimatedEmojiDrawable): StarsReactionsSheet.Particles? {
+            val particles = particlesField.get(drawable) as? StarsReactionsSheet.Particles
+
+            if (particles != null)
+                return particles
+
+            val hasParticles = hasParticlesField.getBoolean(drawable)
+            val particlesAlpha = particlesAlphaField.get(drawable) as? AnimatedFloat
+
+            if (!hasParticles && (particlesAlpha == null || particlesAlpha.get() <= 0f))
+                return null
+
+            return StarsReactionsSheet.Particles(1, 8)
+                .also { particlesField.set(drawable, it) }
+        }
     }
 
     init {
         cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
-    }
-
-    override fun draw(canvas: Canvas) {
-        ensureParticlesSafety()
-        super.draw(canvas)
+        ensureParticlesSafety(this)
     }
 
     override fun setParticles(p0: Boolean, p1: Boolean) {
         super.setParticles(p0, if (!p0) true else p1)
 
-        if (p0) {
-            ensureParticlesSafety()
-        }
+        if (p0) ensureParticlesSafety(this)
     }
 }

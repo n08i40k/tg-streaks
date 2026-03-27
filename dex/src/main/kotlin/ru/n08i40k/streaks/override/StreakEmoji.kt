@@ -83,14 +83,14 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             peerUserId: Long,
             canDrawBadge: Boolean = false,
             nameTextView: SimpleTextView? = null,
-        ) {
+        ): StreakEmoji? {
             if (arrayIndex == null) {
-                val drawable = (field.get(obj) ?: return) as? SwapAnimatedEmojiDrawable
+                val drawable = (field.get(obj) ?: return null) as? SwapAnimatedEmojiDrawable
                     ?: throw TypeCastException("Field value type isn't SwapAnimatedEmojiDrawable")
 
                 if (drawable as? StreakEmoji != null) {
                     drawable.setPeerUserId(peerUserId)
-                    return
+                    return drawable
                 }
 
                 val newDrawable = StreakEmoji(
@@ -110,10 +110,10 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                         nameTextView?.let(::WeakReference)
                     )
                 )
-                return
+                return newDrawable
             }
 
-            val unknownArray = field.get(obj) ?: return
+            val unknownArray = field.get(obj) ?: return null
 
             if (!unknownArray::class.java.isArray)
                 throw TypeCastException("Field value type isn't array")
@@ -127,11 +127,11 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             if (array.size <= arrayIndex)
                 throw IndexOutOfBoundsException("SwapAnimatedEmojiDrawable[] size is below $arrayIndex")
 
-            val drawable = array[arrayIndex] ?: return
+            val drawable = array[arrayIndex] ?: return null
 
             if (drawable as? StreakEmoji != null) {
                 drawable.setPeerUserId(peerUserId)
-                return
+                return drawable
             }
 
             val newDrawable = StreakEmoji(
@@ -150,6 +150,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     nameTextView?.let(::WeakReference)
                 )
             )
+
+            return newDrawable
         }
 
         private val paint by lazy {
@@ -255,21 +257,9 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
             super.set(document, 7, true)
             super.setParticles(true, false)
+            applyColoredParticles(streakViewData)
 
             invalidateSelf()
-        }
-
-        getField(SwapAnimatedEmojiDrawable::class.java, "particles").let { field ->
-            val parent = field.get(this) as? StarsReactionsSheet.Particles
-            val child =
-                parent?.let { base ->
-                    ColoredParticles(
-                        base,
-                        streakViewData.accentColor.toArgb()
-                    )
-                }
-
-            field.set(this, child)
         }
 
         hasCustomParticles = true
@@ -402,6 +392,19 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     fun refresh(clearStreak: Boolean = false) =
         setPeerUserId(peerUserId, clearStreak)
 
+    private fun applyColoredParticles(streakViewData: StreakViewData) {
+        val particles = SafeParticlesDrawable.ensureParticlesSafety(this) ?: return
+
+        if (particles is ColoredParticles) {
+            return
+        }
+
+        getField(SwapAnimatedEmojiDrawable::class.java, "particles").set(
+            this,
+            ColoredParticles(particles, streakViewData.accentColor.toArgb())
+        )
+    }
+
     constructor(
         base: SwapAnimatedEmojiDrawable,
         peerUserId: Long,
@@ -411,6 +414,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         0
     ) {
         cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
+        SafeParticlesDrawable.ensureParticlesSafety(this)
         this.canDrawBadge = canDrawBadge
         this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 
