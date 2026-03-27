@@ -10,12 +10,23 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.view.View
 import android.widget.FrameLayout
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.DocumentObject
+import org.telegram.messenger.FileLoader
+import org.telegram.messenger.ImageLoader
+import org.telegram.messenger.ImageLocation
+import org.telegram.messenger.MessageObject
 import org.telegram.messenger.R
+import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
+import org.telegram.ui.ActionBar.Theme
+import org.telegram.ui.Components.AnimatedEmojiDrawable
+import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.FireworksOverlay
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.Premium.GLIcon.GLIconTextureView
@@ -88,6 +99,72 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         return text
     }
 
+    private fun createTitleEmoji(documentId: Long): View {
+        val icon = BackupImageView(context)
+        icon.setLayerNum(7)
+        icon.setRoundRadius(AndroidUtilities.dp(4f))
+
+        fun applyDocument(document: TLRPC.Document) {
+            val thumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, 90)
+            val thumbDrawable =
+                DocumentObject.getSvgThumb(
+                    document.thumbs,
+                    Theme.key_windowBackgroundWhiteGrayIcon,
+                    0.2f,
+                    true
+                )?.apply {
+                    if (MessageObject.isAnimatedStickerDocument(document, true)) {
+                        overrideWidthAndHeight(512, 512)
+                    }
+                }
+
+            val mediaLocation = ImageLocation.getForDocument(document)
+            val mediaFilter =
+                if ("video/webm" == document.mime_type)
+                    "140_140_${ImageLoader.AUTOPLAY_FILTER}"
+                else
+                    "140_140"
+
+            icon.setImage(
+                mediaLocation,
+                mediaFilter,
+                ImageLocation.getForDocument(thumb, document),
+                "140_140",
+                thumbDrawable,
+                document
+            )
+
+            if (AnimatedEmojiDrawable.make(UserConfig.selectedAccount, 0, document)
+                    .canOverrideColor()
+            ) {
+                icon.setColorFilter(
+                    PorterDuffColorFilter(
+                        getThemedColor(Theme.key_windowBackgroundWhiteBlueIcon),
+                        PorterDuff.Mode.SRC_IN
+                    )
+                )
+            } else {
+                icon.setColorFilter(null)
+            }
+        }
+
+        AnimatedEmojiDrawable.findDocument(UserConfig.selectedAccount, documentId)
+            ?.let {
+                applyDocument(it)
+                return icon
+            }
+
+        AnimatedEmojiDrawable
+            .getDocumentFetcher(UserConfig.selectedAccount)
+            .fetchDocument(documentId) { document ->
+                AndroidUtilities.runOnUIThread {
+                    applyDocument(document)
+                }
+            }
+
+        return icon
+    }
+
     constructor(
         base: PremiumPreviewBottomSheet,
         user: TLRPC.User,
@@ -98,9 +175,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         user,
         base.resourcesProvider
     ) {
-        this.statusStickerSet = base.statusStickerSet
-        this.overrideTitleIcon = base.overrideTitleIcon
-        this.isEmojiStatus = base.isEmojiStatus
+        this.overrideTitleIcon = createTitleEmoji(streakViewData.documentId)
+        this.isEmojiStatus = true
 
         this.streakViewData = streakViewData
 
@@ -180,16 +256,18 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         if (this.titleView == null || this.subtitleView == null)
             return
 
-        this.titleView[1].text =
-            AndroidUtilities.replaceTags(
-                tf(
-                    TranslationKey.DEX_SHEET_TITLE,
-                    "name" to user.first_name,
-                    "days" to streakViewData.length
-                )
+        val title = AndroidUtilities.replaceTags(
+            tf(
+                TranslationKey.DEX_SHEET_TITLE,
+                "name" to user.first_name,
+                "days" to streakViewData.length
             )
-        this.subtitleView.text =
-            AndroidUtilities.replaceTags(t(TranslationKey.DEX_SHEET_SUBTITLE))
+        )
+
+        this.titleView[0].text = title
+        this.titleView[1].text = title
+
+        this.subtitleView.text = AndroidUtilities.replaceTags(t(TranslationKey.DEX_SHEET_SUBTITLE))
 
         if (viewType != 0)
             return

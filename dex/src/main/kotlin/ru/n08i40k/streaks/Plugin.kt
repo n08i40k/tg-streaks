@@ -6,7 +6,6 @@
 
 package ru.n08i40k.streaks
 
-import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -1863,9 +1862,13 @@ class Plugin {
 
         // Хук отображения диалоговых окон для замены PremiumPreviewBottomSheet
         before(
-            BaseFragment::class.java.getDeclaredMethod("showDialog", Dialog::class.java)
+            BaseFragment::class.java
+                .getDeclaredMethods()
+                .filter { it.name == "showDialog" }
+                .sortedByDescending { it.parameterCount }[0]
         ) { param ->
             val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return@before
+
             val user = getFieldValue<TLRPC.User>(
                 PremiumPreviewBottomSheet::class.java,
                 dialog,
