@@ -23,6 +23,7 @@ private val TELEGRAM_COMPILE_PACKAGE_PREFIXES =
         "com/exteragram/",
         "androidx/recyclerview/",
         "java/",
+        "j$/"
     )
 
 private fun File.isJarFile(): Boolean = isFile && extension.equals("jar", ignoreCase = true)
