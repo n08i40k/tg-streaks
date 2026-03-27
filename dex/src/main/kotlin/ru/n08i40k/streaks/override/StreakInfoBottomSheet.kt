@@ -221,6 +221,9 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         super.rowCount = 0
         super.updateRows()
 
+        if (!UserConfig.getInstance(UserConfig.selectedAccount).isPremium)
+            super.rowCount -= 1
+
         if (streakViewData.isJubilee) {
             super.setAnimateConfetti(true)
 
@@ -238,6 +241,12 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
                 fireworksOverlay
             )
         }
+
+        getFieldValue<FrameLayout>(
+            PremiumPreviewBottomSheet::class.java,
+            this,
+            "buttonContainer"
+        )?.visibility = View.GONE
     }
 
     override fun onContainerDraw(canvas: Canvas?) {
