@@ -89,7 +89,7 @@ class StreakPetsController(
     ): ViewStateSnapshot? = runBlocking { getViewStateSnapshot(accountId, peerUserId, day) }
 
     data class RebuildProgress(
-        val user: TLRPC.User,
+        val peerUser: TLRPC.User,
         val daysChecked: Int,
     ) {
         fun showBulletin() {
@@ -98,7 +98,7 @@ class StreakPetsController(
             val message = plugin.translator.translate(
                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_CHAT,
                 mapOf(
-                    "peer_name" to user.label,
+                    "peer_name" to peerUser.label,
                     "days_checked" to daysChecked.toString(),
                 )
             )
@@ -114,11 +114,11 @@ class StreakPetsController(
 
     private suspend fun rebuildInTransaction(
         accountId: Int,
-        peer: TLRPC.User,
+        peerUser: TLRPC.User,
         onProgressUpdate: (progress: RebuildProgress) -> Unit
     ) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val peerUserId = peer.id
+        val peerUserId = peerUser.id
 
         val name = dao.findByRelation(ownerUserId, peerUserId)!!.name
         dao.deleteByRelation(ownerUserId, peerUserId)
@@ -198,7 +198,7 @@ class StreakPetsController(
 
             onProgressUpdate(
                 RebuildProgress(
-                    user = peer,
+                    peerUser = peerUser,
                     daysChecked = (startDay.toEpochDay() - currentDay.toEpochDay()).toInt() + 1
                 )
             )
@@ -225,18 +225,18 @@ class StreakPetsController(
     // do not call this func if streak pet is not existing
     suspend fun rebuild(
         accountId: Int,
-        peer: TLRPC.User,
+        peerUser: TLRPC.User,
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
         if (!rebuildLock.compareAndSet(false, true)) {
-            logger.info("Unable to rebuild peer $accountId:${peer.id} because another rebuild is already running")
+            logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
             return
         }
 
         try {
-            db.withTransaction { rebuildInTransaction(accountId, peer, onProgressUpdate) }
+            db.withTransaction { rebuildInTransaction(accountId, peerUser, onProgressUpdate) }
         } catch (e: Throwable) {
-            logger.fatal("Failed to rebuild peer $accountId:${peer.id}", e)
+            logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         } finally {
             rebuildLock.set(false)
         }

@@ -66,7 +66,7 @@ class StreaksController(
     )
 
     data class RebuildProgress(
-        val user: TLRPC.User,
+        val peerUser: TLRPC.User,
         val daysChecked: Int,
     ) {
         fun showBulletin() {
@@ -75,7 +75,7 @@ class StreaksController(
             val message = plugin.translator.translate(
                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_CHAT,
                 mapOf(
-                    "peer_name" to user.label,
+                    "peer_name" to peerUser.label,
                     "days_checked" to daysChecked.toString(),
                 )
             )
@@ -144,9 +144,9 @@ class StreaksController(
         }
 
         if (dialogId == 0L) {
-            dialogId = dialog.peer?.let { peer ->
+            dialogId = dialog.peer?.let { peerUser ->
                 try {
-                    DialogObject.getPeerDialogId(peer)
+                    DialogObject.getPeerDialogId(peerUser)
                 } catch (_: Throwable) {
                     0L
                 }
@@ -191,7 +191,7 @@ class StreaksController(
 
     private suspend fun fetchStreakActionForDay(
         accountId: Int,
-        peer: TLRPC.User,
+        peerUser: TLRPC.User,
         day: LocalDate,
         revives: Set<LocalDate>,
         untilRevive: Boolean
@@ -200,7 +200,7 @@ class StreaksController(
             return Action.REVIVE
 
         when (val status =
-            cachedFetcher.fetchActivity(accountId, peer.id, day, untilRevive)) {
+            cachedFetcher.fetchActivity(accountId, peerUser.id, day, untilRevive)) {
             is ChatHistoryFetcher.Status.FromBoth -> return if (status.wasRevived) Action.REVIVE else Action.GROW
             is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) return Action.REVIVE
             is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) return Action.REVIVE
@@ -208,7 +208,7 @@ class StreaksController(
         }
 
         return when (val status =
-            remoteFetcher.fetchActivity(accountId, peer.id, day, untilRevive)) {
+            remoteFetcher.fetchActivity(accountId, peerUser.id, day, untilRevive)) {
             is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) Action.REVIVE else Action.GROW
             is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
             is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER
@@ -218,20 +218,20 @@ class StreaksController(
 
     suspend fun rebuild(
         accountId: Int,
-        peer: TLRPC.User,
+        peerUser: TLRPC.User,
         revives: Set<LocalDate>? = null,
         ignoreLock: Boolean = false,
         sendServiceMessages: Boolean = false,
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
         if (!ignoreLock && !rebuildLock.compareAndSet(false, true)) {
-            logger.info("Unable to rebuild peer $accountId:${peer.id} because another rebuild is already running")
+            logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
             return
         }
 
         try {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-            val peerUserId = peer.id
+            val peerUserId = peerUser.id
 
             val revives = (revives ?: reviveDao.findByRelation(ownerUserId, peerUserId)
                 .map { it.revivedAt }).toMutableSet()
@@ -243,9 +243,9 @@ class StreaksController(
 
             while (true) {
                 val checkedDay = currentDay
-                val action = fetchStreakActionForDay(accountId, peer, checkedDay, revives, false)
+                val action = fetchStreakActionForDay(accountId, peerUser, checkedDay, revives, false)
                 val progress = RebuildProgress(
-                    user = peer,
+                    peerUser = peerUser,
                     daysChecked = (startDay.toEpochDay() - checkedDay.toEpochDay()).toInt() + 1,
                 )
 
@@ -313,7 +313,7 @@ class StreaksController(
 
             // TODO: service message abt upgrade?
         } catch (e: Throwable) {
-            logger.fatal("Failed to rebuild peer $accountId:${peer.id}", e)
+            logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         } finally {
             if (!ignoreLock)
                 rebuildLock.set(false)
@@ -323,7 +323,7 @@ class StreaksController(
     suspend fun rebuildAll(
         accountId: Int,
         sendServiceMessages: Boolean = false,
-        onProgressUpdate: (index: Int, total: Int, peer: TLRPC.User, progress: RebuildProgress) -> Unit
+        onProgressUpdate: (index: Int, total: Int, peerUser: TLRPC.User, progress: RebuildProgress) -> Unit
     ): RebuildAllResult {
         if (!rebuildLock.compareAndSet(false, true)) {
             logger.info("Unable to rebuild all peers for $accountId because another rebuild is already running")
@@ -335,12 +335,12 @@ class StreaksController(
             val revives = reviveDao.findAllByOwnerUserId(ownerUserId).toSet()
             val peers = collectEligiblePrivateUsers(accountId)
 
-            for ((index, user) in peers.withIndex()) {
+            for ((index, peerUser) in peers.withIndex()) {
                 val peerRevives =
-                    revives.filter { it.peerUserId == user.id }.map { it.revivedAt }.toSet()
+                    revives.filter { it.peerUserId == peerUser.id }.map { it.revivedAt }.toSet()
 
-                rebuild(accountId, user, peerRevives, true, sendServiceMessages) {
-                    onProgressUpdate(index, peers.size, user, it)
+                rebuild(accountId, peerUser, peerRevives, true, sendServiceMessages) {
+                    onProgressUpdate(index, peers.size, peerUser, it)
                 }
 
             }
@@ -369,7 +369,7 @@ class StreaksController(
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val peerUserId = streak.peerUserId
 
-        val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return
+        val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return
 
         // if last checked day is active, check next
         var currentDay = minOf(
@@ -398,7 +398,7 @@ class StreaksController(
                 break
 
             when (val action =
-                fetchStreakActionForDay(accountId, peer, currentDay, revives, false)) {
+                fetchStreakActionForDay(accountId, peerUser, currentDay, revives, false)) {
                 Action.GROW -> {
                     updateFromOwnerAt = currentDay
                     updateFromPeerAt = currentDay
@@ -424,7 +424,7 @@ class StreaksController(
 
                     val restoredAfterDeath = fetchStreakActionForDay(
                         accountId,
-                        peer,
+                        peerUser,
                         currentDay.next(),
                         revives,
                         true
@@ -631,7 +631,7 @@ class StreaksController(
 
     suspend fun findStartMessageId(accountId: Int, peerUserId: Long): Int? {
         val streak = get(accountId, peerUserId) ?: return null
-        val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId) ?: return null
+        val peerUser = MessagesController.getInstance(accountId).getInputPeer(peerUserId) ?: return null
         val connectionsManager = ConnectionsManager.getInstance(accountId)
 
         val startTs = streak.createdAt.toEpochSecondUtc().toInt()
@@ -644,7 +644,7 @@ class StreaksController(
 
         while (true) {
             val req = TLRPC.TL_messages_getHistory().apply {
-                this.peer = peer
+                this.peer = peerUser
                 offset_id = offsetId
                 offset_date = offsetDate
                 limit = 100
@@ -704,18 +704,18 @@ class StreaksController(
 
     suspend fun syncUserState(accountId: Int, peerUserId: Long) {
         val messagesController = MessagesController.getInstance(accountId)
-        val user = messagesController.getUser(peerUserId)
+        val peerUser = messagesController.getUser(peerUserId)
 
         if (getViewData(accountId, peerUserId) == null) {
             restoreUser(accountId, peerUserId)
             return
         }
 
-        if (user == null)
+        if (peerUser == null)
             return
 
-        patchUser(accountId, user)
-        messagesController.putUser(user, false, true)
+        patchUser(accountId, peerUser)
+        messagesController.putUser(peerUser, false, true)
     }
 
     suspend fun debugSetThreeDayStreak(accountId: Int, peerUserId: Long): Int {
@@ -874,9 +874,9 @@ class StreaksController(
         return true
     }
 
-    suspend fun patchUser(accountId: Int, user: TLRPC.User) {
-        val streakViewData = getViewData(accountId, user.id) ?: return
-        val currentEmojiStatusDocumentId = UserObject.getEmojiStatusDocumentId(user.emoji_status)
+    suspend fun patchUser(accountId: Int, peerUser: TLRPC.User) {
+        val streakViewData = getViewData(accountId, peerUser.id) ?: return
+        val currentEmojiStatusDocumentId = UserObject.getEmojiStatusDocumentId(peerUser.emoji_status)
         val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
                 Plugin.getInstance()
                     .streakLevelRegistry
@@ -885,18 +885,18 @@ class StreaksController(
 
         if (!isCurrentEmojiStatusPatched) {
             originalUserStates.putIfAbsent(
-                user.id,
+                peerUser.id,
                 OriginalUserState(
-                    premium = user.premium,
-                    emojiStatus = user.emoji_status
+                    premium = peerUser.premium,
+                    emojiStatus = peerUser.emoji_status
                 )
             )
         }
 
-        user.premium = true
+        peerUser.premium = true
 
         @Suppress("CAST_NEVER_SUCCEEDS")
-        user.emoji_status = TLRPC.TL_emojiStatus()
+        peerUser.emoji_status = TLRPC.TL_emojiStatus()
             .apply { document_id = streakViewData.documentId } as TLRPC.EmojiStatus
     }
 
@@ -905,11 +905,11 @@ class StreaksController(
         val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
         for (streak in streaks) {
-            val user = messagesController.getUser(streak.peerUserId) ?: continue
+            val peerUser = messagesController.getUser(streak.peerUserId) ?: continue
 
-            patchUser(accountId, user)
+            patchUser(accountId, peerUser)
 
-            messagesController.putUser(user, false, true)
+            messagesController.putUser(peerUser, false, true)
         }
     }
 

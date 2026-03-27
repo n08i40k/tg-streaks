@@ -492,8 +492,8 @@ class StreakPopupController(
     }
 
     private fun resolvePeerName(accountId: Int, peerUserId: Long): String {
-        val user = MessagesController.getInstance(accountId).getUser(peerUserId)
-        val fullName = user?.let { UserObject.getUserName(it) }?.takeIf { it.isNotBlank() }
+        val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
+        val fullName = peerUser?.let { UserObject.getUserName(it) }?.takeIf { it.isNotBlank() }
 
         return fullName ?: peerUserId.toString()
     }

@@ -606,33 +606,33 @@ class Plugin {
         }
 
         fun validateDebugPeer(accountId: Int, peerUserId: Long): TLRPC.User? {
-            val peer = MessagesController.getInstance(accountId).getUser(peerUserId)
+            val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
-            if (!isPeerValid(peer)) {
+            if (!isPeerValid(peerUser)) {
                 bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
                 return null
             }
 
-            return peer
+            return peerUser
         }
 
         fun validatePrivatePeer(accountId: Int, peerUserId: Long): TLRPC.User? {
-            val peer = MessagesController.getInstance(accountId).getUser(peerUserId)
+            val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
-            if (!isPeerValid(peer)) {
+            if (!isPeerValid(peerUser)) {
                 bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
                 return null
             }
 
-            return peer
+            return peerUser
         }
 
         add(ChatContextMenuButton.REBUILD) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validatePrivatePeer(accountId, peerUserId) ?: return@add
+            val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("rebuild streak for $accountId:$peerUserId") {
-                streaksController.rebuild(accountId, peer) { progress -> progress.showBulletin() }
+                streaksController.rebuild(accountId, peerUser) { progress -> progress.showBulletin() }
 
                 streaksController.syncUserState(accountId, peerUserId)
 
@@ -647,10 +647,10 @@ class Plugin {
                     bulletinHelper.showTranslated(
                         TranslationKey.FORCE_CHECK_SUMMARY_CHAT,
                         mapOf(
-                            "peer_name" to (peer.username?.takeIf { it.isNotBlank() }
+                            "peer_name" to (peerUser.username?.takeIf { it.isNotBlank() }
                                 ?.let { "@$it" }
-                                ?: UserObject.getUserName(peer).takeIf { it.isNotBlank() }
-                                ?: peer.id.toString()),
+                                ?: UserObject.getUserName(peerUser).takeIf { it.isNotBlank() }
+                                ?: peerUser.id.toString()),
                             "days" to rebuiltStreak.length.toString(),
                             "revives" to rebuiltStreak.revivesCount.toString(),
                         ),
@@ -664,7 +664,7 @@ class Plugin {
 
         add(ChatContextMenuButton.REBUILD_PET) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validatePrivatePeer(accountId, peerUserId) ?: return@add
+            val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             if (streakPetsController.isRebuildRunning()) {
                 bulletinHelper.showTranslated(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
@@ -686,7 +686,7 @@ class Plugin {
                     return@enqueueTask
                 }
 
-                streakPetsController.rebuild(accountId, peer) { progress ->
+                streakPetsController.rebuild(accountId, peerUser) { progress ->
                     progress.showBulletin()
                 }
             }
@@ -868,7 +868,7 @@ class Plugin {
 
         add(ChatContextMenuButton.REVIVE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validatePrivatePeer(accountId, peerUserId) ?: return@add
+            val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("revive streak for $accountId:$peerUserId") {
                 val streak = streaksController.get(accountId, peerUserId)
@@ -893,8 +893,8 @@ class Plugin {
                     return@enqueueTask
                 }
 
-                streaksController.patchUser(accountId, peer)
-                MessagesController.getInstance(accountId).putUser(peer, false, true)
+                streaksController.patchUser(accountId, peerUser)
+                MessagesController.getInstance(accountId).putUser(peerUser, false, true)
                 streakEmojiRegistry.refreshByPeerUserId(peerUserId)
                 AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
                 bulletinHelper.showTranslated(
@@ -906,7 +906,7 @@ class Plugin {
 
         add(ChatContextMenuButton.DEBUG_CREATE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("create debug streak for $accountId:$peerUserId") {
                 streaksController.debugSetThreeDayStreak(accountId, peerUserId)
@@ -917,12 +917,12 @@ class Plugin {
                 )
             }
 
-            logger.info("[Context Menu] Debug-create clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-create clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_UPGRADE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("upgrade debug streak for $accountId:$peerUserId") {
                 val streak = streaksController.get(accountId, peerUserId)
@@ -952,12 +952,12 @@ class Plugin {
                 )
             }
 
-            logger.info("[Context Menu] Debug-upgrade clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-upgrade clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_FREEZE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("freeze debug streak for $accountId:$peerUserId") {
                 streaksController.debugFreezeStreak(accountId, peerUserId)
@@ -968,12 +968,12 @@ class Plugin {
                 )
             }
 
-            logger.info("[Context Menu] Debug-freeze clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-freeze clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_KILL) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("kill debug streak for $accountId:$peerUserId") {
                 streaksController.debugMarkDead(accountId, peerUserId)
@@ -984,12 +984,12 @@ class Plugin {
                 )
             }
 
-            logger.info("[Context Menu] Debug-kill clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-kill clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_DELETE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("delete debug streak for $accountId:$peerUserId") {
                 if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
@@ -1004,12 +1004,12 @@ class Plugin {
                 )
             }
 
-            logger.info("[Context Menu] Debug-delete clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-delete clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_DELETE_PET) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peer = validateDebugPeer(accountId, peerUserId) ?: return@add
+            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
             enqueueTask("delete debug streak for $accountId:$peerUserId") {
                 if (!streakPetsController.delete(accountId, peerUserId)) {
@@ -1025,7 +1025,7 @@ class Plugin {
                 )
             }
 
-            logger.info("[Context Menu] Debug-delete-pet clicked on ${peer.id}")
+            logger.info("[Context Menu] Debug-delete-pet clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_CRASH) { _ ->
@@ -1067,7 +1067,7 @@ class Plugin {
                             bulletinHelper.showTranslated(
                                 TranslationKey.FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE,
                                 mapOf(
-                                    "peer_name" to progress.user.label,
+                                    "peer_name" to progress.peerUser.label,
                                     "days_checked" to progress.daysChecked.toString(),
                                     "checked_chats" to (index + 1).toString(),
                                     "total_chats" to total.toString(),

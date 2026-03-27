@@ -160,12 +160,12 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         var fromPeer = false
         var wasRevived = false
 
-        val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
+        val inputPeer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
         val connectionsManager = ConnectionsManager.getInstance(accountId)
 
         reqLoop@ while (true) {
             val req = TLRPC.TL_messages_getHistory().apply {
-                this.peer = peer
+                this.peer = inputPeer
                 offset_id = offsetId
                 offset_date = endLocalEpoch
                 add_offset = if (offsetId != 0) 1 else 0
@@ -241,7 +241,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
         val messages = arrayListOf<TLRPC.Message>()
 
-        val peer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
+        val inputPeer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
         val connectionsManager = ConnectionsManager.getInstance(accountId)
 
         var fromOwnerCount = 0
@@ -249,7 +249,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
         reqLoop@ while (true) {
             val req = TLRPC.TL_messages_getHistory().apply {
-                this.peer = peer
+                this.peer = inputPeer
                 offset_id = offsetId
                 offset_date = endLocalEpoch
                 add_offset = if (offsetId != 0) 1 else 0
