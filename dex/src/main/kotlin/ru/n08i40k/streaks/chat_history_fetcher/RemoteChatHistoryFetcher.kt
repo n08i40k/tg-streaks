@@ -137,7 +137,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                     }
 
                     throw RuntimeException(
-                        "Failed to fetchActivity chat activity $accountId:$peerUserId",
+                        "Failed to fetch chat activity $accountId:$peerUserId",
                         Exception(result.error.toString())
                     )
                 }
