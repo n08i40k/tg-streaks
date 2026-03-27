@@ -23,9 +23,6 @@ object TranslationKey {
     const val INFO_SEARCHING_STREAK_START_MESSAGE = "info.searching_streak_start_message"
     const val INFO_EXACT_START_MESSAGE_NOT_FOUND = "info.exact_start_message_not_found"
     const val INFO_PRIVATE_USER_ONLY = "info.private_user_only"
-    const val INFO_ACTION_NOT_AVAILABLE_FOR_BOTS = "info.action_not_available_for_bots"
-    const val INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS =
-        "info.action_not_available_for_deleted_users"
     const val INFO_NO_STREAK_PET_FOR_CHAT = "info.no_streak_pet_for_chat"
     const val INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT = "info.streak_pet_already_exists_for_chat"
     const val INFO_STREAK_NOT_ENDED_YET = "info.streak_not_ended_yet"

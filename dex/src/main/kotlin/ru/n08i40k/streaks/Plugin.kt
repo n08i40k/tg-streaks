@@ -64,6 +64,7 @@ import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
 import ru.n08i40k.streaks.database.MIGRATION_3_5
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
@@ -309,6 +310,11 @@ class Plugin {
     }
 
     private fun onFinalizeInject() {
+        enqueueTask("prune invalid streaks and pets") {
+            streaksController.pruneInvalid()
+            streakPetsController.pruneInvalid()
+        }
+
         enqueueTask("patch user's emoji statuses on load") {
             userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
         }
@@ -600,22 +606,9 @@ class Plugin {
         }
 
         fun validateDebugPeer(accountId: Int, peerUserId: Long): TLRPC.User? {
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-
-            if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
-                return null
-            }
-
             val peer = MessagesController.getInstance(accountId).getUser(peerUserId)
 
-            if (
-                peer == null
-                || UserObject.isBot(peer)
-                || UserObject.isDeleted(peer)
-                || UserObject.isReplyUser(peer)
-                || UserObject.isUserSelf(peer)
-            ) {
+            if (!isPeerValid(peer)) {
                 bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
                 return null
             }
@@ -624,25 +617,10 @@ class Plugin {
         }
 
         fun validatePrivatePeer(accountId: Int, peerUserId: Long): TLRPC.User? {
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+            val peer = MessagesController.getInstance(accountId).getUser(peerUserId)
 
-            if (peerUserId <= 0L || peerUserId == ownerUserId) {
+            if (!isPeerValid(peer)) {
                 bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return null
-            }
-
-            val peer = MessagesController.getInstance(accountId).getUser(peerUserId) ?: run {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
-                return null
-            }
-
-            if (UserObject.isBot(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_BOTS)
-                return null
-            }
-
-            if (UserObject.isDeleted(peer)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_ACTION_NOT_AVAILABLE_FOR_DELETED_USERS)
                 return null
             }
 

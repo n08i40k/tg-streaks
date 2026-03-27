@@ -19,6 +19,9 @@ import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.data.StreakPetTaskType
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.extension.PeerType
+import ru.n08i40k.streaks.extension.getPeerType
+import ru.n08i40k.streaks.extension.isPeerValidOrBot
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
@@ -27,7 +30,6 @@ import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.util.Logger
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreakPetsController(
@@ -434,11 +436,15 @@ class StreakPetsController(
         out: Boolean
     ) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val peerType = getPeerType(accountId, peerUserId)
+
+        if (peerType == PeerType.INVALID)
+            return
 
         val streakPet = get(accountId, peerUserId)
             ?: run {
                 // !out because if it is true, user already accepted and created streak-pet locally
-                if (!out && message == ServiceMessage.PET_INVITE_ACCEPTED_TEXT)
+                if (peerType == PeerType.VALID && !out && message == ServiceMessage.PET_INVITE_ACCEPTED_TEXT)
                     return@run create(accountId, peerUserId, at).streakPet
                 else
                     return@run null
@@ -468,6 +474,7 @@ class StreakPetsController(
         ).associateBy { it.type }.toMutableMap()
 
         val missingTasksForTargetDay = mutableListOf<StreakPetTask>()
+
         StreakPetTask.getNewTasksList(ownerUserId, peerUserId, targetDay)
             .forEach {
                 if (tasksByType.putIfAbsent(it.type, it) == null) {
@@ -554,9 +561,13 @@ class StreakPetsController(
             }
         }
 
-        val lastCheckedAt =
-            if (streakPet.lastCheckedAt < targetDay) targetDay else streakPet.lastCheckedAt
-        val pointsToAdd = if (updatedTask?.isCompleted == true) updatedTask.type.points else 0
+        val lastCheckedAt = maxOf(streakPet.lastCheckedAt, targetDay)
+
+        val pointsToAdd =
+            if (updatedTask?.isCompleted == true)
+                updatedTask.type.points
+            else
+                0
 
         if (updatedTask == null && backfillTasks.isEmpty() && lastCheckedAt == streakPet.lastCheckedAt)
             return
@@ -647,5 +658,17 @@ class StreakPetsController(
         dao.deleteByRelation(ownerUserId, peerUserId)
 
         return true
+    }
+
+    suspend fun pruneInvalid() {
+        db.withTransaction {
+            for (accountId in userConfigAuthorizedIds) {
+                val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+                dao.findAllByOwnerUserId(ownerUserId)
+                    .filterNot { isPeerValidOrBot(accountId, it.peerUserId) }
+                    .forEach { dao.delete(it) }
+            }
+        }
     }
 }

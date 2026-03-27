@@ -24,6 +24,10 @@ import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakRevive
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.extension.PeerType
+import ru.n08i40k.streaks.extension.getPeerType
+import ru.n08i40k.streaks.extension.isPeerValid
+import ru.n08i40k.streaks.extension.isPeerValidOrBot
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
@@ -153,75 +157,24 @@ class StreaksController(
     }
 
     private fun collectEligiblePrivateUsers(accountId: Int): List<TLRPC.User> {
-        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val messagesController = MessagesController.getInstance(accountId)
         val usersById = LinkedHashMap<Long, TLRPC.User>()
-        val dialogs = messagesController.getDialogs(0)
 
-        dialogs?.forEach { dialog ->
-            if (dialog == null)
-                return@forEach
+        messagesController.getDialogs(0)
+            ?.filterNotNull()
+            ?.forEach { dialog ->
+                val dialogId = resolveDialogId(dialog)
 
-            val dialogId = resolveDialogId(dialog)
+                if (!DialogObject.isUserDialog(dialogId))
+                    return@forEach
 
-            if (dialogId <= 0L || !DialogObject.isUserDialog(dialogId))
-                return@forEach
+                val user = messagesController.getUser(dialogId) ?: return@forEach
 
-            if (
-                dialogId == ownerUserId
-                || UserObject.isReplyUser(dialogId)
-                || UserObject.isService(dialogId)
-            ) {
-                return@forEach
+                if (!isPeerValid(user))
+                    return@forEach
+
+                usersById[user.id] = user
             }
-
-            val user = messagesController.getUser(dialogId) ?: return@forEach
-
-            if (
-                UserObject.isUserSelf(user)
-                || UserObject.isDeleted(user)
-                || UserObject.isBot(user)
-                || UserObject.isReplyUser(user)
-            ) {
-                return@forEach
-            }
-
-            usersById[user.id] = user
-        }
-
-        if (usersById.isNotEmpty())
-            return usersById.values.toList()
-
-        val dialogsDict = messagesController.dialogs_dict
-
-        for (index in 0 until dialogsDict.size()) {
-            val dialog = dialogsDict.valueAt(index) as? TLRPC.Dialog ?: continue
-            val dialogId = resolveDialogId(dialog)
-
-            if (dialogId <= 0L || !DialogObject.isUserDialog(dialogId))
-                continue
-
-            if (
-                dialogId == ownerUserId
-                || UserObject.isReplyUser(dialogId)
-                || UserObject.isService(dialogId)
-            ) {
-                continue
-            }
-
-            val user = messagesController.getUser(dialogId) ?: continue
-
-            if (
-                UserObject.isUserSelf(user)
-                || UserObject.isDeleted(user)
-                || UserObject.isBot(user)
-                || UserObject.isReplyUser(user)
-            ) {
-                continue
-            }
-
-            usersById[user.id] = user
-        }
 
         return usersById.values.toList()
     }
@@ -528,6 +481,22 @@ class StreaksController(
         }
     }
 
+    suspend fun checkAllForUpdates(): List<UiSyncTarget> {
+        val uiSyncTargets = mutableListOf<UiSyncTarget>()
+
+        for (accountId in userConfigAuthorizedIds) {
+            val streaks =
+                dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
+
+            streaks.forEach {
+                checkForUpdates(accountId, it)
+                uiSyncTargets.add(UiSyncTarget(accountId, it.peerUserId))
+            }
+        }
+
+        return uiSyncTargets
+    }
+
     suspend fun handleUpdate(
         accountId: Int,
         peerUserId: Long,
@@ -537,18 +506,18 @@ class StreaksController(
         sendServiceMessages: Boolean = true
     ): HandleUpdateResult {
         val now = minOf(at, LocalDate.now(), compareBy { it.toEpochDay() })
-        val existingStreak = get(accountId, peerUserId)
 
-        if (ServiceMessage.isServiceText(message)) {
-            if (message == ServiceMessage.RESTORE_TEXT && existingStreak?.dead == true && existingStreak.canRevive) {
-                reviveNow(accountId, peerUserId, false)
-                return HandleUpdateResult(changed = true, created = false)
-            }
+        val peerType = getPeerType(accountId, peerUserId)
 
+        // ignore invalid peers
+        if (peerType == PeerType.INVALID)
             return HandleUpdateResult(changed = false, created = false)
-        }
 
-        val streak: Streak = existingStreak ?: run {
+        val streak = get(accountId, peerUserId) ?: run {
+            // forbid streak creation for bots
+            if (peerType == PeerType.BOT)
+                return HandleUpdateResult(changed = false, created = false)
+
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
             val updateFromOwnerAt: LocalDate
@@ -582,6 +551,19 @@ class StreaksController(
             )
         }
 
+        if (ServiceMessage.isServiceText(message)) {
+            // do not handle revives for bots
+            if (peerType == PeerType.VALID
+                && message == ServiceMessage.RESTORE_TEXT
+                && streak.canRevive
+            ) {
+                reviveNow(accountId, peerUserId, false)
+                return HandleUpdateResult(changed = true, created = false)
+            }
+
+            return HandleUpdateResult(changed = false, created = false)
+        }
+
         val wasCreated = !isVisibleLength(streak.length)
 
         if (out) {
@@ -596,45 +578,24 @@ class StreaksController(
                 dao.update(streak.copy(updateFromPeerAt = now))
         }
 
-        val currentStreak = get(accountId, peerUserId)
+        val updatedStreak = get(accountId, peerUserId)
             ?: return HandleUpdateResult(changed = false, created = false)
 
-        streakPopupController.enqueueForTransition(accountId, peerUserId, streak, currentStreak)
+        streakPopupController.enqueueForTransition(accountId, peerUserId, streak, updatedStreak)
 
-        if (
-            sendServiceMessages
+        if (sendServiceMessages
             && !isVisibleLength(streak.length)
-            && isVisibleLength(currentStreak.length)
-        ) {
-            serviceMessagesController.sendCreation(accountId, peerUserId)
-        } else if (
-            sendServiceMessages
+            && isVisibleLength(updatedStreak.length)
+        ) serviceMessagesController.sendCreation(accountId, peerUserId)
+        else if (sendServiceMessages
             && isVisibleLength(streak.length)
-            && currentStreak.level.length > streak.level.length
-        ) {
-            serviceMessagesController.sendUpgrade(accountId, peerUserId, currentStreak.length)
-        }
+            && updatedStreak.level.length > streak.level.length
+        ) serviceMessagesController.sendUpgrade(accountId, peerUserId, updatedStreak.length)
 
         return HandleUpdateResult(
             changed = true,
-            created = wasCreated && isVisibleLength(currentStreak.length),
+            created = wasCreated && isVisibleLength(updatedStreak.length),
         )
-    }
-
-    suspend fun checkAllForUpdates(): List<UiSyncTarget> {
-        val uiSyncTargets = mutableListOf<UiSyncTarget>()
-
-        for (accountId in userConfigAuthorizedIds) {
-            val streaks =
-                dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
-
-            streaks.forEach {
-                checkForUpdates(accountId, it)
-                uiSyncTargets.add(UiSyncTarget(accountId, it.peerUserId))
-            }
-        }
-
-        return uiSyncTargets
     }
 
     fun toggleServiceMessages(accountId: Int, peerUserId: Long): Boolean =
@@ -977,6 +938,18 @@ class StreaksController(
 
                 messagesController.putUser(user, false, true)
                 originalUserStates.remove(userId)
+            }
+        }
+    }
+
+    suspend fun pruneInvalid() {
+        db.withTransaction {
+            for (accountId in userConfigAuthorizedIds) {
+                val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+                dao.findAllByOwnerUserId(ownerUserId)
+                    .filterNot { isPeerValidOrBot(accountId, it.peerUserId) }
+                    .forEach { dao.delete(it) }
             }
         }
     }
