@@ -7,6 +7,30 @@ import ru.n08i40k.streaks.Plugin
 class Logger(private val logReceiver: LogReceiver) {
     private var suppressFatal = false
 
+    private fun Throwable.formatWithCauses(): String {
+        val builder = StringBuilder()
+        var current: Throwable? = this
+        var depth = 0
+
+        while (current != null) {
+            if (depth == 0) {
+                builder.append(current.toString())
+            } else {
+                builder.append("\nCaused by: ").append(current.toString())
+            }
+
+            if (current.stackTrace.isNotEmpty()) {
+                builder.append('\n')
+                builder.append(current.stackTrace.joinToString("\n"))
+            }
+
+            current = current.cause
+            depth++
+        }
+
+        return builder.toString()
+    }
+
     fun info(message: String) =
         logReceiver.onReceiveValue(message)
 
@@ -16,17 +40,16 @@ class Logger(private val logReceiver: LogReceiver) {
 
     fun fatal(message: String, exception: Throwable, preventEject: Boolean = false) {
         val e = exception as? Exception ?: Exception(exception)
+        val formattedException = e.formatWithCauses()
 
         logReceiver.onReceiveValue(message)
-        logReceiver.onReceiveValue(e.toString())
-        logReceiver.onReceiveValue(e.stackTrace.joinToString("\n"))
+        logReceiver.onReceiveValue(formattedException)
 
         if (!suppressFatal && !preventEject && Plugin.isInjected()) {
             AndroidUtilities.addToClipboard(
                 "```\n"
                         + "${message}\n"
-                        + "${e.toString()}\n"
-                        + "${e.stackTrace.joinToString("\n")}\n"
+                        + "${formattedException}\n"
                         + "```"
             )
             Plugin.eject()
