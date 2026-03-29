@@ -53,22 +53,28 @@ class StreakEmojiRegistry {
 
     fun refreshDialogCells() {
         val launchActivity = LaunchActivity.instance
-
+        val viewPagesField = getField(DialogsActivity::class.java, "viewPages")
         val dialogsActivities = mutableSetOf<DialogsActivity>()
 
         fun populateSet(layout: INavigationLayout) {
             val stack = layout.fragmentStack
 
             for (i in 0..<stack.size) {
-                dialogsActivities.add(stack[i] as? DialogsActivity ?: continue)
+                val fragment = stack[i] ?: continue
+
+                if (fragment is DialogsActivity)
+                    dialogsActivities.add(fragment)
+                else if (fragment.javaClass.name == "org.telegram.ui.MainTabsActivity") {
+                    (fragment.javaClass.getDeclaredMethod("getDialogsActivity")
+                        .invoke(fragment) as? DialogsActivity)
+                        ?.let(dialogsActivities::add)
+                }
             }
         }
 
-        launchActivity.actionBarLayout?.let { populateSet(it) }
-        launchActivity.rightActionBarLayout?.let { populateSet(it) }
-        launchActivity.layersActionBarLayout?.let { populateSet(it) }
-
-        val viewPagesField = getField(DialogsActivity::class.java, "viewPages")
+        launchActivity.actionBarLayout?.let(::populateSet)
+        launchActivity.rightActionBarLayout?.let(::populateSet)
+        launchActivity.layersActionBarLayout?.let(::populateSet)
 
         @Suppress("UNCHECKED_CAST")
         val viewPages = dialogsActivities
@@ -76,10 +82,7 @@ class StreakEmojiRegistry {
             .flatMap { it.toSet() }
 
         for (page in viewPages) {
-            val page = page as? DialogsActivity.ViewPage ?: continue
-
-            val listView = page.listView
-
+            val listView = (page as? DialogsActivity.ViewPage)?.listView ?: continue
             val adapter = listView.adapter
             listView.adapter = null
             listView.adapter = adapter
