@@ -29,6 +29,7 @@ import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.fetchPeerUsers
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -661,14 +662,33 @@ class StreakPetsController(
     }
 
     suspend fun pruneInvalid() {
-        db.withTransaction {
-            for (accountId in userConfigAuthorizedIds) {
-                val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val petsByAccount = userConfigAuthorizedIds.associateWith { accountId ->
+            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+            dao.findAllByOwnerUserId(ownerUserId)
+        }
 
-                dao.findAllByOwnerUserId(ownerUserId)
-                    .filterNot { isPeerValidOrBot(accountId, it.peerUserId) }
-                    .forEach { dao.delete(it) }
+        val peerUsers = petsByAccount
+            .map { (accountId, pets) ->
+                Pair(
+                    accountId,
+                    fetchPeerUsers(
+                        accountId,
+                        ArrayList(pets.map { it.peerUserId })
+                    ) ?: return
+                )
             }
+            .toMap()
+
+        val invalidPets = petsByAccount
+            .flatMap { (accountId, pets) ->
+                pets.filterNot { isPeerValidOrBot(peerUsers[accountId]?.get(it.peerUserId)) }
+            }
+
+        if (invalidPets.isEmpty())
+            return
+
+        db.withTransaction {
+            invalidPets.forEach { dao.delete(it) }
         }
     }
 }
