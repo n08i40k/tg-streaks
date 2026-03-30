@@ -2,54 +2,26 @@
 
 package ru.n08i40k.streaks.chat_history_fetcher
 
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.withTimeoutOrNull
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
-import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.extension.RequestOutcome
+import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.next
+import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.util.RuntimeGuard
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 
 class RemoteChatHistoryFetcher : ChatHistoryFetcher {
-    private sealed class RequestOutcome {
-        data class Success(val response: TLObject) : RequestOutcome()
-        data class Failure(val error: TLRPC.TL_error) : RequestOutcome()
-        data object Empty : RequestOutcome()
-    }
-
     private companion object {
         const val HISTORY_BLOCK_SIZE = 10
         const val REQUEST_TIMEOUT_MS = 5_000L
         const val RETRY_DELAY_MS = 15_000L
-        val FLOOD_WAIT_REGEX = Regex("""FLOOD_WAIT_(\d+)""")
-    }
-
-    private fun TLRPC.TL_error.isRetryable(): Boolean {
-        val text = this.text.orEmpty()
-
-        return text.startsWith("FLOOD_WAIT_")
-                || text.contains("RATE_LIMIT", ignoreCase = true)
-                || text.contains("TOO_MANY_REQUESTS", ignoreCase = true)
-                || code == 429
-    }
-
-    private fun TLRPC.TL_error.retryDelayMs(): Long {
-        val floodWaitSeconds = FLOOD_WAIT_REGEX.find(this.text.orEmpty())
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.toLongOrNull()
-
-        return maxOf(RETRY_DELAY_MS, (floodWaitSeconds ?: 0L) * 1000L)
     }
 
     private fun showRetryBulletin(retryDelayMs: Long) {
@@ -80,44 +52,36 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
             attempt++
 
-            val deferred = CompletableDeferred<RequestOutcome>()
-
-            val requestId = connectionsManager.sendRequest(req, { response, error ->
-                deferred.complete(
-                    when {
-                        error != null -> RequestOutcome.Failure(error)
-                        response != null -> RequestOutcome.Success(response)
-                        else -> RequestOutcome.Empty
-                    }
-                )
-            }, 2 or 64 or 1024)
-
-            val result = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
-
-            if (result == null) {
-                connectionsManager.cancelRequest(requestId, true)
-
-                Plugin.getInstance().logger.info(
-                    "History request timed out after ${REQUEST_TIMEOUT_MS / 1000}s for " +
-                            "$accountId:$peerUserId (attempt $attempt), retrying in ${RETRY_DELAY_MS / 1000}s"
-                )
-
-                showRetryBulletin(RETRY_DELAY_MS)
-
-                RuntimeGuard.pauseAwareDelay(
-                    RETRY_DELAY_MS,
-                    "history retry delay for $accountId:$peerUserId",
-                )
-                continue
-            }
+            val result =
+                connectionsManager.sendRequestBlocking(req, REQUEST_TIMEOUT_MS, RETRY_DELAY_MS)
 
             when (result) {
-                is RequestOutcome.Success -> return result.response as TLRPC.messages_Messages
+                is RequestOutcome.Success -> return result.cast<TLRPC.messages_Messages>()
 
-                is RequestOutcome.Empty -> {
+                is RequestOutcome.Failure -> throw RuntimeException(
+                    "Failed to fetch chat activity $accountId:$peerUserId",
+                    Exception(result.error.fmt())
+                )
+
+                is RequestOutcome.RateLimit -> {
                     Plugin.getInstance().logger.info(
-                        "History request returned empty response for $accountId:$peerUserId " +
-                                "(attempt $attempt), retrying in ${RETRY_DELAY_MS / 1000}s"
+                        "History request for $accountId:$peerUserId is rate-limited " +
+                                "(attempt $attempt), retrying in ${result.retryDelay / 1000}s"
+                    )
+
+                    showRetryBulletin(result.retryDelay)
+
+                    RuntimeGuard.pauseAwareDelay(
+                        result.retryDelay,
+                        "history retry delay for $accountId:$peerUserId",
+                    )
+                    continue
+                }
+
+                is RequestOutcome.TimeOut -> {
+                    Plugin.getInstance().logger.info(
+                        "History request timed out after ${REQUEST_TIMEOUT_MS / 1000}s for " +
+                                "$accountId:$peerUserId (attempt $attempt), retrying in ${RETRY_DELAY_MS / 1000}s"
                     )
 
                     showRetryBulletin(RETRY_DELAY_MS)
@@ -127,35 +91,6 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                         "history retry delay for $accountId:$peerUserId",
                     )
                     continue
-                }
-
-                is RequestOutcome.Failure -> {
-                    if (result.error.isRetryable()) {
-                        val retryDelayMs = result.error.retryDelayMs()
-
-                        val at = Instant.ofEpochSecond(req.offset_date.toLong())
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate().format(DateTimeFormatter.ISO_DATE)
-
-                        Plugin.getInstance().logger.info(
-                            "History request rate-limited for $accountId:$peerUserId at $at" +
-                                    "(attempt $attempt, code=${result.error.code}, text=${result.error.text}), " +
-                                    "retrying in ${retryDelayMs / 1000}s"
-                        )
-
-                        showRetryBulletin(retryDelayMs)
-
-                        RuntimeGuard.pauseAwareDelay(
-                            retryDelayMs,
-                            "history retry delay for $accountId:$peerUserId",
-                        )
-                        continue
-                    }
-
-                    throw RuntimeException(
-                        "Failed to fetch chat activity $accountId:$peerUserId",
-                        Exception(result.error.toString())
-                    )
                 }
             }
         }
