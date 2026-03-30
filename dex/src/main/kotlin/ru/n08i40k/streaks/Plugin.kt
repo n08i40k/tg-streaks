@@ -66,12 +66,10 @@ import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
-import ru.n08i40k.streaks.override.SafeParticlesDrawable
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.registry.LockableActionRegistry
 import ru.n08i40k.streaks.registry.LockableCallbackRegistry
-import ru.n08i40k.streaks.registry.SafeParticlesDrawableRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
 import ru.n08i40k.streaks.registry.StreakLevelRegistry
 import ru.n08i40k.streaks.registry.StreakPetLevelRegistry
@@ -244,7 +242,6 @@ class Plugin {
     // eject data
     private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
     val streakEmojiRegistry = StreakEmojiRegistry()
-    val safeParticlesDrawableRegistry = SafeParticlesDrawableRegistry()
 
     // controllers
     private val serviceMessagesController = ServiceMessagesController()
@@ -381,7 +378,6 @@ class Plugin {
 
         try {
             streakEmojiRegistry.restoreAll()
-            safeParticlesDrawableRegistry.restoreAll()
 
             streaksController.restorePatchedUsers()
         } catch (e: Throwable) {
@@ -1167,18 +1163,6 @@ class Plugin {
             )
         }
 
-        after(
-            AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable::class.java.getDeclaredMethod(
-                "setParticles",
-                Boolean::class.java,
-                Boolean::class.java
-            )
-        ) { param ->
-            SafeParticlesDrawable.ensureParticlesSafety(
-                param.thisObject as AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
-            )
-        }
-
         // Чат в списке, нужно ещё увеличить bounds по x, иначе текста не будет
         after(
             DialogCell::class.java.getConstructor(
@@ -1241,9 +1225,20 @@ class Plugin {
 
                 val emojiStatusView =
                     getFieldValue<View>(thisClass, thisObject, "emojiStatusView")!!
+                val emojiStatus =
+                    getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
+                        thisClass,
+                        thisObject,
+                        "emojiStatus"
+                    )
 
                 val height = AndroidUtilities.dp(22f)
-                emojiStatusView.layout(0, 0, height * 3, height)
+                emojiStatusView.layout(
+                    0,
+                    0,
+                    maxOf(height * 4, emojiStatus?.intrinsicWidth ?: 0),
+                    height
+                )
             }
         }
 
@@ -1761,19 +1756,13 @@ class Plugin {
                 nameTextView = nameTextView
             )
 
-            SafeParticlesDrawable.encapsulate(
-                oldEmojiStatus2,
-                thisObject,
-                getField(thisClass, "emojiStatus2"),
-                nameTextView
-            )
-
             val newEmojiStatus =
                 getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
                     thisClass,
                     thisObject,
                     "emojiStatus"
                 )
+
             val newEmojiStatus2 =
                 getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
                     thisClass,

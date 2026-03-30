@@ -8,21 +8,15 @@ package ru.n08i40k.streaks.override
 
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.drawable.Drawable
 import android.view.View
 import com.exteragram.messenger.badges.BadgesController
 import org.telegram.messenger.AndroidUtilities
-import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
-import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.ActionBar.Theme
-import org.telegram.ui.Components.AnimatedEmojiDrawable
 import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
-import org.telegram.ui.Components.Premium.PremiumGradient
-import org.telegram.ui.Stars.StarsReactionsSheet
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.util.cloneFields
@@ -165,170 +159,119 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     private var cachedStreakViewData: StreakViewData? = null
 
     private val canDrawBadge: Boolean
+
+    private var streakView: SwapAnimatedEmojiDrawable? = null
     private var badgeView: SwapAnimatedEmojiDrawable? = null
 
     private val size: Int
 
-    private var hasCustomParticles: Boolean = false
-    private var hasParticles: Boolean = false
+    private fun clearStreakView() {
+        streakView?.detach()
+        streakView = null
+    }
 
     private fun clearBadgeView() {
         badgeView?.detach()
         badgeView = null
     }
 
+    private fun replaceStreakView(view: SwapAnimatedEmojiDrawable?) {
+        if (streakView === view) {
+            syncBounds()
+            return
+        }
+
+        streakView?.detach()
+        streakView = view
+        streakView?.attach()
+        syncBounds()
+    }
+
     private fun replaceBadgeView(view: SwapAnimatedEmojiDrawable?) {
         if (badgeView === view) {
-            syncBadgeBounds()
+            syncBounds()
             return
         }
 
         badgeView?.detach()
         badgeView = view
         badgeView?.attach()
-        syncBadgeBounds()
+        syncBounds()
     }
 
-    private fun syncBadgeBounds() {
+    private fun syncBounds() {
+        val badgeOffset = bounds.left + size
+        val badgeSize = size
+
+        val streakOffset =
+            if (badgeView != null)
+                badgeOffset + badgeSize
+            else
+                badgeOffset
+
+        val streakSize = size
+
         badgeView?.setBounds(
-            bounds.left + size + getTextWidth(),
+            badgeOffset,
             bounds.top,
-            bounds.left + size * 2 + getTextWidth(),
+            badgeOffset + badgeSize,
+            bounds.bottom
+        )
+
+        streakView?.setBounds(
+            streakOffset,
+            bounds.top,
+            streakOffset + streakSize,
             bounds.bottom
         )
     }
 
-    private fun applyBadgeDocument(user: TLRPC.User, document: TLRPC.Document) {
-        if (this.peerUserId != user.id) {
+    fun setStreak(user: TLRPC.User?, streakViewData: StreakViewData?) {
+        if (user == null || streakViewData == null) {
+            clearStreakView()
+            invalidateSelf()
             return
         }
 
-        if (cachedStreakViewData == null && !user.premium) {
-            super.set(document, false)
-            super.setParticles(true, false)
-            clearBadgeView()
-        } else {
-            val parentView =
-                getFieldValue<View>(
-                    SwapAnimatedEmojiDrawable::class.java,
-                    this,
-                    "parentView"
-                ) ?: return
+        val parentView =
+            getFieldValue<View>(
+                SwapAnimatedEmojiDrawable::class.java,
+                this,
+                "parentView"
+            ) ?: return
 
-            replaceBadgeView(SwapAnimatedEmojiDrawable(parentView, size).apply {
-                set(document, false)
-                setParticles(true, false)
-                color = Theme.getColor(Theme.key_chats_verifiedBackground)
-            })
-        }
+        replaceStreakView(
+            object : SwapAnimatedEmojiDrawable(parentView, size) {
+                val viewData: StreakViewData = streakViewData
 
-        invalidateSelf()
-    }
+                init {
+                    set(viewData.documentId, false)
+                    setParticles(true, false)
+                    color = viewData.accentColor.toArgb()
+                }
 
-    private fun whenDocumentReady(documentId: Long, onReady: (TLRPC.Document) -> Unit) {
-        if (documentId <= 0L) {
-            return
-        }
+                override fun draw(canvas: Canvas) {
+                    super.draw(canvas)
 
-        val account = UserConfig.selectedAccount
+                    paint.setColor(viewData.accentColor.toArgb())
 
-        AnimatedEmojiDrawable.findDocument(account, documentId)
-            ?.let {
-                onReady(it)
-                return
-            }
-
-        AnimatedEmojiDrawable
-            .getDocumentFetcher(account)
-            .fetchDocument(documentId) { document ->
-                AndroidUtilities.runOnUIThread {
-                    onReady(document)
+                    canvas.drawText(
+                        viewData.length.toString(),
+                        bounds.right.toFloat(),
+                        bounds.bottom.toFloat() - AndroidUtilities.dp(5f),
+                        paint
+                    )
                 }
             }
-    }
+        )
 
-    private fun applyStreakState(streakViewData: StreakViewData) {
-        val peerUserId = this.peerUserId
-
-        whenDocumentReady(streakViewData.documentId) { document ->
-            if (this.peerUserId != peerUserId || cachedStreakViewData?.documentId != streakViewData.documentId) {
-                return@whenDocumentReady
-            }
-
-            super.set(document, 7, true)
-            super.setParticles(true, false)
-            applyColoredParticles(streakViewData)
-
-            invalidateSelf()
-        }
-
-        hasCustomParticles = true
-
-        MessagesController
-            .getInstance(UserConfig.selectedAccount)
-            .getUser(peerUserId)
-            ?.let(::setBadge)
-    }
-
-    private fun applyUserState(user: TLRPC.User) {
-        val documentId = UserObject.getEmojiStatusDocumentId(user.emoji_status)
-
-        when {
-            documentId != null -> {
-                super.set(documentId, true)
-                super.setParticles(hasParticles, false)
-            }
-
-            user.premium -> {
-                super.set(PremiumGradient.getInstance().premiumStarDrawableMini, false)
-                super.setParticles(false, false)
-            }
-
-            else -> {
-                super.set(null as Drawable?, false)
-                super.setParticles(false, false)
-            }
-        }
-
-        setBadge(user)
-    }
-
-    private fun applyChatState(chat: TLRPC.Chat) {
-        val documentId = DialogObject.getEmojiStatusDocumentId(chat.emoji_status)
-
-        if (documentId != 0L) {
-            super.set(documentId, true)
-            super.setParticles(hasParticles, false)
-        } else {
-            val badge = BadgesController.INSTANCE.getBadge(chat)
-
-            if (badge == null) {
-                super.set(null as Drawable?, false)
-                super.setParticles(false, false)
-            } else {
-                super.set(badge.documentId, false)
-                super.setParticles(true, false)
-            }
-        }
-
-        setBadge(null)
+        invalidateSelf()
     }
 
     fun setBadge(user: TLRPC.User?) {
         if (!canDrawBadge) return
 
-        if (user == null) {
-            clearBadgeView()
-            invalidateSelf()
-            return
-        }
-
-        if (!BadgesController.INSTANCE.hasBadge(user)) {
-            if (cachedStreakViewData == null && !user.premium) {
-                super.set(null as Drawable?, false)
-                super.setParticles(false, false)
-            }
-
+        if (user == null || !user.premium || !BadgesController.INSTANCE.hasBadge(user)) {
             clearBadgeView()
             invalidateSelf()
             return
@@ -337,18 +280,51 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         val badge = BadgesController.INSTANCE.getBadge(user)
             ?: throw IllegalStateException("User has badge, but it is null")
 
-        AnimatedEmojiDrawable.findDocument(UserConfig.selectedAccount, badge.documentId)
-            ?.let { cachedDocument ->
-                applyBadgeDocument(user, cachedDocument)
-                return
+        val parentView =
+            getFieldValue<View>(
+                SwapAnimatedEmojiDrawable::class.java,
+                this,
+                "parentView"
+            ) ?: return
+
+        replaceBadgeView(
+            SwapAnimatedEmojiDrawable(parentView, size).apply {
+                set(badge.documentId, false)
+                setParticles(true, false)
+                color = Theme.getColor(Theme.key_chats_verifiedBackground)
+            }
+        )
+
+        invalidateSelf()
+    }
+
+    private fun refreshViews(streakViewData: StreakViewData?) {
+        if (streakViewData == null) {
+            val dialog =
+                MessagesController.getInstance(UserConfig.selectedAccount)
+                    .getUserOrChat(peerUserId)
+
+            when (dialog) {
+                is TLRPC.User -> {
+                    setStreak(dialog, null)
+                    setBadge(dialog)
+                }
+
+                is TLRPC.Chat -> {
+                    setStreak(null, null)
+                    setBadge(null)
+                }
             }
 
-        AnimatedEmojiDrawable
-            .getDocumentFetcher(UserConfig.selectedAccount)
-            .fetchDocument(badge.documentId) { document ->
-                AndroidUtilities.runOnUIThread {
-                    applyBadgeDocument(user, document)
-                }
+            return
+        }
+
+        MessagesController
+            .getInstance(UserConfig.selectedAccount)
+            .getUser(this.peerUserId)
+            ?.let {
+                setStreak(it, streakViewData)
+                setBadge(it)
             }
     }
 
@@ -366,24 +342,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 null
 
         AndroidUtilities.runOnUIThread {
-            if (cachedStreakViewData != null)
-                applyStreakState(cachedStreakViewData!!)
-            else {
-                if (hasCustomParticles) {
-                    // restore original particles class without custom color or etc.
-                    super.setParticles(false, false)
-                    hasCustomParticles = false
-                }
-
-                val dialog =
-                    MessagesController.getInstance(UserConfig.selectedAccount)
-                        .getUserOrChat(peerUserId)
-
-                when (dialog) {
-                    is TLRPC.User -> applyUserState(dialog)
-                    is TLRPC.Chat -> applyChatState(dialog)
-                }
-            }
+            refreshViews(cachedStreakViewData)
 
             this@StreakEmoji.invalidateSelf()
         }
@@ -391,19 +350,6 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
     fun refresh(clearStreak: Boolean = false) =
         setPeerUserId(peerUserId, clearStreak)
-
-    private fun applyColoredParticles(streakViewData: StreakViewData) {
-        val particles = SafeParticlesDrawable.ensureParticlesSafety(this) ?: return
-
-        if (particles is ColoredParticles) {
-            return
-        }
-
-        getField(SwapAnimatedEmojiDrawable::class.java, "particles").set(
-            this,
-            ColoredParticles(particles, streakViewData.accentColor.toArgb())
-        )
-    }
 
     constructor(
         base: SwapAnimatedEmojiDrawable,
@@ -414,7 +360,6 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         0
     ) {
         cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
-        SafeParticlesDrawable.ensureParticlesSafety(this)
         this.canDrawBadge = canDrawBadge
         this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 
@@ -424,67 +369,13 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        cachedStreakViewData?.let {
-            paint.setColor(it.accentColor.toArgb())
-
-            canvas.drawText(
-                it.length.toString(),
-                bounds.right.toFloat(),
-                bounds.bottom.toFloat() - AndroidUtilities.dp(5f),
-                paint
-            )
-        }
-
+        streakView?.draw(canvas)
         badgeView?.draw(canvas)
     }
 
     override fun setBounds(left: Int, top: Int, right: Int, bottom: Int) {
         super.setBounds(left, top, left + size, bottom)
-        syncBadgeBounds()
-    }
-
-    override fun setParticles(p0: Boolean, p1: Boolean) {
-        if (cachedStreakViewData != null) {
-            hasParticles = p0
-            return
-        }
-
-        super.setParticles(p0, p1)
-    }
-
-    override fun set(p0: Drawable?, p1: Boolean) {
-        if (cachedStreakViewData != null)
-            return
-
-        super.set(p0, p1)
-    }
-
-    override fun set(p0: Long, p1: Boolean): Boolean {
-        if (cachedStreakViewData != null)
-            return true
-
-        return super.set(p0, p1)
-    }
-
-    override fun set(p0: Long, p1: Int, p2: Boolean): Boolean {
-        if (cachedStreakViewData != null)
-            return true
-
-        return super.set(p0, p1, p2)
-    }
-
-    override fun set(p0: TLRPC.Document?, p1: Boolean) {
-        if (cachedStreakViewData != null)
-            return
-
-        super.set(p0, p1)
-    }
-
-    override fun set(p0: TLRPC.Document?, p1: Int, p2: Boolean) {
-        if (cachedStreakViewData != null)
-            return
-
-        super.set(p0, p1, p2)
+        syncBounds()
     }
 
     private fun getTextWidth(): Int {
@@ -503,33 +394,23 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         return (size * 1.2f).toInt() + padding
     }
 
-    override fun getMinimumWidth(): Int {
-        val width = super.getMinimumWidth()
-
-        return if (canDrawBadge)
-            width + getTextWidth() + 1
-        else
-            width + getTextWidth()
-    }
-
-    override fun getIntrinsicWidth(): Int {
-        val width = super.getIntrinsicWidth()
-
-        return if (canDrawBadge)
-            width + getTextWidth() + 1
-        else
-            width + getTextWidth()
-    }
-
     fun getAdditionalWidth(): Int {
-        if (!canDrawBadge)
-            return getTextWidth()
+        var width = 0
 
-        if (cachedStreakViewData == null)
-            return size + 1
+        if (streakView != null)
+            width += size + getTextWidth()
 
-        return getTextWidth() + 1
+        if (badgeView != null)
+            width += size
+
+        return width
     }
+
+    override fun getMinimumWidth(): Int =
+        super.getMinimumWidth() + getAdditionalWidth()
+
+    override fun getIntrinsicWidth(): Int =
+        super.getIntrinsicWidth() + getAdditionalWidth()
 
     override fun setAlpha(alpha: Int) {
         badgeView?.alpha = alpha

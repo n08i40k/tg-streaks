@@ -884,7 +884,8 @@ class StreaksController(
     }
 
     suspend fun patchUser(accountId: Int, peerUser: TLRPC.User) {
-        val streakViewData = getViewData(accountId, peerUser.id) ?: return
+        getViewData(accountId, peerUser.id) ?: return
+
         val currentEmojiStatusDocumentId =
             UserObject.getEmojiStatusDocumentId(peerUser.emoji_status)
         val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
@@ -904,10 +905,6 @@ class StreaksController(
         }
 
         peerUser.premium = true
-
-        @Suppress("CAST_NEVER_SUCCEEDS")
-        peerUser.emoji_status = TLRPC.TL_emojiStatus()
-            .apply { document_id = streakViewData.documentId } as TLRPC.EmojiStatus
     }
 
     suspend fun patchUsers(accountId: Int) {
