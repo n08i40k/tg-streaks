@@ -599,6 +599,14 @@ class Plugin {
         }
     }
 
+    private data class PendingIncomingUpdate(
+        val peerUserId: Long,
+        val at: LocalDate,
+        val out: Boolean,
+        val messageId: Int,
+        val message: String?
+    )
+
     @OptIn(DelicateCoroutinesApi::class)
     private fun registerChatContextMenuCallbacks() {
         fun add(key: String, callback: (Long) -> Unit) {
@@ -1899,15 +1907,7 @@ class Plugin {
             }
         }
 
-        fun handleUpdates(accountId: Int, updates: TLRPC.Updates) {
-            data class Update(
-                val peerUserId: Long,
-                val at: LocalDate,
-                val out: Boolean,
-                val messageId: Int,
-                val message: String?
-            )
-
+        fun extractUpdates(accountId: Int, updates: TLRPC.Updates): List<PendingIncomingUpdate> {
             fun resolvePrivatePeerUserId(message: TLRPC.Message): Long? {
                 val peerUserId = message.peer_id?.user_id?.takeIf { it > 0L }
                 val fromUserId = message.from_id?.user_id?.takeIf { it > 0L }
@@ -1922,10 +1922,10 @@ class Plugin {
             }
 
             @Suppress("IMPOSSIBLE_IS_CHECK_WARNING", "KotlinConstantConditions")
-            val entries = when (updates) {
+            return when (updates) {
                 is TLRPC.TL_updateShortMessage -> {
-                    setOf(
-                        Update(
+                    listOf(
+                        PendingIncomingUpdate(
                             updates.user_id,
                             Instant.ofEpochSecond(updates.date.toLong())
                                 .atZone(ZoneId.systemDefault())
@@ -1942,7 +1942,7 @@ class Plugin {
                         when (it) {
                             is TLRPC.TL_updateNewMessage -> resolvePrivatePeerUserId(it.message)
                                 ?.let { peerUserId ->
-                                    Update(
+                                    PendingIncomingUpdate(
                                         peerUserId,
                                         Instant.ofEpochSecond(it.message.date.toLong())
                                             .atZone(ZoneId.systemDefault())
@@ -1963,7 +1963,7 @@ class Plugin {
                         when (it) {
                             is TLRPC.TL_updateNewMessage -> resolvePrivatePeerUserId(it.message)
                                 ?.let { peerUserId ->
-                                    Update(
+                                    PendingIncomingUpdate(
                                         peerUserId,
                                         Instant.ofEpochSecond(it.message.date.toLong())
                                             .atZone(ZoneId.systemDefault())
@@ -1979,10 +1979,11 @@ class Plugin {
                     }
                 }
 
-                else -> setOf()
+                else -> emptyList()
             }
+        }
 
-            @Suppress("KotlinConstantConditions")
+        fun handleUpdates(accountId: Int, entries: List<PendingIncomingUpdate>) {
             if (entries.isEmpty())
                 return
 
@@ -1992,6 +1993,7 @@ class Plugin {
                 for ((peerUserId, at, out, messageId, message) in entries) {
                     val result =
                         streaksController.handleUpdate(accountId, peerUserId, at, out, message)
+
                     streakPetsController.handleUpdate(
                         accountId,
                         peerUserId,
@@ -2000,6 +2002,7 @@ class Plugin {
                         message,
                         out
                     )
+
                     refreshOpenedPetDialog(accountId, peerUserId)
 
                     if (result.changed) {
@@ -2032,8 +2035,9 @@ class Plugin {
                 getFieldValue<Int>(thisClass, thisObject, "currentAccount") ?: return@before
 
             val updates = param.args[0] as TLRPC.Updates
+            val entries = extractUpdates(accountId, updates)
 
-            enqueueTask("handle incoming message") { handleUpdates(accountId, updates) }
+            handleUpdates(accountId, entries)
         }
 
         // Обработка исходящих сообщений
