@@ -165,6 +165,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
     private val size: Int
 
+    private var hideOriginal: Boolean = false
+
     private fun clearStreakView() {
         streakView?.detach()
         streakView = null
@@ -200,7 +202,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     }
 
     private fun syncBounds() {
-        val badgeOffset = bounds.left + size
+        val badgeOffset = bounds.left + if (hideOriginal) 0 else size
         val badgeSize = size
 
         val streakOffset =
@@ -323,6 +325,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             .getInstance(UserConfig.selectedAccount)
             .getUser(this.peerUserId)
             ?.let {
+                hideOriginal = it.premium && it.emoji_status == null
+
                 setStreak(it, streakViewData)
                 setBadge(it)
             }
@@ -367,7 +371,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     }
 
     override fun draw(canvas: Canvas) {
-        super.draw(canvas)
+        if (!hideOriginal)
+            super.draw(canvas)
 
         streakView?.draw(canvas)
         badgeView?.draw(canvas)
