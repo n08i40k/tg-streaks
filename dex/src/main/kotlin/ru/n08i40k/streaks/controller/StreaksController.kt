@@ -484,17 +484,13 @@ class StreaksController(
         }
     }
 
-    suspend fun checkAllForUpdates(): List<UiSyncTarget> {
+    suspend fun checkAllForUpdates(accountId: Int): List<UiSyncTarget> {
         val uiSyncTargets = mutableListOf<UiSyncTarget>()
+        val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
-        for (accountId in userConfigAuthorizedIds) {
-            val streaks =
-                dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
-
-            streaks.forEach {
-                checkForUpdates(accountId, it)
-                uiSyncTargets.add(UiSyncTarget(accountId, it.peerUserId))
-            }
+        streaks.forEach {
+            checkForUpdates(accountId, it)
+            uiSyncTargets.add(UiSyncTarget(accountId, it.peerUserId))
         }
 
         return uiSyncTargets
@@ -949,11 +945,10 @@ class StreaksController(
         }
     }
 
-    suspend fun pruneInvalid() {
-        val streaksByAccount = userConfigAuthorizedIds.associateWith { accountId ->
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-            dao.findAllByOwnerUserId(ownerUserId)
-        }
+    suspend fun pruneInvalid(accountId: Int) {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val streaks = dao.findAllByOwnerUserId(ownerUserId)
+        val streaksByAccount = mapOf(accountId to streaks)
 
         val peerUsers = streaksByAccount
             .map { (accountId, streaks) ->

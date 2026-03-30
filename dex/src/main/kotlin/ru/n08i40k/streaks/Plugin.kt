@@ -65,7 +65,6 @@ import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
-import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.registry.LockableActionRegistry
@@ -306,6 +305,32 @@ class Plugin {
     fun enqueueTask(name: String, callback: suspend () -> Unit) =
         taskQueue.enqueueTask(name, callback)
 
+    private fun enqueueAccountInitializationTasks(accountId: Int, reason: String) {
+        enqueueTask("prune invalid streaks and pets for account $accountId ($reason)") {
+            streaksController.pruneInvalid(accountId)
+            streakPetsController.pruneInvalid(accountId)
+        }
+
+        enqueueTask("patch user's emoji statuses for account $accountId ($reason)") {
+            streaksController.patchUsers(accountId)
+        }
+
+        enqueueTask("check for updates and update UI for account $accountId ($reason)") {
+            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+
+            syncPeersUi(streaksController.checkAllForUpdates(accountId))
+
+            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+
+            streakPetsController.checkAllForUpdates(accountId)
+            streaksController.flushCurrentChatPopup()
+        }
+    }
+
+    private fun enqueueSelectedAccountInitializationTasks(reason: String) {
+        enqueueAccountInitializationTasks(UserConfig.selectedAccount, reason)
+    }
+
     private fun onInject() {
         taskQueue.startWorker(backgroundScope)
 
@@ -316,33 +341,13 @@ class Plugin {
     }
 
     private fun onFinalizeInject() {
-        enqueueTask("prune invalid streaks and pets") {
-            streaksController.pruneInvalid()
-            streakPetsController.pruneInvalid()
-        }
-
-        enqueueTask("patch user's emoji statuses on load") {
-            userConfigAuthorizedIds.forEach { streaksController.patchUsers(it) }
-        }
-
         try {
             hookMethods()
         } catch (e: Throwable) {
             logger.fatal("Failed to hook methods!", e)
         }
 
-        enqueueTask("check for updates and update UI") {
-            // refresh dialogs cells and show saved streaks
-            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
-
-            syncPeersUi(streaksController.checkAllForUpdates())
-
-            // refresh dialogs cells and show new streaks
-            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
-
-            streakPetsController.checkAllForUpdates()
-            streaksController.flushCurrentChatPopup()
-        }
+        enqueueSelectedAccountInitializationTasks("plugin inject")
 
         backgroundScope.launch {
             try {
@@ -1815,6 +1820,14 @@ class Plugin {
         ) { refreshPetFabForOpenChat() }
 
         after(
+            LaunchActivity::class.java.declaredMethods
+                .filter { it.name == "switchToAccount" }
+                .maxByOrNull { it.parameterCount }!!
+        ) {
+            enqueueSelectedAccountInitializationTasks("account switch")
+        }
+
+        after(
             ChatActivity::class.java.getDeclaredMethod("onPause")
         ) { AndroidUtilities.runOnUIThread { dismissPetFab() } }
 
@@ -1973,7 +1986,7 @@ class Plugin {
         }
 
         fun handleUpdates(accountId: Int, entries: List<PendingIncomingUpdate>) {
-            if (entries.isEmpty())
+            if (accountId != UserConfig.selectedAccount || entries.isEmpty())
                 return
 
             enqueueTask("handle updates for $accountId") {
@@ -2022,6 +2035,9 @@ class Plugin {
 
             val accountId =
                 getFieldValue<Int>(thisClass, thisObject, "currentAccount") ?: return@before
+
+            if (accountId != UserConfig.selectedAccount)
+                return@before
 
             val updates = param.args[0] as TLRPC.Updates
             val entries = extractUpdates(accountId, updates)
