@@ -3,7 +3,6 @@
 package ru.n08i40k.streaks.controller
 
 import androidx.room.withTransaction
-import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -56,10 +55,10 @@ class StreakPetsController(
         val tasks: List<StreakPetTask>,
     )
 
-    private suspend fun getViewStateSnapshot(
+    suspend fun getViewStateSnapshot(
         accountId: Int,
         peerUserId: Long,
-        day: LocalDate,
+        day: LocalDate = LocalDate.now(),
     ): ViewStateSnapshot? {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val pet = dao.findByRelation(ownerUserId, peerUserId) ?: return null
@@ -81,12 +80,6 @@ class StreakPetsController(
             tasks = enumValues<StreakPetTaskType>().mapNotNull(taskByType::get),
         )
     }
-
-    fun getViewStateSnapshotBlocking(
-        accountId: Int,
-        peerUserId: Long,
-        day: LocalDate = LocalDate.now(),
-    ): ViewStateSnapshot? = runBlocking { getViewStateSnapshot(accountId, peerUserId, day) }
 
     data class RebuildProgress(
         val peerUser: TLRPC.User,

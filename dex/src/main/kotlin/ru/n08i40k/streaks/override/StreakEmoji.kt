@@ -9,7 +9,9 @@ package ru.n08i40k.streaks.override
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.View
+import com.exteragram.messenger.api.dto.BadgeDTO
 import com.exteragram.messenger.badges.BadgesController
+import kotlinx.coroutines.launch
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -270,17 +272,12 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         invalidateSelf()
     }
 
-    fun setBadge(user: TLRPC.User?) {
-        if (!canDrawBadge) return
-
-        if (user == null || !user.premium || !BadgesController.INSTANCE.hasBadge(user)) {
+    fun setBadge(badge: BadgeDTO?) {
+        if (!canDrawBadge || badge == null) {
             clearBadgeView()
             invalidateSelf()
             return
         }
-
-        val badge = BadgesController.INSTANCE.getBadge(user)
-            ?: throw IllegalStateException("User has badge, but it is null")
 
         val parentView =
             getFieldValue<View>(
@@ -308,13 +305,19 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
             when (dialog) {
                 is TLRPC.User -> {
-                    setStreak(dialog, null)
-                    setBadge(dialog)
+                    val badge = BadgesController.INSTANCE.getBadge(dialog)
+
+                    AndroidUtilities.runOnUIThread {
+                        setStreak(dialog, null)
+                        setBadge(badge)
+                    }
                 }
 
                 is TLRPC.Chat -> {
-                    setStreak(null, null)
-                    setBadge(null)
+                    AndroidUtilities.runOnUIThread {
+                        setStreak(null, null)
+                        setBadge(null)
+                    }
                 }
             }
 
@@ -327,8 +330,12 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             ?.let {
                 hideOriginal = it.premium && it.emoji_status == null
 
-                setStreak(it, streakViewData)
-                setBadge(it)
+                val badge = BadgesController.INSTANCE.getBadge(it)
+
+                AndroidUtilities.runOnUIThread {
+                    setStreak(it, streakViewData)
+                    setBadge(badge)
+                }
             }
     }
 
@@ -339,16 +346,16 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
         val plugin = Plugin.getInstance()
 
-        cachedStreakViewData =
-            if (!clearStreak)
-                plugin.streaksController.getViewDataBlocking(UserConfig.selectedAccount, peerUserId)
-            else
-                null
+        plugin.uiScope.launch {
+            cachedStreakViewData =
+                if (!clearStreak)
+                    plugin.streaksController.getViewData(UserConfig.selectedAccount, peerUserId)
+                else
+                    null
 
-        AndroidUtilities.runOnUIThread {
             refreshViews(cachedStreakViewData)
 
-            this@StreakEmoji.invalidateSelf()
+            AndroidUtilities.runOnUIThread { this@StreakEmoji.invalidateSelf() }
         }
     }
 
@@ -409,6 +416,18 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             width += size
 
         return width
+    }
+
+    override fun invalidate() {
+        super.invalidate()
+        streakView?.invalidate()
+        badgeView?.invalidate()
+    }
+
+    override fun invalidateSelf() {
+        super.invalidateSelf()
+        streakView?.invalidateSelf()
+        badgeView?.invalidateSelf()
     }
 
     override fun getMinimumWidth(): Int =

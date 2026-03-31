@@ -5,7 +5,6 @@ package ru.n08i40k.streaks.controller
 import androidx.room.withTransaction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
@@ -104,6 +103,30 @@ class StreaksController(
 
     private val dao = db.streakDao()
     private val reviveDao = db.streakReviveDao()
+
+    private fun applyPatchedUserState(peerUser: TLRPC.User): Boolean {
+        val currentEmojiStatusDocumentId =
+            UserObject.getEmojiStatusDocumentId(peerUser.emoji_status)
+        val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
+                Plugin.getInstance()
+                    .streakLevelRegistry
+                    .levels()
+                    .any { it.documentId == currentEmojiStatusDocumentId }
+
+        if (!isCurrentEmojiStatusPatched) {
+            originalUserStates.putIfAbsent(
+                peerUser.id,
+                OriginalUserState(
+                    premium = peerUser.premium,
+                    emojiStatus = peerUser.emoji_status
+                )
+            )
+        }
+
+        val wasPremium = peerUser.premium
+        peerUser.premium = true
+        return !wasPremium
+    }
 
     fun isRebuildRunning(): Boolean =
         rebuildLock.get()
@@ -625,9 +648,6 @@ class StreaksController(
         )
     }
 
-    fun getViewDataBlocking(accountId: Int, peerUserId: Long): StreakViewData? =
-        runBlocking { getViewData(accountId, peerUserId) }
-
     suspend fun findStartMessageId(accountId: Int, peerUserId: Long): Int? {
         val streak = get(accountId, peerUserId) ?: return null
         val peerUser =
@@ -708,19 +728,9 @@ class StreaksController(
 
 
     suspend fun syncUserState(accountId: Int, peerUserId: Long) {
-        val messagesController = MessagesController.getInstance(accountId)
-        val peerUser = messagesController.getUser(peerUserId)
-
         if (getViewData(accountId, peerUserId) == null) {
             restoreUser(accountId, peerUserId)
-            return
         }
-
-        if (peerUser == null)
-            return
-
-        patchUser(accountId, peerUser)
-        messagesController.putUser(peerUser, false, true)
     }
 
     suspend fun debugSetThreeDayStreak(accountId: Int, peerUserId: Long): Int {
@@ -879,28 +889,15 @@ class StreaksController(
         return true
     }
 
-    suspend fun patchUser(accountId: Int, peerUser: TLRPC.User) {
-        getViewData(accountId, peerUser.id) ?: return
-
-        val currentEmojiStatusDocumentId =
-            UserObject.getEmojiStatusDocumentId(peerUser.emoji_status)
-        val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
-                Plugin.getInstance()
-                    .streakLevelRegistry
-                    .levels()
-                    .any { it.documentId == currentEmojiStatusDocumentId }
-
-        if (!isCurrentEmojiStatusPatched) {
-            originalUserStates.putIfAbsent(
-                peerUser.id,
-                OriginalUserState(
-                    premium = peerUser.premium,
-                    emojiStatus = peerUser.emoji_status
-                )
-            )
+    suspend fun patchUser(accountId: Int, peerUser: TLRPC.User): Boolean {
+        if (originalUserStates.containsKey(peerUser.id)) {
+            val wasPremium = peerUser.premium
+            peerUser.premium = true
+            return !wasPremium
         }
 
-        peerUser.premium = true
+        getViewData(accountId, peerUser.id) ?: return false
+        return applyPatchedUserState(peerUser)
     }
 
     suspend fun patchUsers(accountId: Int) {
@@ -910,9 +907,7 @@ class StreaksController(
         for (streak in streaks) {
             val peerUser = messagesController.getUser(streak.peerUserId) ?: continue
 
-            patchUser(accountId, peerUser)
-
-            messagesController.putUser(peerUser, false, true)
+            applyPatchedUserState(peerUser)
         }
     }
 
