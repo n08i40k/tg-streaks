@@ -26,6 +26,9 @@ suspend fun fetchPeerUsers(
         .apply {
             id = ArrayList(
                 peerUserIds.mapNotNull {
+                    if (it <= 0)
+                        return@mapNotNull null
+
                     (TLRPC.TL_inputUser() as TLRPC.InputUser).apply {
                         user_id = it
                         access_hash = messagesController.getUserSync(it)?.access_hash
