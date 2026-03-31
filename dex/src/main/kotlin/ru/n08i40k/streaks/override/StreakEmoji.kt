@@ -272,8 +272,9 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         invalidateSelf()
     }
 
-    fun setBadge(badge: BadgeDTO?) {
-        if (!canDrawBadge || badge == null) {
+    fun setBadge(user: TLRPC.User?, badge: BadgeDTO?) {
+        // do not draw badge, as it will be shown instead of an empty emoji status
+        if (!canDrawBadge || badge == null || user?.emoji_status == null) {
             clearBadgeView()
             invalidateSelf()
             return
@@ -309,14 +310,14 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
                     AndroidUtilities.runOnUIThread {
                         setStreak(dialog, null)
-                        setBadge(badge)
+                        setBadge(dialog, badge)
                     }
                 }
 
                 is TLRPC.Chat -> {
                     AndroidUtilities.runOnUIThread {
                         setStreak(null, null)
-                        setBadge(null)
+                        setBadge(null, null)
                     }
                 }
             }
@@ -334,7 +335,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
                 AndroidUtilities.runOnUIThread {
                     setStreak(it, streakViewData)
-                    setBadge(badge)
+                    setBadge(it, badge)
                 }
             }
     }
