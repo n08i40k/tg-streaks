@@ -18,6 +18,7 @@ import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.ActionBar.Theme
+import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.StreakViewData
@@ -28,6 +29,17 @@ import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 
 class StreakEmoji : SwapAnimatedEmojiDrawable {
+    sealed interface Parent {
+        data class MessageCell(val messageCell: WeakReference<ChatMessageCell>) : Parent {
+            fun changeWidth(additionalWidth: Int) {
+                val cell = messageCell.get() ?: return
+
+                Plugin.getInstance().chatMessageCellWidthCache
+                    .changeIfNeeded(cell, additionalWidth)
+            }
+        }
+    }
+
     data class EjectData(
         val drawable: WeakReference<StreakEmoji>,
         val targetObject: WeakReference<Any>,
@@ -79,6 +91,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             peerUserId: Long,
             canDrawBadge: Boolean = false,
             nameTextView: SimpleTextView? = null,
+            parent: Parent? = null
         ): StreakEmoji? {
             if (arrayIndex == null) {
                 val drawable = (field.get(obj) ?: return null) as? SwapAnimatedEmojiDrawable
@@ -93,6 +106,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     drawable,
                     peerUserId,
                     canDrawBadge,
+                    parent
                 )
 
                 field.set(obj, newDrawable)
@@ -134,6 +148,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 drawable,
                 peerUserId,
                 canDrawBadge,
+                parent
             )
             array[arrayIndex] = newDrawable
 
@@ -168,6 +183,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     private val size: Int
 
     private var hideOriginal: Boolean = false
+
+    private val parent: Parent?
 
     private fun clearStreakView() {
         streakView?.detach()
@@ -298,6 +315,10 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         invalidateSelf()
     }
 
+    fun syncParent() {
+        (parent as? Parent.MessageCell)?.changeWidth(getAdditionalWidth())
+    }
+
     private fun refreshViews(streakViewData: StreakViewData?) {
         if (streakViewData == null) {
             val dialog =
@@ -311,6 +332,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     AndroidUtilities.runOnUIThread {
                         setStreak(dialog, null)
                         setBadge(dialog, badge)
+                        syncParent()
                     }
                 }
 
@@ -318,6 +340,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     AndroidUtilities.runOnUIThread {
                         setStreak(null, null)
                         setBadge(null, null)
+                        syncParent()
                     }
                 }
             }
@@ -336,6 +359,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 AndroidUtilities.runOnUIThread {
                     setStreak(it, streakViewData)
                     setBadge(it, badge)
+                    syncParent()
                 }
             }
     }
@@ -367,11 +391,13 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         base: SwapAnimatedEmojiDrawable,
         peerUserId: Long,
         canDrawBadge: Boolean,
+        parent: Parent?,
     ) : super(
         null,
         0
     ) {
         cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
+        this.parent = parent
         this.canDrawBadge = canDrawBadge
         this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 

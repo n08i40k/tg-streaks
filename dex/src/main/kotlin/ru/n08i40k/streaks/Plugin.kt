@@ -79,10 +79,12 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
+import ru.n08i40k.streaks.util.WidthCache
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
+import java.lang.ref.WeakReference
 import java.lang.reflect.Member
 import java.time.Instant
 import java.time.LocalDate
@@ -262,19 +264,7 @@ class Plugin {
     private var petFabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
     private var pendingPetFabRefresh: Runnable? = null
 
-    private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
-            return size > 32
-        }
-
-        fun sameWidth(hash: Int, width: Int): Boolean {
-            return this[hash] == width
-        }
-
-        fun push(hash: Int, width: Int) {
-            this[hash] = width
-        }
-    }
+    val chatMessageCellWidthCache = WidthCache()
 
     constructor(
         logReceiver: LogReceiver,
@@ -1294,7 +1284,9 @@ class Plugin {
                 getField(thisClass, "currentNameStatusDrawable"),
                 null,
                 currentUser.id,
-                true
+                true,
+                null,
+                StreakEmoji.Parent.MessageCell(WeakReference(thisObject))
             )
         }
 
@@ -1741,12 +1733,7 @@ class Plugin {
                 "currentNameStatusDrawable"
             ) ?: return@after
 
-            val hash = System.identityHashCode(thisObject)
-
-            if (!chatMessageCellWidthCache.sameWidth(hash, thisObject.backgroundWidth)) {
-                thisObject.backgroundWidth += streakEmoji.getAdditionalWidth()
-                chatMessageCellWidthCache.push(hash, thisObject.backgroundWidth)
-            }
+            chatMessageCellWidthCache.changeIfNeeded(thisObject, streakEmoji.getAdditionalWidth())
         }
 
         // Пользователь в списке участников группы
