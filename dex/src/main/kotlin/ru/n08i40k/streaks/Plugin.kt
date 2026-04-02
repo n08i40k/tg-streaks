@@ -6,9 +6,7 @@
 
 package ru.n08i40k.streaks
 
-import android.app.Dialog
 import android.content.Context
-import android.content.DialogInterface
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.view.View
@@ -89,8 +87,6 @@ import java.lang.reflect.Member
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.Collections
-import java.util.WeakHashMap
 
 typealias LogReceiver = ValueCallback<String>
 typealias TranslationResolver = java.util.function.Function<String, String?>
@@ -265,8 +261,6 @@ class Plugin {
     private var petFabEnabled: Boolean = true
     private var petFabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
     private var pendingPetFabRefresh: Runnable? = null
-    private val dialogShowBypass =
-        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<Dialog, Boolean>()))
 
     private val chatMessageCellWidthCache = object : LinkedHashMap<Int, Int>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Int, Int>): Boolean {
@@ -440,18 +434,6 @@ class Plugin {
         AndroidUtilities.runOnUIThread {
             petFabDialog?.updateSizeDp(sizeDp)
             petFabDialog?.configureWindow()
-        }
-    }
-
-    private fun showFragmentDialog(
-        fragment: BaseFragment,
-        dialog: Dialog,
-        allowInTransition: Boolean,
-        onDismissListener: DialogInterface.OnDismissListener?,
-    ) {
-        AndroidUtilities.runOnUIThread {
-            dialogShowBypass.add(dialog)
-            fragment.showDialog(dialog, allowInTransition, onDismissListener)
         }
     }
 
@@ -1924,13 +1906,6 @@ class Plugin {
                 .sortedByDescending { it.parameterCount }[0]
         ) { param ->
             val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return@before
-            if (dialogShowBypass.remove(dialog) || dialog is StreakInfoBottomSheet) {
-                return@before
-            }
-
-            val fragment = param.thisObject as? BaseFragment ?: return@before
-            val allowInTransition = param.args[1] as Boolean
-            val onDismissListener = param.args[2] as? DialogInterface.OnDismissListener
 
             val user = getFieldValue<TLRPC.User>(
                 PremiumPreviewBottomSheet::class.java,
@@ -1938,21 +1913,12 @@ class Plugin {
                 "user"
             )!!
 
-            uiScope.launch {
-                val streakViewData = streaksController.getViewData(
-                    UserConfig.selectedAccount,
-                    user.id
-                )
+            val streakViewData = streaksController.getViewDataBlocking(
+                UserConfig.selectedAccount,
+                user.id
+            ) ?: return@before
 
-                showFragmentDialog(
-                    fragment,
-                    streakViewData?.let { StreakInfoBottomSheet(dialog, user, it) } ?: dialog,
-                    allowInTransition,
-                    onDismissListener
-                )
-            }
-
-            param.result = dialog
+            param.args[0] = StreakInfoBottomSheet(dialog, user, streakViewData)
         }
 
         // Патч пользователя со стриком

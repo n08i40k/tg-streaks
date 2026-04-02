@@ -5,6 +5,7 @@ package ru.n08i40k.streaks.controller
 import androidx.room.withTransaction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
@@ -647,6 +648,9 @@ class StreaksController(
             streak.length == streakLevel.length || streak.length % 100 == 0
         )
     }
+
+    fun getViewDataBlocking(accountId: Int, peerUserId: Long): StreakViewData? =
+        runBlocking { getViewData(accountId, peerUserId) }
 
     suspend fun findStartMessageId(accountId: Int, peerUserId: Long): Int? {
         val streak = get(accountId, peerUserId) ?: return null
