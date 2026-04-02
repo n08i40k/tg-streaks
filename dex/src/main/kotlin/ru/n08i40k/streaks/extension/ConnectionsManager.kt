@@ -15,6 +15,7 @@ sealed class RequestOutcome {
 
     data class Failure(val error: TLRPC.TL_error) : RequestOutcome()
     data class RateLimit(val retryDelay: Long) : RequestOutcome()
+    data class TransientFailure(val error: TLRPC.TL_error, val retryDelay: Long) : RequestOutcome()
     data object TimeOut : RequestOutcome()
 }
 
@@ -34,8 +35,13 @@ suspend fun ConnectionsManager.sendRequestBlocking(
                         RequestOutcome.Success(response)
 
                     error != null ->
-                        if (error.isRetryable())
+                        if (error.isRateLimited())
                             RequestOutcome.RateLimit(error.retryDelayMs(minRetryDelay))
+                        else if (error.isTransientFailure())
+                            RequestOutcome.TransientFailure(
+                                error,
+                                maxOf(minRetryDelay, 5_000L)
+                            )
                         else
                             RequestOutcome.Failure(error)
 

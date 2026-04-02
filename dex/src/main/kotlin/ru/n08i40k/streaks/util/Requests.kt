@@ -54,6 +54,13 @@ suspend fun fetchPeerUsers(
             null
         }
 
+        is RequestOutcome.TransientFailure -> {
+            logger.info(
+                "Users request for $accountId failed temporarily with ${result.error.fmt()}, skipping prune for now"
+            )
+            null
+        }
+
         is RequestOutcome.TimeOut -> {
             logger.info("Users request timed out for $accountId")
             null

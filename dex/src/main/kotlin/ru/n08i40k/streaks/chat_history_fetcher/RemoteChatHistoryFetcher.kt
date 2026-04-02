@@ -78,6 +78,21 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                     continue
                 }
 
+                is RequestOutcome.TransientFailure -> {
+                    Plugin.getInstance().logger.info(
+                        "History request failed temporarily with ${result.error.fmt()} for " +
+                                "$accountId:$peerUserId (attempt $attempt), retrying in ${result.retryDelay / 1000}s"
+                    )
+
+                    showRetryBulletin(result.retryDelay)
+
+                    RuntimeGuard.pauseAwareDelay(
+                        result.retryDelay,
+                        "history transient retry delay for $accountId:$peerUserId",
+                    )
+                    continue
+                }
+
                 is RequestOutcome.TimeOut -> {
                     Plugin.getInstance().logger.info(
                         "History request timed out after ${REQUEST_TIMEOUT_MS / 1000}s for " +
