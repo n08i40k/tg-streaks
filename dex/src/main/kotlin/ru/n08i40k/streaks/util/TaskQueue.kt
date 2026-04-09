@@ -22,26 +22,30 @@ class TaskQueue(private val logger: Logger) {
             throw IllegalStateException("Task queue worker is already started!")
 
         suspend fun worker(channel: ReceiveChannel<WorkerTask>) {
-            for (task in channel) {
-                try {
-                    RuntimeGuard.awaitAppForeground("task '${task.name}'")
+            try {
+                for (task in channel) {
+                    try {
+                        RuntimeGuard.awaitAppForeground("task '${task.name}'")
 
-                    logger.info("[TaskQueue] Processing task '${task.name}'...")
-                    val start = Instant.now().toEpochMilli()
+                        logger.info("[TaskQueue] Processing task '${task.name}'...")
+                        val start = Instant.now().toEpochMilli()
 
-                    task.callback.invoke()
+                        task.callback.invoke()
 
-                    val end = Instant.now().toEpochMilli()
-                    logger.info("[TaskQueue] Task '${task.name}' was finished (took ${end - start} ms.)")
-                } catch (_: CancellationException) {
-                    // Suppress
-                    stopWorker()
-                    break
-                } catch (e: Throwable) {
-                    logger.fatal("[TaskQueue] Task '${task.name}' thrown an exception", e)
-                    stopWorker()
-                    break
+                        val end = Instant.now().toEpochMilli()
+                        logger.info("[TaskQueue] Task '${task.name}' was finished (took ${end - start} ms.)")
+                    } catch (_: CancellationException) {
+                        // Suppress
+                        stopWorker()
+                        break
+                    } catch (e: Throwable) {
+                        logger.fatal("[TaskQueue] Task '${task.name}' thrown an exception", e)
+                        stopWorker()
+                        break
+                    }
                 }
+            } finally {
+                isWorkerStarted = false
             }
         }
 
@@ -53,8 +57,9 @@ class TaskQueue(private val logger: Logger) {
 
     fun stopWorker() {
         if (!isWorkerStarted)
-            throw IllegalStateException("Task queue worker was not started!")
+            return
 
+        isWorkerStarted = false
         queue.close()
     }
 

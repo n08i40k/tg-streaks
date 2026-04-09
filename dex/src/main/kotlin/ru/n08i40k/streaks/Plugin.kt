@@ -75,6 +75,7 @@ import ru.n08i40k.streaks.registry.StreakPetLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.StreakPetDialog
 import ru.n08i40k.streaks.ui.StreakPetFabDialog
+import ru.n08i40k.streaks.util.AccountTaskRunnerRegistry
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
@@ -235,6 +236,7 @@ class Plugin {
     private val db: PluginDatabase
     private val databaseBackupManager: DatabaseBackupManager
     private val taskQueue: TaskQueue
+    private val accountTaskRunnerRegistry: AccountTaskRunnerRegistry
 
     // helpers
     val logger: Logger
@@ -281,6 +283,7 @@ class Plugin {
         // background work
         RuntimeGuard.setLogger(this.logger)
         this.taskQueue = TaskQueue(this.logger)
+        this.accountTaskRunnerRegistry = AccountTaskRunnerRegistry(this.logger)
 
         // database
         this.db = Room.databaseBuilder(
@@ -303,16 +306,25 @@ class Plugin {
         taskQueue.enqueueTask(name, callback)
 
     private fun enqueueAccountInitializationTasks(accountId: Int, reason: String) {
-        enqueueTask("prune invalid streaks and pets for account $accountId ($reason)") {
+        accountTaskRunnerRegistry.enqueue(
+            accountId,
+            "prune invalid streaks and pets for account $accountId ($reason)"
+        ) {
             streaksController.pruneInvalid(accountId)
             streakPetsController.pruneInvalid(accountId)
         }
 
-        enqueueTask("patch user's emoji statuses for account $accountId ($reason)") {
+        accountTaskRunnerRegistry.enqueue(
+            accountId,
+            "patch user's emoji statuses for account $accountId ($reason)"
+        ) {
             streaksController.patchUsers(accountId)
         }
 
-        enqueueTask("check for updates and update UI for account $accountId ($reason)") {
+        accountTaskRunnerRegistry.enqueue(
+            accountId,
+            "check for updates and update UI for account $accountId ($reason)"
+        ) {
             syncPeersUi(streaksController.checkAllForUpdates(accountId))
 
             streakPetsController.checkAllForUpdates(accountId)
@@ -358,8 +370,8 @@ class Plugin {
     private fun onEject() {
         logger.setFatalSuppression(true)
 
-        if (taskQueue.isWorkerRunning)
-            taskQueue.stopWorker()
+        taskQueue.stopWorker()
+        accountTaskRunnerRegistry.stopAll()
 
         uiScope.cancel()
         backgroundScope.cancel()
@@ -464,9 +476,12 @@ class Plugin {
                     resourcesProvider,
                     translator,
                     onRenameRequested = { newName ->
-                        enqueueTask("rename pet for $accountId:$peerUserId") {
+                        accountTaskRunnerRegistry.enqueue(
+                            accountId,
+                            "rename pet for $accountId:$peerUserId"
+                        ) {
                             if (!streakPetsController.rename(accountId, peerUserId, newName)) {
-                                return@enqueueTask
+                                return@enqueue
                             }
 
                             serviceMessagesController.sendPetSetName(
@@ -664,7 +679,10 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("rebuild streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "rebuild streak for $accountId:$peerUserId"
+            ) {
                 streaksController.rebuild(
                     accountId,
                     peerUser
@@ -707,19 +725,22 @@ class Plugin {
                 return@add
             }
 
-            enqueueTask("rebuild streak-pet for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "rebuild streak-pet for $accountId:$peerUserId"
+            ) {
                 val streakPet = streakPetsController.get(accountId, peerUserId)
 
                 if (streakPet == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 streakPetsController.rebuild(accountId, peerUser) { progress ->
@@ -757,10 +778,13 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             validatePrivatePeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("try to create streak-pet for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "try to create streak-pet for $accountId:$peerUserId"
+            ) {
                 if (streakPetsController.get(accountId, peerUserId) != null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 AndroidUtilities.runOnUIThread {
@@ -787,7 +811,10 @@ class Plugin {
                             .setNegativeButton(
                                 translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_NO)
                             ) { _, _ ->
-                                enqueueTask("create streak-pet for $accountId:$peerUserId") {
+                                accountTaskRunnerRegistry.enqueue(
+                                    accountId,
+                                    "create streak-pet for $accountId:$peerUserId"
+                                ) {
                                     when (streakPetsController.create(accountId, peerUserId)) {
                                         is StreakPetsController.CreateResult.Created -> {
                                             refreshPetFabForOpenChat()
@@ -833,13 +860,16 @@ class Plugin {
 
             bulletinHelper.showTranslated(TranslationKey.INFO_SEARCHING_STREAK_START_MESSAGE)
 
-            enqueueTask("go to streak start for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "go to streak start for $accountId:$peerUserId"
+            ) {
                 try {
                     val streak = streaksController.get(accountId, peerUserId)
 
                     if (streak == null) {
                         bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                        return@enqueueTask
+                        return@enqueue
                     }
 
                     val jumpTs = streak.createdAt.toEpochSecondSystem().toInt()
@@ -906,27 +936,30 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("revive streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "revive streak for $accountId:$peerUserId"
+            ) {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 if (!streak.dead) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 if (!streak.canRevive) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 if (!streaksController.reviveNow(accountId, peerUserId)) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 if (streaksController.patchUser(accountId, peerUser))
@@ -945,7 +978,10 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("create debug streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "create debug streak for $accountId:$peerUserId"
+            ) {
                 streaksController.debugSetThreeDayStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
@@ -961,12 +997,15 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("upgrade debug streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "upgrade debug streak for $accountId:$peerUserId"
+            ) {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 val nextLevel = streakLevelRegistry
@@ -975,12 +1014,12 @@ class Plugin {
 
                 if (nextLevel == null) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_STREAK_ALREADY_MAX)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 val newLength =
                     streaksController.debugUpgradeStreak(accountId, peerUserId)
-                        ?: return@enqueueTask
+                        ?: return@enqueue
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
                     TranslationKey.OK_DEBUG_STREAK_UPGRADED,
@@ -996,7 +1035,10 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("freeze debug streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "freeze debug streak for $accountId:$peerUserId"
+            ) {
                 streaksController.debugFreezeStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
@@ -1012,7 +1054,10 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("kill debug streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "kill debug streak for $accountId:$peerUserId"
+            ) {
                 streaksController.debugMarkDead(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
@@ -1028,10 +1073,13 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("delete debug streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "delete debug streak for $accountId:$peerUserId"
+            ) {
                 if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 syncPeerUi(accountId, peerUserId)
@@ -1048,10 +1096,13 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
             val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
 
-            enqueueTask("delete debug streak for $accountId:$peerUserId") {
+            accountTaskRunnerRegistry.enqueue(
+                accountId,
+                "delete debug streak for $accountId:$peerUserId"
+            ) {
                 if (!streakPetsController.delete(accountId, peerUserId)) {
                     bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
-                    return@enqueueTask
+                    return@enqueue
                 }
 
                 AndroidUtilities.runOnUIThread { dismissPetFab() }
@@ -1097,7 +1148,7 @@ class Plugin {
                 "msg_retry"
             )
 
-            enqueueTask("rebuild all streaks for $accountId") {
+            accountTaskRunnerRegistry.enqueue(accountId, "rebuild all streaks for $accountId") {
                 try {
                     val result =
                         streaksController.rebuildAll(accountId) { index, total, _, progress ->
@@ -1514,41 +1565,44 @@ class Plugin {
             val prizeStars =
                 messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                     ?: return@before
+            val accountId = UserConfig.selectedAccount
+            val peerUserId = messageObject.dialogId
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
-                    enqueueTask("try to revive streak from notification") {
-                        val accountId = UserConfig.selectedAccount
-                        val peerUserId = messageObject.dialogId
-
+                    accountTaskRunnerRegistry.enqueue(
+                        accountId,
+                        "try to revive streak from notification"
+                    ) {
                         val streak = streaksController.get(accountId, peerUserId)
 
                         if (streak == null) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
-                            return@enqueueTask
+                            return@enqueue
                         }
 
                         if (!streak.dead) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
-                            return@enqueueTask
+                            return@enqueue
                         }
 
                         if (!streak.canRevive) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                            return@enqueueTask
+                            return@enqueue
                         }
 
                         if (!streaksController.reviveNow(accountId, peerUserId)) {
                             bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
-                            return@enqueueTask
+                            return@enqueue
                         }
                     }
                 }
 
                 ServiceMessage.PET_INVITE_TEXT -> {
-                    enqueueTask("try to accept streak-pet invitation from notification") {
-                        val accountId = UserConfig.selectedAccount
-                        val peerUserId = messageObject.dialogId
+                    accountTaskRunnerRegistry.enqueue(
+                        accountId,
+                        "try to accept streak-pet invitation from notification"
+                    ) {
                         streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
                         serviceMessagesController.sendPetInviteAccepted(
                             accountId,
@@ -1840,6 +1894,7 @@ class Plugin {
                 .filter { it.name == "switchToAccount" }
                 .maxByOrNull { it.parameterCount }!!
         ) {
+            accountTaskRunnerRegistry.stopAll(UserConfig.selectedAccount)
             enqueueSelectedAccountInitializationTasks("account switch")
         }
 
@@ -2010,7 +2065,7 @@ class Plugin {
             if (accountId != UserConfig.selectedAccount || entries.isEmpty())
                 return
 
-            enqueueTask("handle updates for $accountId") {
+            accountTaskRunnerRegistry.enqueue(accountId, "handle updates for $accountId") {
                 var changed = false
 
                 for ((peerUserId, at, out, messageId, message) in entries) {
@@ -2073,10 +2128,14 @@ class Plugin {
                 SendMessagesHelper.SendMessageParams::class.java
             )
         ) { param ->
+            val thisObject = param.thisObject as? BaseController ?: return@before
+            val thisClass = BaseController::class.java
             val sendMessageParams = param.args[0] as SendMessagesHelper.SendMessageParams
+            val accountId =
+                getFieldValue<Int>(thisClass, thisObject, "currentAccount")
+                    ?: UserConfig.selectedAccount
 
-            enqueueTask("handle outgoing message") {
-                val accountId = UserConfig.selectedAccount
+            accountTaskRunnerRegistry.enqueue(accountId, "handle outgoing message") {
                 val peerUserId = sendMessageParams.peer
 
                 val result = streaksController.handleUpdate(
