@@ -60,6 +60,7 @@ import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
 import ru.n08i40k.streaks.database.MIGRATION_3_5
+import ru.n08i40k.streaks.database.MIGRATION_5_6
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
@@ -287,7 +288,7 @@ class Plugin {
             PluginDatabase::class.java,
             "tg-streaks"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
             .build()
 
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)

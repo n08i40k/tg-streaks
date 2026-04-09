@@ -6,7 +6,7 @@ import java.time.LocalDate
 
 interface ChatHistoryFetcher {
     sealed class Status(val wasRevived: Boolean) {
-        class NoActivity : Status(false)
+        class NoActivity(wasRevived: Boolean) : Status(wasRevived)
         class FromOwner(wasRevived: Boolean) : Status(wasRevived)
         class FromPeer(wasRevived: Boolean) : Status(wasRevived)
         class FromBoth(wasRevived: Boolean) : Status(wasRevived)

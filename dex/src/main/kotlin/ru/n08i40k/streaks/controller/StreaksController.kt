@@ -25,6 +25,7 @@ import ru.n08i40k.streaks.data.StreakRevive
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.PeerType
+import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.getPeerType
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
@@ -139,6 +140,7 @@ class StreaksController(
         updateFromOwnerAt: LocalDate,
         updateFromPeerAt: LocalDate,
         revivesCount: Int = 0,
+        deathNotified: Boolean = false,
     ): Streak {
         val minUpdateAt = minOf(updateFromOwnerAt, updateFromPeerAt, compareBy { it.toEpochDay() })
         val createdAt =
@@ -151,11 +153,31 @@ class StreaksController(
             updateFromOwnerAt,
             updateFromPeerAt,
             revivesCount,
+            deathNotified,
         )
     }
 
     private fun isVisibleLength(length: Int): Boolean =
         length >= MIN_VISIBLE_STREAK_LENGTH
+
+    private suspend fun preKill(
+        accountId: Int,
+        streak: Streak,
+        revives: Set<LocalDate>,
+    ) {
+        val deadStreak = streak.copy(deathNotified = true)
+
+        db.withTransaction {
+            dao.update(deadStreak)
+
+            revives.forEach {
+                reviveDao.insertAll(StreakRevive(streak.ownerUserId, streak.peerUserId, it))
+            }
+        }
+
+        if (isVisibleLength(streak.length) && !streak.deathNotified)
+            serviceMessagesController.sendDeath(accountId, streak.peerUserId)
+    }
 
     private fun resolveDialogId(dialog: TLRPC.Dialog): Long {
         var dialogId = dialog.id
@@ -227,10 +249,10 @@ class StreaksController(
 
         when (val status =
             cachedFetcher.fetchActivity(accountId, peerUser.id, day, untilRevive)) {
-            is ChatHistoryFetcher.Status.FromBoth -> return if (status.wasRevived) Action.REVIVE else Action.GROW
+            is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) return Action.REVIVE else if (!untilRevive) return Action.GROW
             is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) return Action.REVIVE
             is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) return Action.REVIVE
-            else -> {}
+            is ChatHistoryFetcher.Status.NoActivity -> if (status.wasRevived) return Action.REVIVE
         }
 
         return when (val status =
@@ -238,7 +260,7 @@ class StreaksController(
             is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) Action.REVIVE else Action.GROW
             is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
             is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER
-            is ChatHistoryFetcher.Status.NoActivity -> Action.KILL
+            is ChatHistoryFetcher.Status.NoActivity -> if (status.wasRevived) Action.REVIVE else Action.KILL
         }
     }
 
@@ -271,6 +293,8 @@ class StreaksController(
                 val checkedDay = currentDay
                 val action =
                     fetchStreakActionForDay(accountId, peerUser, checkedDay, revives, false)
+                logger.info("[StreakRebuild] $action at ${currentDay.fmt()} for $accountId:$peerUserId")
+
                 val progress = RebuildProgress(
                     peerUser = peerUser,
                     daysChecked = (startDay.toEpochDay() - checkedDay.toEpochDay()).toInt() + 1,
@@ -286,11 +310,46 @@ class StreaksController(
                     Action.KILL, Action.KILL_BY_OWNER, Action.KILL_BY_PEER ->
                         // если проверяемый день текущий и может быть зафриженным
                         if (checkedDay == startDay) {
+                            // revive может быть и сегодня
+                            if (fetchStreakActionForDay(
+                                    accountId,
+                                    peerUser,
+                                    checkedDay,
+                                    revives,
+                                    true
+                                ) == Action.REVIVE
+                            ) {
+                                logger.info("[StreakRebuild] First-day-revive at ${currentDay.fmt()} for $accountId:$peerUserId")
+                                revives.add(checkedDay)
+                                currentDay = checkedDay.minusDays(2)
+                                continue
+                            }
+
                             // маркируем, что длинна по итогу rebuildTo быть вчера
                             startDayIsFrozen = true
                             // в след итерации чекаем предыдущий день
                             currentDay = checkedDay.prev()
                         } else {
+                            val action = fetchStreakActionForDay(
+                                accountId,
+                                peerUser,
+                                checkedDay.next(),
+                                revives,
+                                true
+                            )
+
+                            logger.info(
+                                "[StreakRebuild] Checking if next day was revive. $action at ${
+                                    currentDay.next().fmt()
+                                } for $accountId:$peerUserId"
+                            )
+
+                            if (action == Action.REVIVE) {
+                                revives.add(checkedDay.next())
+                                currentDay = checkedDay.prev()
+                                continue
+                            }
+
                             // устанавливаем rebuildFrom как следующий, ибо reviveNow не было
                             currentDay = checkedDay.next()
                             shouldStop = true
@@ -384,7 +443,6 @@ class StreaksController(
     private suspend fun checkForUpdates(
         accountId: Int,
         streak: Streak,
-        sendServiceMessages: Boolean = true
     ) {
         val now = LocalDate.now()
         val previousLength = streak.length
@@ -465,13 +523,18 @@ class StreaksController(
                             updateFromOwnerAt,
                             updateFromPeerAt,
                             revives.size,
+                            streak.deathNotified,
                         )
 
-                        kill(
-                            accountId,
-                            peerUserId,
-                            sendServiceMessages && isVisibleLength(streakBeforeDeath.length)
-                        )
+                        if (streakBeforeDeath.canRevive)
+                            preKill(
+                                accountId,
+                                streakBeforeDeath,
+                                revives,
+                            )
+                        else
+                            kill(accountId, peerUserId)
+
                         return
                     }
 
@@ -490,7 +553,8 @@ class StreaksController(
                 streak.copy(
                     updateFromOwnerAt = updateFromOwnerAt,
                     updateFromPeerAt = updateFromPeerAt,
-                    revivesCount = revives.size
+                    revivesCount = revives.size,
+                    deathNotified = false,
                 )
             )
 
@@ -499,13 +563,8 @@ class StreaksController(
 
         val currentStreak = get(accountId, peerUserId) ?: return
 
-        if (
-            sendServiceMessages
-            && isVisibleLength(previousLength)
-            && currentStreak.level.length > previousLevelLength
-        ) {
+        if (isVisibleLength(previousLength) && currentStreak.level.length > previousLevelLength)
             serviceMessagesController.sendUpgrade(accountId, peerUserId, currentStreak.length)
-        }
     }
 
     suspend fun checkAllForUpdates(accountId: Int): List<UiSyncTarget> {
@@ -587,18 +646,26 @@ class StreaksController(
             return HandleUpdateResult(changed = false, created = false)
         }
 
+        if (streak.dead) {
+            if (streak.canRevive)
+                return HandleUpdateResult(changed = false, created = false)
+
+            kill(accountId, peerUserId)
+            return handleUpdate(accountId, peerUserId, at, out, message, sendServiceMessages)
+        }
+
         val wasCreated = !isVisibleLength(streak.length)
 
         if (out) {
             if (streak.updateFromOwnerAt == now)
                 return HandleUpdateResult(changed = false, created = false)
             else
-                dao.update(streak.copy(updateFromOwnerAt = now))
+                dao.update(streak.copy(updateFromOwnerAt = now, deathNotified = false))
         } else {
             if (streak.updateFromPeerAt == now)
                 return HandleUpdateResult(changed = false, created = false)
             else
-                dao.update(streak.copy(updateFromPeerAt = now))
+                dao.update(streak.copy(updateFromPeerAt = now, deathNotified = false))
         }
 
         val updatedStreak = get(accountId, peerUserId)
@@ -817,6 +884,7 @@ class StreaksController(
             deathDay,
             deathDay,
             revivesCount,
+            true,
         )
 
         db.withTransaction {
@@ -841,16 +909,7 @@ class StreaksController(
     suspend fun kill(
         accountId: Int,
         peerUserId: Long,
-        sendServiceMessage: Boolean = true
-    ) {
-        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-
-        dao.deleteByRelation(ownerUserId, peerUserId)
-
-        if (sendServiceMessage) {
-            serviceMessagesController.sendDeath(accountId, peerUserId)
-        }
-    }
+    ) = dao.deleteByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
     suspend fun reviveNow(
         accountId: Int,
@@ -871,7 +930,8 @@ class StreaksController(
                 streak.copy(
                     revivesCount = if (alreadyRevived) streak.revivesCount else streak.revivesCount + 1,
                     updateFromOwnerAt = now,
-                    updateFromPeerAt = now
+                    updateFromPeerAt = now,
+                    deathNotified = false,
                 )
             )
 

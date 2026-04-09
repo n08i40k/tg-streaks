@@ -190,7 +190,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             fromOwner && fromPeer -> ChatHistoryFetcher.Status.FromBoth(wasRevived)
             fromOwner -> ChatHistoryFetcher.Status.FromOwner(wasRevived)
             fromPeer -> ChatHistoryFetcher.Status.FromPeer(wasRevived)
-            else -> ChatHistoryFetcher.Status.NoActivity()
+            else -> ChatHistoryFetcher.Status.NoActivity(wasRevived)
         }
     }
 

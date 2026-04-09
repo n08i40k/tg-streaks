@@ -21,6 +21,7 @@ data class Streak(
     @ColumnInfo(name = "update_from_peer_at") val updateFromPeerAt: LocalDate,
 
     @ColumnInfo(name = "revives_count") val revivesCount: Int,
+    @ColumnInfo(name = "death_notified") val deathNotified: Boolean = false,
 ) {
     @Ignore
     val length: Int
