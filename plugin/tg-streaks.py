@@ -36,7 +36,7 @@ __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Analog for TikTok streaks for Telegram"
 __author__ = "@n08i40k & @RoflPlugins"
-__version__ = "2.7.8"
+__version__ = "2.8.0"
 __icon__ = "exteraPlugins/0"
 __min_version__ = "12.1.1"
 
@@ -48,9 +48,9 @@ REPO_OWNER = "n08i40k"
 REPO_NAME = __id__
 
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
-DEX_SHA256 = "f931814febb58468e6a4f00a66c2e05825692efe5bd9f51685a75283264c5f4b"
+DEX_SHA256 = "6e5087040eea387536d45a3ab103bca0525be0d9ca904fece14a943bc1c993cc"
 RESOURCES_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/resources.zip"
-RESOURCES_SHA256 = "a4047a8f4c575a7011f584fd2e2416f4017a70790bbabcef8dca4f7c89f037b6"
+RESOURCES_SHA256 = "7cafa8479a39e870f6c785d81a83126fc1b6779c18df9f61447d3b173a35d49d"
 
 PLUGIN_UPDATE_API_URL = (
     f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
