@@ -52,6 +52,7 @@ class Logger(private val logReceiver: LogReceiver) {
                         + "${formattedException}\n"
                         + "```"
             )
+            BulletinHelper.show(null, "Streaks plugin has been ejected!")
             Plugin.eject()
         }
     }

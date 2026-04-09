@@ -209,11 +209,7 @@ class Plugin {
             // do not run on threads that may be destructed
             AndroidUtilities.runOnUIThread {
                 try {
-                    INSTANCE?.let {
-                        it.onEject()
-                        BulletinHelper.show(null, "Streaks plugin has been ejected!")
-                    }
-
+                    INSTANCE?.onEject()
                     INSTANCE = null
                 } catch (e: Throwable) {
                     INSTANCE?.logger?.fatal("Failed to eject plugin", e, true)
