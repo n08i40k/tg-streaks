@@ -10,9 +10,11 @@ import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.extension.RequestOutcome
 import ru.n08i40k.streaks.extension.fmt
+import ru.n08i40k.streaks.extension.isPeerIdInvalid
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
+import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.util.RuntimeGuard
 import java.time.LocalDate
 
@@ -58,10 +60,23 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             when (result) {
                 is RequestOutcome.Success -> return result.cast<TLRPC.messages_Messages>()
 
-                is RequestOutcome.Failure -> throw RuntimeException(
-                    "Failed to fetch chat activity $accountId:$peerUserId",
-                    Exception(result.error.fmt())
-                )
+                is RequestOutcome.Failure -> {
+                    val formattedError = result.error.fmt()
+
+                    if (result.error.isPeerIdInvalid()) {
+                        throw InvalidPeerException(
+                            accountId,
+                            peerUserId,
+                            "Invalid peer for history fetch $accountId:$peerUserId",
+                            Exception(formattedError)
+                        )
+                    }
+
+                    throw RuntimeException(
+                        "Failed to fetch chat activity $accountId:$peerUserId",
+                        Exception(formattedError)
+                    )
+                }
 
                 is RequestOutcome.RateLimit -> {
                     Plugin.getInstance().logger.info(

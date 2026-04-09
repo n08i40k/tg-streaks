@@ -26,6 +26,7 @@ import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
+import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.fetchPeerUsers
 import java.time.LocalDate
@@ -43,6 +44,13 @@ class StreakPetsController(
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
     private val remoteFetcher: ChatHistoryFetcher = RemoteChatHistoryFetcher()
+
+    private suspend fun removeInvalidPeerPet(accountId: Int, peerUserId: Long) {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        dao.deleteByRelation(ownerUserId, peerUserId)
+
+        logger.info("Removed streak-pet for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
+    }
 
     suspend fun get(accountId: Int, peerUserId: Long): StreakPet? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
@@ -228,6 +236,8 @@ class StreakPetsController(
 
         try {
             db.withTransaction { rebuildInTransaction(accountId, peerUser, onProgressUpdate) }
+        } catch (_: InvalidPeerException) {
+            removeInvalidPeerPet(accountId, peerUser.id)
         } catch (e: Throwable) {
             logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         } finally {
@@ -369,50 +379,54 @@ class StreakPetsController(
         val streakPets = dao.findAllByOwnerUserId(ownerUserId)
 
         for (streakPet in streakPets) {
-            if (
-                taskDao.findAllByRelationAndDay(ownerUserId, streakPet.peerUserId, now)
-                    .isEmpty()
-            ) {
-                taskDao.insertIfNotExistsAll(
-                    *StreakPetTask.getNewTasksList(ownerUserId, streakPet.peerUserId, now)
-                        .toTypedArray()
-                )
-            }
-
-            val notCompletedTasks =
-                taskDao.findNotCompletedByRelationAndDay(
-                    ownerUserId,
-                    streakPet.peerUserId,
-                    streakPet.lastCheckedAt
-                ).toMutableList()
-
-            run {
-                var currentDay = streakPet.lastCheckedAt.next()
-
-                while (true) {
-                    if (currentDay > now)
-                        break
-
-                    notCompletedTasks.addAll(
-                        StreakPetTask.getNewTasksList(
-                            ownerUserId,
-                            streakPet.peerUserId,
-                            currentDay
-                        )
+            try {
+                if (
+                    taskDao.findAllByRelationAndDay(ownerUserId, streakPet.peerUserId, now)
+                        .isEmpty()
+                ) {
+                    taskDao.insertIfNotExistsAll(
+                        *StreakPetTask.getNewTasksList(ownerUserId, streakPet.peerUserId, now)
+                            .toTypedArray()
                     )
-
-                    currentDay = currentDay.next()
                 }
+
+                val notCompletedTasks =
+                    taskDao.findNotCompletedByRelationAndDay(
+                        ownerUserId,
+                        streakPet.peerUserId,
+                        streakPet.lastCheckedAt
+                    ).toMutableList()
+
+                run {
+                    var currentDay = streakPet.lastCheckedAt.next()
+
+                    while (true) {
+                        if (currentDay > now)
+                            break
+
+                        notCompletedTasks.addAll(
+                            StreakPetTask.getNewTasksList(
+                                ownerUserId,
+                                streakPet.peerUserId,
+                                currentDay
+                            )
+                        )
+
+                        currentDay = currentDay.next()
+                    }
+                }
+
+                if (notCompletedTasks.isEmpty()) {
+                    if (streakPet.lastCheckedAt != now)
+                        dao.update(streakPet.copy(lastCheckedAt = now))
+
+                    continue
+                }
+
+                db.withTransaction { checkForUpdates(accountId, streakPet, notCompletedTasks) }
+            } catch (_: InvalidPeerException) {
+                removeInvalidPeerPet(accountId, streakPet.peerUserId)
             }
-
-            if (notCompletedTasks.isEmpty()) {
-                if (streakPet.lastCheckedAt != now)
-                    dao.update(streakPet.copy(lastCheckedAt = now))
-
-                continue
-            }
-
-            db.withTransaction { checkForUpdates(accountId, streakPet, notCompletedTasks) }
         }
     }
 

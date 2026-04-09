@@ -27,6 +27,7 @@ import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.PeerType
 import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.getPeerType
+import ru.n08i40k.streaks.extension.isPeerIdInvalid
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
 import ru.n08i40k.streaks.extension.label
@@ -34,6 +35,7 @@ import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
+import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
@@ -105,6 +107,15 @@ class StreaksController(
 
     private val dao = db.streakDao()
     private val reviveDao = db.streakReviveDao()
+
+    private suspend fun removeInvalidPeerStreak(accountId: Int, peerUserId: Long) {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        dao.deleteByRelation(ownerUserId, peerUserId)
+
+        logger.info("Removed streak for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
+
+        restoreUser(accountId, peerUserId)
+    }
 
     private fun applyPatchedUserState(peerUser: TLRPC.User): Boolean {
         val currentEmojiStatusDocumentId =
@@ -396,8 +407,8 @@ class StreaksController(
                     reviveDao.insertAll(record)
                 }
             }
-
-            // TODO: service message abt upgrade?
+        } catch (_: InvalidPeerException) {
+            removeInvalidPeerStreak(accountId, peerUser.id)
         } catch (e: Throwable) {
             logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         } finally {
@@ -571,9 +582,14 @@ class StreaksController(
         val uiSyncTargets = mutableListOf<UiSyncTarget>()
         val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
-        streaks.forEach {
-            checkForUpdates(accountId, it)
-            uiSyncTargets.add(UiSyncTarget(accountId, it.peerUserId))
+        streaks.forEach { streak ->
+            try {
+                checkForUpdates(accountId, streak)
+            } catch (_: InvalidPeerException) {
+                removeInvalidPeerStreak(accountId, streak.peerUserId)
+            }
+
+            uiSyncTargets.add(UiSyncTarget(accountId, streak.peerUserId))
         }
 
         return uiSyncTargets
@@ -733,65 +749,80 @@ class StreaksController(
         var firstId = 0
         var firstDate = 0
 
-        while (true) {
-            RuntimeGuard.awaitAppForegroundAndConnection(
-                accountId,
-                "streak start lookup for $accountId:$peerUserId",
-            )
+        try {
+            while (true) {
+                RuntimeGuard.awaitAppForegroundAndConnection(
+                    accountId,
+                    "streak start lookup for $accountId:$peerUserId",
+                )
 
-            val req = TLRPC.TL_messages_getHistory().apply {
-                this.peer = peerUser
-                offset_id = offsetId
-                offset_date = offsetDate
-                limit = 100
-            }
+                val req = TLRPC.TL_messages_getHistory().apply {
+                    this.peer = peerUser
+                    offset_id = offsetId
+                    offset_date = offsetDate
+                    limit = 100
+                }
 
-            val deferred = CompletableDeferred<Result<TLObject>>()
+                val deferred = CompletableDeferred<Result<TLObject>>()
 
-            connectionsManager.sendRequest(req) { response, error ->
-                if (error != null) {
-                    deferred.complete(
-                        Result.failure(RuntimeException(error.text ?: error.toString()))
-                    )
-                } else {
-                    deferred.complete(
-                        Result.success(
-                            response ?: throw NullPointerException("History response is null")
+                connectionsManager.sendRequest(req) { response, error ->
+                    if (error != null) {
+                        val failure =
+                            if (error.isPeerIdInvalid()) {
+                                InvalidPeerException(
+                                    accountId,
+                                    peerUserId,
+                                    "Invalid peer for streak start lookup $accountId:$peerUserId",
+                                    Exception(error.fmt())
+                                )
+                            } else {
+                                RuntimeException(error.text ?: error.toString())
+                            }
+
+                        deferred.complete(Result.failure(failure))
+                    } else {
+                        deferred.complete(
+                            Result.success(
+                                response ?: throw NullPointerException("History response is null")
+                            )
                         )
-                    )
+                    }
                 }
-            }
 
-            val response = deferred.await().getOrElse { throw it } as? TLRPC.messages_Messages
-                ?: throw RuntimeException("Unexpected history response type")
-            val messages = response.messages
+                val response = deferred.await().getOrElse { throw it } as? TLRPC.messages_Messages
+                    ?: throw RuntimeException("Unexpected history response type")
+                val messages = response.messages
 
-            if (messages.isEmpty())
-                break
+                if (messages.isEmpty())
+                    break
 
-            for (messageAny in messages) {
-                val message = messageAny as? TLRPC.Message ?: continue
-                val messageDate = message.date
+                for (messageAny in messages) {
+                    val message = messageAny as? TLRPC.Message ?: continue
+                    val messageDate = message.date
 
-                if (messageDate !in startTs until endTs)
-                    continue
+                    if (messageDate !in startTs until endTs)
+                        continue
 
-                if (
-                    firstId == 0
-                    || messageDate < firstDate
-                    || (messageDate == firstDate && message.id < firstId)
-                ) {
-                    firstId = message.id
-                    firstDate = messageDate
+                    if (
+                        firstId == 0
+                        || messageDate < firstDate
+                        || (messageDate == firstDate && message.id < firstId)
+                    ) {
+                        firstId = message.id
+                        firstDate = messageDate
+                    }
                 }
+
+                val oldest = messages.lastOrNull() as? TLRPC.Message ?: break
+                offsetId = oldest.id
+                offsetDate = oldest.date
+
+                if (oldest.date < startTs)
+                    break
             }
-
-            val oldest = messages.lastOrNull() as? TLRPC.Message ?: break
-            offsetId = oldest.id
-            offsetDate = oldest.date
-
-            if (oldest.date < startTs)
-                break
+        } catch (_: InvalidPeerException) {
+            removeInvalidPeerStreak(accountId, peerUserId)
+            return null
         }
 
         return firstId.takeIf { it > 0 }

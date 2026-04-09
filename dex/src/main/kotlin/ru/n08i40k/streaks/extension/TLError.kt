@@ -21,6 +21,13 @@ fun TLRPC.TL_error.isTransientFailure(): Boolean {
             || text.startsWith("MSG_WAIT_", ignoreCase = true)
 }
 
+fun TLRPC.TL_error.isPeerIdInvalid(): Boolean {
+    val text = this.text.orEmpty()
+
+    return (code == 400 && text.startsWith("PEER_ID_INVALID"))
+            || text.contains("PEER_ID_INVALID", ignoreCase = true)
+}
+
 fun TLRPC.TL_error.retryDelayMs(minDelay: Long): Long {
     val floodWaitSeconds = FLOOD_WAIT_REGEX.find(this.text.orEmpty())
         ?.groupValues
