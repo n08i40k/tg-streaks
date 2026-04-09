@@ -11,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.view.View
 import android.webkit.ValueCallback
+import androidx.collection.LongSparseArray
 import androidx.room.Room
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -94,6 +95,7 @@ import java.lang.reflect.Member
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.AbstractMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 typealias LogReceiver = ValueCallback<String>
@@ -1591,6 +1593,34 @@ class Plugin {
 
                 (this as TLRPC.Message).action = action
                 (this as TLRPC.Message).message = null
+            }
+        }
+
+        // Текст короткого сообщения в списке чатов
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        after(
+            MessageObject::class.java.getDeclaredMethod(
+                "updateMessageText",
+                AbstractMap::class.java,
+                AbstractMap::class.java,
+                LongSparseArray::class.java,
+                LongSparseArray::class.java,
+            )
+        ) { param ->
+            val messageObject = param.thisObject as? MessageObject ?: return@after
+
+            val prizeStars =
+                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                    ?: return@after
+
+            messageObject.messageText = when (prizeStars.transaction_id) {
+                ServiceMessage.DEATH_TEXT ->
+                    translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
+
+                ServiceMessage.PET_INVITE_TEXT ->
+                    translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
+
+                else -> return@after
             }
         }
 
