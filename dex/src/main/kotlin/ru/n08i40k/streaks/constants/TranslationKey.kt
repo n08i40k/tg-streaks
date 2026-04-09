@@ -119,6 +119,25 @@ object TranslationKey {
             const val CANCEL = "dialog.create_pet.cancel"
         }
 
+        object CalendarFix {
+            const val MANUAL_REVIVE_TITLE = "dialog.calendar_fix.manual_revive.title"
+            const val MANUAL_REVIVE_MESSAGE_GAP =
+                "dialog.calendar_fix.manual_revive.message_gap"
+            const val MANUAL_REVIVE_MESSAGE_DEAD_CHAIN =
+                "dialog.calendar_fix.manual_revive.message_dead_chain"
+            const val REBUILD_TITLE = "dialog.calendar_fix.rebuild.title"
+            const val REBUILD_MESSAGE = "dialog.calendar_fix.rebuild.message"
+            const val WARNING_NEXT_DAY_TITLE = "dialog.calendar_fix.warning_next_day.title"
+            const val WARNING_NEXT_DAY_MESSAGE = "dialog.calendar_fix.warning_next_day.message"
+            const val LIMIT_REACHED_TITLE = "dialog.calendar_fix.limit_reached.title"
+            const val LIMIT_REACHED_MESSAGE = "dialog.calendar_fix.limit_reached.message"
+            const val CONFIRM = "dialog.calendar_fix.confirm"
+            const val CANCEL = "dialog.calendar_fix.cancel"
+            const val REBUILD_NOW = "dialog.calendar_fix.rebuild_now"
+            const val LATER = "dialog.calendar_fix.later"
+            const val OK = "dialog.calendar_fix.ok"
+        }
+
         object BackupRestore {
             const val TITLE = "dialog.backup_restore.title"
         }

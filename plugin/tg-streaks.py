@@ -380,6 +380,14 @@ I18N_MENU: dict[str, dict[str, str]] = {
         "en": "Available for 24 hours after it ends",
         "ru": "Доступно 24 часа после обрыва",
     },
+    "menu.chat.restore_streak_exact.title": {
+        "en": "Streak restore menu",
+        "ru": "Меню восстановление стрика",
+    },
+    "menu.chat.restore_streak_exact.description": {
+        "en": "Available anytime, but limited by 2 usages per chat",
+        "ru": "Доступно в любое время, но с ограничением по 2 раза на чат",
+    },
     "menu.chat.rebuild.streak.title": {
         "en": "Streak rebuild",
         "ru": "Пересчёт стрика",
@@ -493,6 +501,50 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "en": "Choose backup",
         "ru": "Выберите бэкап",
     },
+    "dialog.calendar_fix.manual_revive.title": {
+        "en": "Mark restore day?",
+        "ru": "Пометить день восстановлением?",
+    },
+    "dialog.calendar_fix.manual_revive.message_gap": {
+        "en": "This day looks like a streak restore day. Mark it as restored?",
+        "ru": "Этот день выглядит как день восстановления стрика. Пометить его как восстановленный?",
+    },
+    "dialog.calendar_fix.manual_revive.message_dead_chain": {
+        "en": "This day looks like a restore point in a dead streak chain. Mark it as restored?",
+        "ru": "Этот день выглядит как точка восстановления в мёртвой цепочке стрика. Пометить его как восстановленный?",
+    },
+    "dialog.calendar_fix.rebuild.title": {
+        "en": "Rebuild streak?",
+        "ru": "Пересчитать стрик?",
+    },
+    "dialog.calendar_fix.rebuild.message": {
+        "en": "The restore mark is saved. Rebuild the streak now?",
+        "ru": "Пометка восстановления сохранена. Пересчитать стрик сейчас?",
+    },
+    "dialog.calendar_fix.warning_next_day.title": {
+        "en": "Better tap the next day",
+        "ru": "Лучше нажмите на следующий день",
+    },
+    "dialog.calendar_fix.warning_next_day.message": {
+        "en": "This day looks like the death day. The restore should be placed on the next day.",
+        "ru": "Этот день больше похож на день смерти стрика. Восстановление лучше ставить на следующий день.",
+    },
+    "dialog.calendar_fix.limit_reached.title": {
+        "en": "Restore limit reached",
+        "ru": "Лимит восстановлений достигнут",
+    },
+    "dialog.calendar_fix.limit_reached.message": {
+        "en": "You have already used the maximum number of manual calendar restores for this chat.",
+        "ru": "Для этого чата уже использовано максимальное количество ручных восстановлений через календарь.",
+    },
+    "dialog.calendar_fix.confirm": {"en": "Confirm", "ru": "Подтвердить"},
+    "dialog.calendar_fix.cancel": {"en": "Cancel", "ru": "Отмена"},
+    "dialog.calendar_fix.rebuild_now": {
+        "en": "Rebuild",
+        "ru": "Пересчитать",
+    },
+    "dialog.calendar_fix.later": {"en": "Later", "ru": "Позже"},
+    "dialog.calendar_fix.ok": {"en": "OK", "ru": "Ок"},
 }
 
 I18N_REBUILD: dict[str, dict[str, str]] = {
@@ -1195,6 +1247,7 @@ class ChatContextMenu:
     TOGGLE_SERVICE_MESSAGES = "serviceMessages.toggle"
     GO_TO_STREAK_START = "goToStreakStart"
     REVIVE_NOW = "reviveNow"
+    REVIVE_EXACT = "reviveExact"
 
     DEBUG_CREATE = "debug.create"
     DEBUG_UPGRADE = "debug.upgrade"
@@ -1235,12 +1288,19 @@ class ChatContextMenu:
                 "text_key": "menu.chat.create_pet.title",
                 "subtext_key": "menu.chat.create_pet.description",
                 "icon": "menu_premium_main",
-                "priority": 1000,
+                "priority": 1001,
             },
             {
                 "key": cls.REVIVE_NOW,
                 "text_key": "menu.chat.restore_streak.title",
                 "subtext_key": "menu.chat.restore_streak.description",
+                "icon": "msg_reactions",
+                "priority": 1000,
+            },
+            {
+                "key": cls.REVIVE_EXACT,
+                "text_key": "menu.chat.restore_streak_exact.title",
+                "subtext_key": "menu.chat.restore_streak_exact.description",
                 "icon": "msg_reactions",
                 "priority": 999,
             },

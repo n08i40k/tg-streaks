@@ -20,6 +20,9 @@ import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.data.StreakActivityCache
+import ru.n08i40k.streaks.data.StreakActivityStatus
+import ru.n08i40k.streaks.data.StreakManualRevive
 import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakRevive
 import ru.n08i40k.streaks.data.StreakViewData
@@ -53,6 +56,7 @@ class StreaksController(
 ) {
     companion object {
         private const val MIN_VISIBLE_STREAK_LENGTH = 3
+        private const val MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT = 2
     }
 
     data class HandleUpdateResult(
@@ -92,6 +96,35 @@ class StreaksController(
         }
     }
 
+    data class CalendarInteractionSnapshot(
+        val streak: Streak?,
+        val cachedActivity: List<StreakActivityCache>,
+        val revivedDays: Set<LocalDate>,
+        val manualRevivesUsed: Int,
+    )
+
+    sealed class CalendarTapDecision {
+        object Ignore : CalendarTapDecision()
+        object LimitReached : CalendarTapDecision()
+        object WarnTapNextDay : CalendarTapDecision()
+
+        data class OfferManualRevive(
+            val reviveDay: LocalDate,
+            val reason: Reason,
+        ) : CalendarTapDecision()
+
+        enum class Reason {
+            FIRST_LIVE_DAY_AFTER_UNRESTORED_GAP,
+            DEAD_CHAIN_RESTORE,
+        }
+    }
+
+    enum class AddManualCalendarReviveResult {
+        Added,
+        AlreadyExists,
+        LimitReached,
+    }
+
     private data class OriginalUserState(
         val premium: Boolean,
         val emojiStatus: TLRPC.EmojiStatus?,
@@ -105,12 +138,60 @@ class StreaksController(
     private val serviceMessagesController = ServiceMessagesController()
     private val streakPopupController = StreakPopupController(db, resourcesProvider)
 
+    private val activityCacheDao = db.streakActivityCacheDao()
     private val dao = db.streakDao()
+    private val manualReviveDao = db.streakManualReviveDao()
     private val reviveDao = db.streakReviveDao()
+
+    private suspend fun loadEffectiveRevivedDays(
+        ownerUserId: Long,
+        peerUserId: Long,
+        cachedActivity: List<StreakActivityCache>,
+    ): Set<LocalDate> =
+        buildSet {
+            reviveDao.findByRelation(ownerUserId, peerUserId)
+                .mapTo(this) { it.revivedAt }
+            manualReviveDao.findByRelation(ownerUserId, peerUserId)
+                .mapTo(this) { it.revivedAt }
+            cachedActivity.filter { it.wasRevived }
+                .mapTo(this) { it.day }
+        }
+
+    private suspend fun loadRebuildRevives(
+        ownerUserId: Long,
+        peerUserId: Long,
+    ): MutableSet<LocalDate> =
+        buildSet {
+            reviveDao.findByRelation(ownerUserId, peerUserId)
+                .mapTo(this) { it.revivedAt }
+            manualReviveDao.findByRelation(ownerUserId, peerUserId)
+                .mapTo(this) { it.revivedAt }
+        }.toMutableSet()
+
+    private fun isBoth(
+        activityByDay: Map<LocalDate, StreakActivityStatus>,
+        day: LocalDate,
+    ): Boolean = activityByDay[day] == StreakActivityStatus.BOTH
+
+    private fun isAliveLike(
+        activityByDay: Map<LocalDate, StreakActivityStatus>,
+        revivedDays: Set<LocalDate>,
+        day: LocalDate,
+    ): Boolean = isBoth(activityByDay, day) || revivedDays.contains(day)
+
+    private fun isDead(
+        activityByDay: Map<LocalDate, StreakActivityStatus>,
+        revivedDays: Set<LocalDate>,
+        day: LocalDate,
+    ): Boolean = !isBoth(activityByDay, day) && !revivedDays.contains(day.next())
 
     private suspend fun removeInvalidPeerStreak(accountId: Int, peerUserId: Long) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        dao.deleteByRelation(ownerUserId, peerUserId)
+        db.withTransaction {
+            dao.deleteByRelation(ownerUserId, peerUserId)
+            activityCacheDao.deleteByRelation(accountId, peerUserId)
+            manualReviveDao.deleteByRelation(ownerUserId, peerUserId)
+        }
 
         logger.info("Removed streak for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
 
@@ -170,6 +251,81 @@ class StreaksController(
 
     private fun isVisibleLength(length: Int): Boolean =
         length >= MIN_VISIBLE_STREAK_LENGTH
+
+    private fun normalizeStatus(status: ChatHistoryFetcher.Status): StreakActivityStatus =
+        StreakActivityStatus.fromFetcherStatus(status)
+
+    private suspend fun upsertActivityCache(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate,
+        status: ChatHistoryFetcher.Status,
+    ) {
+        upsertActivityCache(
+            accountId,
+            peerUserId,
+            day,
+            normalizeStatus(status),
+            status.wasRevived
+        )
+    }
+
+    private suspend fun upsertActivityCache(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate,
+        status: StreakActivityStatus,
+        wasRevived: Boolean,
+    ) {
+        activityCacheDao.insertOrReplace(
+            StreakActivityCache(
+                accountId = accountId,
+                peerUserId = peerUserId,
+                day = day,
+                status = status.code,
+                wasRevived = wasRevived,
+                updatedAtEpochMs = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    private suspend fun mergeActivityCacheFromUpdate(
+        accountId: Int,
+        peerUserId: Long,
+        at: LocalDate,
+        out: Boolean,
+        message: String?,
+    ) {
+        val existing = activityCacheDao.findByRelationAndDay(accountId, peerUserId, at)
+
+        if (message == ServiceMessage.RESTORE_TEXT) {
+            upsertActivityCache(
+                accountId,
+                peerUserId,
+                at,
+                existing?.let { StreakActivityStatus.fromCode(it.status) }
+                    ?: StreakActivityStatus.NO_ACTIVITY,
+                true
+            )
+            return
+        }
+
+        if (ServiceMessage.isServiceText(message))
+            return
+
+        val mergedStatus =
+            existing?.let { StreakActivityStatus.fromCode(it.status) }
+                ?.mergeMessage(out)
+                ?: StreakActivityStatus.NO_ACTIVITY.mergeMessage(out)
+
+        upsertActivityCache(
+            accountId,
+            peerUserId,
+            at,
+            mergedStatus,
+            existing?.wasRevived ?: false
+        )
+    }
 
     private suspend fun preKill(
         accountId: Int,
@@ -255,23 +411,77 @@ class StreaksController(
         revives: Set<LocalDate>,
         untilRevive: Boolean
     ): Action {
-        if (revives.contains(day))
+        if (revives.contains(day)) {
+            val existingStatus =
+                activityCacheDao.findByRelationAndDay(accountId, peerUser.id, day)
+                    ?.let { StreakActivityStatus.fromCode(it.status) }
+                    ?: StreakActivityStatus.NO_ACTIVITY
+
+            upsertActivityCache(
+                accountId,
+                peerUser.id,
+                day,
+                existingStatus,
+                true
+            )
             return Action.REVIVE
+        }
 
         when (val status =
             cachedFetcher.fetchActivity(accountId, peerUser.id, day, untilRevive)) {
-            is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) return Action.REVIVE else if (!untilRevive) return Action.GROW
-            is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) return Action.REVIVE
-            is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) return Action.REVIVE
-            is ChatHistoryFetcher.Status.NoActivity -> if (status.wasRevived) return Action.REVIVE
+            is ChatHistoryFetcher.Status.FromBoth -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+
+                if (status.wasRevived)
+                    return Action.REVIVE
+
+                if (!untilRevive)
+                    return Action.GROW
+            }
+
+            is ChatHistoryFetcher.Status.FromOwner -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+
+                if (status.wasRevived)
+                    return Action.REVIVE
+            }
+
+            is ChatHistoryFetcher.Status.FromPeer -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+
+                if (status.wasRevived)
+                    return Action.REVIVE
+            }
+
+            is ChatHistoryFetcher.Status.NoActivity -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+
+                if (status.wasRevived)
+                    return Action.REVIVE
+            }
         }
 
         return when (val status =
             remoteFetcher.fetchActivity(accountId, peerUser.id, day, untilRevive)) {
-            is ChatHistoryFetcher.Status.FromBoth -> if (status.wasRevived) Action.REVIVE else Action.GROW
-            is ChatHistoryFetcher.Status.FromOwner -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
-            is ChatHistoryFetcher.Status.FromPeer -> if (status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER
-            is ChatHistoryFetcher.Status.NoActivity -> if (status.wasRevived) Action.REVIVE else Action.KILL
+            is ChatHistoryFetcher.Status.FromBoth -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+                if (status.wasRevived) Action.REVIVE else Action.GROW
+            }
+
+            is ChatHistoryFetcher.Status.FromOwner -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+                if (status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
+            }
+
+            is ChatHistoryFetcher.Status.FromPeer -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+                if (status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER
+            }
+
+            is ChatHistoryFetcher.Status.NoActivity -> {
+                upsertActivityCache(accountId, peerUser.id, day, status)
+                if (status.wasRevived) Action.REVIVE else Action.KILL
+            }
         }
     }
 
@@ -292,8 +502,7 @@ class StreaksController(
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
             val peerUserId = peerUser.id
 
-            val revives = (revives ?: reviveDao.findByRelation(ownerUserId, peerUserId)
-                .map { it.revivedAt }).toMutableSet()
+            val revives = revives?.toMutableSet() ?: loadRebuildRevives(ownerUserId, peerUserId)
 
             val startDay = LocalDate.now()
             var currentDay = LocalDate.now()
@@ -428,15 +637,10 @@ class StreaksController(
         }
 
         try {
-            val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-            val revives = reviveDao.findAllByOwnerUserId(ownerUserId).toSet()
             val peers = collectEligiblePrivateUsers(accountId)
 
             for ((index, peerUser) in peers.withIndex()) {
-                val peerRevives =
-                    revives.filter { it.peerUserId == peerUser.id }.map { it.revivedAt }.toSet()
-
-                rebuild(accountId, peerUser, peerRevives, true, sendServiceMessages) {
+                rebuild(accountId, peerUser, null, true, sendServiceMessages) {
                     onProgressUpdate(index, peers.size, peerUser, it)
                 }
 
@@ -611,6 +815,8 @@ class StreaksController(
         if (peerType == PeerType.INVALID)
             return HandleUpdateResult(changed = false, created = false)
 
+        mergeActivityCacheFromUpdate(accountId, peerUserId, now, out, message)
+
         val streak = get(accountId, peerUserId) ?: run {
             // forbid streak creation for bots
             if (peerType == PeerType.BOT)
@@ -712,6 +918,122 @@ class StreaksController(
 
     suspend fun flushCurrentChatPopup() =
         streakPopupController.flushCurrentChat()
+
+    suspend fun getCachedActivityStatuses(
+        accountId: Int,
+        peerUserId: Long,
+    ): List<StreakActivityCache> =
+        activityCacheDao.findByRelation(accountId, peerUserId)
+
+    suspend fun getCalendarInteractionSnapshot(
+        accountId: Int,
+        peerUserId: Long,
+    ): CalendarInteractionSnapshot {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val cachedActivity = activityCacheDao.findByRelation(accountId, peerUserId)
+        val manualRevives = manualReviveDao.findByRelation(ownerUserId, peerUserId)
+
+        return CalendarInteractionSnapshot(
+            streak = dao.findByRelation(ownerUserId, peerUserId),
+            cachedActivity = cachedActivity,
+            revivedDays = loadEffectiveRevivedDays(ownerUserId, peerUserId, cachedActivity),
+            manualRevivesUsed = manualRevives.size,
+        )
+    }
+
+    suspend fun analyzeCalendarTap(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate,
+    ): CalendarTapDecision {
+        val snapshot = getCalendarInteractionSnapshot(accountId, peerUserId)
+        if (snapshot.streak?.createdAt?.let { day.isBefore(it) } == true) {
+            return CalendarTapDecision.Ignore
+        }
+
+        val activityByDay =
+            snapshot.cachedActivity.associate { it.day to StreakActivityStatus.fromCode(it.status) }
+        val revivedDays = snapshot.revivedDays
+
+        val currentDayRevived = revivedDays.contains(day)
+        if (currentDayRevived) {
+            return CalendarTapDecision.Ignore
+        }
+
+        val previousDay = day.prev()
+        val nextDay = day.next()
+        val currentDayBoth = isBoth(activityByDay, day)
+        val previousDayBoth = isBoth(activityByDay, previousDay)
+
+        if (currentDayBoth && previousDayBoth) {
+            return CalendarTapDecision.Ignore
+        }
+
+        val previousDayAliveLike = isAliveLike(activityByDay, revivedDays, previousDay)
+        val nextDayRevived = revivedDays.contains(nextDay)
+        val currentDayDead = isDead(activityByDay, revivedDays, day)
+        val previousDayDead = isDead(activityByDay, revivedDays, previousDay)
+
+        fun actionableDecision(
+            reason: CalendarTapDecision.Reason,
+        ): CalendarTapDecision =
+            if (snapshot.manualRevivesUsed >= MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT) {
+                CalendarTapDecision.LimitReached
+            } else {
+                CalendarTapDecision.OfferManualRevive(day, reason)
+            }
+
+        if (currentDayBoth && !previousDayAliveLike) {
+            return actionableDecision(
+                CalendarTapDecision.Reason.FIRST_LIVE_DAY_AFTER_UNRESTORED_GAP
+            )
+        }
+
+        if (currentDayDead && !nextDayRevived && previousDayAliveLike) {
+            return CalendarTapDecision.WarnTapNextDay
+        }
+
+        if (currentDayDead && !nextDayRevived && previousDayDead) {
+            return actionableDecision(CalendarTapDecision.Reason.DEAD_CHAIN_RESTORE)
+        }
+
+        return CalendarTapDecision.Ignore
+    }
+
+    suspend fun addManualCalendarRevive(
+        accountId: Int,
+        peerUserId: Long,
+        day: LocalDate,
+    ): AddManualCalendarReviveResult {
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        var result = AddManualCalendarReviveResult.AlreadyExists
+
+        db.withTransaction {
+            if (manualReviveDao.exists(ownerUserId, peerUserId, day)) {
+                result = AddManualCalendarReviveResult.AlreadyExists
+                return@withTransaction
+            }
+
+            if (manualReviveDao.countByRelation(ownerUserId, peerUserId) >=
+                MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT
+            ) {
+                result = AddManualCalendarReviveResult.LimitReached
+                return@withTransaction
+            }
+
+            manualReviveDao.insertIgnore(
+                StreakManualRevive(
+                    ownerUserId = ownerUserId,
+                    peerUserId = peerUserId,
+                    revivedAt = day,
+                    createdAtEpochMs = System.currentTimeMillis(),
+                )
+            )
+            result = AddManualCalendarReviveResult.Added
+        }
+
+        return result
+    }
 
     suspend fun get(accountId: Int, peerUserId: Long): Streak? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
@@ -932,7 +1254,11 @@ class StreaksController(
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val streak = dao.findByRelation(ownerUserId, peerUserId) ?: return false
 
-        dao.delete(streak)
+        db.withTransaction {
+            dao.delete(streak)
+            activityCacheDao.deleteByRelation(accountId, peerUserId)
+            manualReviveDao.deleteByRelation(ownerUserId, peerUserId)
+        }
 
         return true
     }
@@ -980,6 +1306,14 @@ class StreaksController(
         if (sendServiceMessage && revivedStreak != null && isVisibleLength(revivedStreak.length)) {
             serviceMessagesController.sendRestore(accountId, peerUserId)
         }
+
+        upsertActivityCache(
+            accountId,
+            peerUserId,
+            now,
+            StreakActivityStatus.BOTH,
+            true
+        )
 
         return true
     }
@@ -1061,7 +1395,11 @@ class StreaksController(
             return
 
         db.withTransaction {
-            invalidStreaks.forEach { dao.delete(it) }
+            invalidStreaks.forEach {
+                dao.delete(it)
+                activityCacheDao.deleteByRelation(accountId, it.peerUserId)
+                manualReviveDao.deleteByRelation(ownerUserId, it.peerUserId)
+            }
         }
     }
 }

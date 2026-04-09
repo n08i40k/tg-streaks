@@ -95,3 +95,49 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         )
     }
 }
+
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `streak_activity_cache` (
+                `account_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `day` INTEGER NOT NULL,
+                `status` INTEGER NOT NULL,
+                `was_revived` INTEGER NOT NULL,
+                `updated_at_epoch_ms` INTEGER NOT NULL,
+                PRIMARY KEY(`account_id`, `peer_user_id`, `day`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_streak_activity_cache_account_id_peer_user_id_day`
+            ON `streak_activity_cache` (`account_id`, `peer_user_id`, `day`)
+            """.trimIndent()
+        )
+    }
+}
+
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `streak_manual_revive` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `revived_at` INTEGER NOT NULL,
+                `created_at_epoch_ms` INTEGER NOT NULL,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`, `revived_at`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_streak_manual_revive_owner_user_id_peer_user_id`
+            ON `streak_manual_revive` (`owner_user_id`, `peer_user_id`)
+            """.trimIndent()
+        )
+    }
+}

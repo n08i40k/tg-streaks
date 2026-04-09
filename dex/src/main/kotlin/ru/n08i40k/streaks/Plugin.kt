@@ -61,10 +61,13 @@ import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
 import ru.n08i40k.streaks.database.MIGRATION_3_5
 import ru.n08i40k.streaks.database.MIGRATION_5_6
+import ru.n08i40k.streaks.database.MIGRATION_6_7
+import ru.n08i40k.streaks.database.MIGRATION_7_8
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
+import ru.n08i40k.streaks.override.FixupCalendarActivity
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.registry.LockableActionRegistry
@@ -91,6 +94,7 @@ import java.lang.reflect.Member
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.concurrent.atomic.AtomicBoolean
 
 typealias LogReceiver = ValueCallback<String>
 typealias TranslationResolver = java.util.function.Function<String, String?>
@@ -262,6 +266,7 @@ class Plugin {
     private var petFabEnabled: Boolean = true
     private var petFabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
     private var pendingPetFabRefresh: Runnable? = null
+    private val isAutoBackupLoopStarted = AtomicBoolean(false)
 
     val chatMessageCellWidthCache = WidthCache()
 
@@ -288,6 +293,7 @@ class Plugin {
             "tg-streaks"
         )
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
             .build()
 
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
@@ -332,6 +338,27 @@ class Plugin {
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, reason)
     }
 
+    private fun enqueueAutoBackupLoopStart(reason: String) {
+        accountTaskRunnerRegistry.enqueue(
+            UserConfig.selectedAccount,
+            "start automatic database backup loop (${reason})"
+        ) {
+            if (!isAutoBackupLoopStarted.compareAndSet(false, true))
+                return@enqueue
+
+            backgroundScope.launch {
+                try {
+                    databaseBackupManager.runAutoBackupLoop()
+                } catch (_: CancellationException) {
+                    // Suppress error
+                } catch (e: Throwable) {
+                    logger.fatal("Automatic database backup loop failed", e)
+                    isAutoBackupLoopStarted.set(false)
+                }
+            }
+        }
+    }
+
     private fun onInject() {
         taskQueue.startWorker(backgroundScope)
 
@@ -349,16 +376,7 @@ class Plugin {
         }
 
         enqueueSelectedAccountInitializationTasks("plugin inject")
-
-        backgroundScope.launch {
-            try {
-                databaseBackupManager.runAutoBackupLoop()
-            } catch (_: CancellationException) {
-                // Suppress error
-            } catch (e: Throwable) {
-                logger.fatal("Automatic database backup loop failed", e)
-            }
-        }
+        enqueueAutoBackupLoopStart("plugin inject")
 
         logger.info("Inject finalized!")
     }
@@ -629,6 +647,52 @@ class Plugin {
         }
     }
 
+    fun enqueueRebuildForPeer(
+        accountId: Int,
+        peerUserId: Long,
+        onComplete: (() -> Unit)? = null,
+    ) {
+        val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
+        if (!isPeerValid(peerUser)) {
+            bulletinHelper.showTranslated(TranslationKey.Status.Info.CHAT_PRIVATE_USERS_ONLY)
+            return
+        }
+        peerUser ?: return
+
+        accountTaskRunnerRegistry.enqueue(
+            accountId,
+            "rebuild streak for $accountId:$peerUserId"
+        ) {
+            streaksController.rebuild(
+                accountId,
+                peerUser
+            ) { progress -> progress.showBulletin() }
+
+            syncPeerUi(accountId, peerUserId)
+
+            val rebuiltStreak = streaksController.get(accountId, peerUserId)
+
+            if (rebuiltStreak != null) {
+                bulletinHelper.showTranslated(
+                    TranslationKey.Rebuild.Streak.SUMMARY_CHAT,
+                    mapOf(
+                        "peer_name" to (peerUser.username?.takeIf { it.isNotBlank() }
+                            ?.let { "@$it" }
+                            ?: UserObject.getUserName(peerUser).takeIf { it.isNotBlank() }
+                            ?: peerUser.id.toString()),
+                        "days" to rebuiltStreak.length.toString(),
+                        "revives" to rebuiltStreak.revivesCount.toString(),
+                    ),
+                    "msg_retry"
+                )
+            }
+
+            if (onComplete != null) {
+                AndroidUtilities.runOnUIThread { onComplete() }
+            }
+        }
+    }
+
     private data class PendingIncomingUpdate(
         val peerUserId: Long,
         val at: LocalDate,
@@ -673,41 +737,8 @@ class Plugin {
 
         add(ChatContextMenuButton.REBUILD) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
-
-            accountTaskRunnerRegistry.enqueue(
-                accountId,
-                "rebuild streak for $accountId:$peerUserId"
-            ) {
-                streaksController.rebuild(
-                    accountId,
-                    peerUser
-                ) { progress -> progress.showBulletin() }
-
-                streaksController.syncUserState(accountId, peerUserId)
-
-                AndroidUtilities.runOnUIThread {
-                    streakEmojiRegistry.refreshByPeerUserId(peerUserId)
-                    streakEmojiRegistry.refreshDialogCells()
-                }
-
-                val rebuiltStreak = streaksController.get(accountId, peerUserId)
-
-                if (rebuiltStreak != null) {
-                    bulletinHelper.showTranslated(
-                        TranslationKey.Rebuild.Streak.SUMMARY_CHAT,
-                        mapOf(
-                            "peer_name" to (peerUser.username?.takeIf { it.isNotBlank() }
-                                ?.let { "@$it" }
-                                ?: UserObject.getUserName(peerUser).takeIf { it.isNotBlank() }
-                                ?: peerUser.id.toString()),
-                            "days" to rebuiltStreak.length.toString(),
-                            "revives" to rebuiltStreak.revivesCount.toString(),
-                        ),
-                        "msg_retry"
-                    )
-                }
-            }
+            validatePrivatePeer(accountId, peerUserId) ?: return@add
+            enqueueRebuildForPeer(accountId, peerUserId)
 
             logger.info("[Context Menu] Rebuild clicked on $peerUserId")
         }
@@ -966,6 +997,24 @@ class Plugin {
                 bulletinHelper.showTranslated(
                     TranslationKey.Status.Success.STREAK_RESTORED,
                     "msg_reactions"
+                )
+            }
+        }
+
+        add(ChatContextMenuButton.REVIVE_EXACT) { _ ->
+            val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
+
+            if (chatActivity == null) {
+                bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
+                return@add
+            }
+
+            AndroidUtilities.runOnUIThread {
+                chatActivity.presentFragment(
+                    FixupCalendarActivity.create(
+                        chatActivity.dialogId,
+                        chatActivity
+                    )
                 )
             }
         }
