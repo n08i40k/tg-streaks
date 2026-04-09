@@ -173,8 +173,8 @@ class StreakPetDialog(
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
                     log(
                         "console/${consoleMessage.messageLevel().name.lowercase()}: " +
-                            "${consoleMessage.message()} " +
-                            "@ ${consoleMessage.sourceId()}:${consoleMessage.lineNumber()}"
+                                "${consoleMessage.message()} " +
+                                "@ ${consoleMessage.sourceId()}:${consoleMessage.lineNumber()}"
                     )
                     return true
                 }
@@ -194,7 +194,7 @@ class StreakPetDialog(
                     if (request?.isForMainFrame == true) {
                         log(
                             "page error: ${error?.description ?: "unknown"} " +
-                                "@ ${request.url}"
+                                    "@ ${request.url}"
                         )
                     }
                 }
@@ -218,7 +218,7 @@ class StreakPetDialog(
         val json = buildStateJson()
         log(
             "push state: streakDays=${state.streak?.length ?: 0}, " +
-                "points=${state.pet.points}, tasks=${state.tasks.size}"
+                    "points=${state.pet.points}, tasks=${state.tasks.size}"
         )
         webView.evaluateJavascript(
             "window.applyState(JSON.parse(${JSONObject.quote(json)}));",
@@ -248,22 +248,22 @@ class StreakPetDialog(
         objectJson.put(
             "texts",
             JSONObject().apply {
-                put("streakDays", t(TranslationKey.PET_SHEET_STREAK_DAYS))
-                put("locked", t(TranslationKey.PET_SHEET_LOCKED))
-                put("lockedSubtext", t(TranslationKey.PET_SHEET_LOCKED_SUBTEXT))
-                put("tasksTitle", t(TranslationKey.PET_SHEET_TASKS_TITLE))
-                put("badgesTitle", t(TranslationKey.PET_SHEET_BADGES_TITLE))
-                put("progressYou", t(TranslationKey.PET_SHEET_PROGRESS_YOU))
-                put("progressPeer", t(TranslationKey.PET_SHEET_PROGRESS_PEER))
-                put("renameTitle", t(TranslationKey.PET_SHEET_RENAME_TITLE))
-                put("renameHint", t(TranslationKey.PET_SHEET_RENAME_HINT))
-                put("renameSave", t(TranslationKey.PET_SHEET_RENAME_SAVE))
-                put("renameCancel", t(TranslationKey.PET_SHEET_RENAME_CANCEL))
-                put("maxLevel", t(TranslationKey.PET_SHEET_MAX_LEVEL))
+                put("streakDays", t(TranslationKey.Sheet.Pet.STREAK_DAYS))
+                put("locked", t(TranslationKey.Sheet.Pet.LOCKED))
+                put("lockedSubtext", t(TranslationKey.Sheet.Pet.LOCKED_DESCRIPTION))
+                put("tasksTitle", t(TranslationKey.Sheet.Pet.TASKS_TITLE))
+                put("badgesTitle", t(TranslationKey.Sheet.Pet.BADGES_TITLE))
+                put("progressYou", t(TranslationKey.Sheet.Pet.PROGRESS_YOU))
+                put("progressPeer", t(TranslationKey.Sheet.Pet.PROGRESS_PARTNER))
+                put("renameTitle", t(TranslationKey.Sheet.Pet.RENAME_TITLE))
+                put("renameHint", t(TranslationKey.Sheet.Pet.RENAME_PLACEHOLDER))
+                put("renameSave", t(TranslationKey.Sheet.Pet.RENAME_SAVE))
+                put("renameCancel", t(TranslationKey.Sheet.Pet.RENAME_CANCEL))
+                put("maxLevel", t(TranslationKey.Sheet.Pet.MAX_LEVEL))
                 put(
                     "pointsToEvolution",
                     translator.translate(
-                        TranslationKey.PET_SHEET_POINTS_TO_EVOLUTION,
+                        TranslationKey.Sheet.Pet.POINTS_TO_NEXT_STAGE,
                         mapOf("count" to "{count}")
                     )
                 )
@@ -317,7 +317,7 @@ class StreakPetDialog(
     private fun StreakPetTask.toTaskUi(): TaskUi {
         return when (val payload = payload) {
             is StreakPetTaskPayload.ExchangeOneMessage -> TaskUi(
-                title = t(TranslationKey.PET_SHEET_TASK_EXCHANGE_ONE_MESSAGE),
+                title = t(TranslationKey.Sheet.Pet.TASK_EXCHANGE_ONE_MESSAGE),
                 reward = type.points,
                 target = 1,
                 ownerProgress = if (payload.fromOwnerMessageId != null) 1 else 0,
@@ -326,7 +326,7 @@ class StreakPetDialog(
             )
 
             is StreakPetTaskPayload.SendFourMessagesEach -> TaskUi(
-                title = t(TranslationKey.PET_SHEET_TASK_SEND_FOUR_MESSAGES_EACH),
+                title = t(TranslationKey.Sheet.Pet.TASK_SEND_FOUR_MESSAGES_EACH),
                 reward = type.points,
                 target = 4,
                 ownerProgress = payload.fromOwnerMessagesCount,
@@ -335,7 +335,7 @@ class StreakPetDialog(
             )
 
             is StreakPetTaskPayload.SendTenMessagesEach -> TaskUi(
-                title = t(TranslationKey.PET_SHEET_TASK_SEND_TEN_MESSAGES_EACH),
+                title = t(TranslationKey.Sheet.Pet.TASK_SEND_TEN_MESSAGES_EACH),
                 reward = type.points,
                 target = 10,
                 ownerProgress = payload.fromOwnerMessagesCount,
@@ -375,7 +375,8 @@ class StreakPetDialog(
         avatarCache[user.id]?.let { return it }
 
         val result = try {
-            val imageLocation = ImageLocation.getForUser(user, ImageLocation.TYPE_SMALL) ?: return null
+            val imageLocation =
+                ImageLocation.getForUser(user, ImageLocation.TYPE_SMALL) ?: return null
             val file = FileLoader.getInstance(fragment.currentAccount).getLocalFile(imageLocation)
             if (file != null && file.isFile) {
                 val mime = file.toMimeType()

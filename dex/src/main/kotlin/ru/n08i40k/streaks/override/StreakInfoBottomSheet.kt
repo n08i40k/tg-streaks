@@ -186,8 +186,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_filled_data_messages,
-                t(TranslationKey.DEX_SHEET_FEATURE_HOW_TITLE),
-                t(TranslationKey.DEX_SHEET_FEATURE_HOW_SUBTITLE)
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_HOW_TITLE),
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_HOW_DESCRIPTION)
             )
         )
 
@@ -195,8 +195,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_filled_unlockedrecord,
-                t(TranslationKey.DEX_SHEET_FEATURE_LEVELS_TITLE),
-                t(TranslationKey.DEX_SHEET_FEATURE_LEVELS_SUBTITLE)
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_LEVELS_TITLE),
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_LEVELS_DESCRIPTION)
             )
         )
 
@@ -204,8 +204,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_reactions_filled,
-                t(TranslationKey.DEX_SHEET_FEATURE_KEEP_TITLE),
-                t(TranslationKey.DEX_SHEET_FEATURE_KEEP_SUBTITLE)
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_KEEP_TITLE),
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_KEEP_DESCRIPTION)
             )
         )
 
@@ -213,8 +213,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_filled_datausage,
-                t(TranslationKey.DEX_SHEET_FEATURE_INCORRECT_TITLE),
-                t(TranslationKey.DEX_SHEET_FEATURE_INCORRECT_SUBTITLE)
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_FIX_DURATION_TITLE),
+                t(TranslationKey.Sheet.StreakInfo.FEATURE_FIX_DURATION_DESCRIPTION)
             )
         )
 
@@ -254,7 +254,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     }
 
     override fun getTitle(): CharSequence {
-        return t(TranslationKey.DEX_SHEET_DIALOG_TITLE)
+        return t(TranslationKey.Sheet.StreakInfo.DIALOG_TITLE)
     }
 
     override fun onContainerDraw(canvas: Canvas?) {
@@ -275,7 +275,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
 
         val title = AndroidUtilities.replaceTags(
             tf(
-                TranslationKey.DEX_SHEET_TITLE,
+                TranslationKey.Sheet.StreakInfo.HEADER_TITLE,
                 "name" to user.first_name,
                 "days" to streakViewData.length
             )
@@ -284,7 +284,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         this.titleView[0].text = title
         this.titleView[1].text = title
 
-        this.subtitleView.text = AndroidUtilities.replaceTags(t(TranslationKey.DEX_SHEET_SUBTITLE))
+        this.subtitleView.text =
+            AndroidUtilities.replaceTags(t(TranslationKey.Sheet.StreakInfo.HEADER_DESCRIPTION))
 
         if (viewType != 0)
             return

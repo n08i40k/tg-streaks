@@ -28,7 +28,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
     private fun showRetryBulletin(retryDelayMs: Long) {
         Plugin.getInstance().bulletinHelper.showTranslated(
-            TranslationKey.FORCE_CHECK_RETRY_DELAY,
+            TranslationKey.Rebuild.Streak.RETRY_DELAY,
             mapOf("seconds" to (retryDelayMs / 1000L).toString()),
             "msg_retry"
         )

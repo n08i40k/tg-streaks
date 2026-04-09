@@ -97,7 +97,7 @@ class StreakPetsController(
             val plugin = Plugin.getInstance()
 
             val message = plugin.translator.translate(
-                TranslationKey.FORCE_CHECK_DAY_PROGRESS_CHAT,
+                TranslationKey.Rebuild.Streak.PROGRESS_CHAT,
                 mapOf(
                     "peer_name" to peerUser.label,
                     "days_checked" to daysChecked.toString(),

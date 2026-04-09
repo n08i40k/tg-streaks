@@ -441,14 +441,14 @@ class Plugin {
             val uiState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             if (uiState == null) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
+                bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_NOT_CREATED_FOR_CHAT)
                 return@launch
             }
 
             AndroidUtilities.runOnUIThread {
                 val fragment = LaunchActivity.getSafeLastFragment()
                 if (fragment == null) {
-                    bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
                     return@runOnUIThread
                 }
 
@@ -653,7 +653,7 @@ class Plugin {
             val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
             if (!isPeerValid(peerUser)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.Status.Info.DEBUG_PRIVATE_USERS_ONLY)
                 return null
             }
 
@@ -664,7 +664,7 @@ class Plugin {
             val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
             if (!isPeerValid(peerUser)) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.Status.Info.CHAT_PRIVATE_USERS_ONLY)
                 return null
             }
 
@@ -695,7 +695,7 @@ class Plugin {
 
                 if (rebuiltStreak != null) {
                     bulletinHelper.showTranslated(
-                        TranslationKey.FORCE_CHECK_SUMMARY_CHAT,
+                        TranslationKey.Rebuild.Streak.SUMMARY_CHAT,
                         mapOf(
                             "peer_name" to (peerUser.username?.takeIf { it.isNotBlank() }
                                 ?.let { "@$it" }
@@ -717,7 +717,7 @@ class Plugin {
             val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
 
             if (streakPetsController.isRebuildRunning()) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
+                bulletinHelper.showTranslated(TranslationKey.Status.Info.REBUILD_ALREADY_RUNNING)
                 return@add
             }
 
@@ -728,14 +728,14 @@ class Plugin {
                 val streakPet = streakPetsController.get(accountId, peerUserId)
 
                 if (streakPet == null) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_NOT_CREATED_FOR_CHAT)
                     return@enqueue
                 }
 
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
                     return@enqueue
                 }
 
@@ -756,13 +756,13 @@ class Plugin {
             if (petFabEnabled) {
                 refreshPetFabForOpenChat()
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_STREAK_PET_FAB_ENABLED,
+                    TranslationKey.Status.Success.PET_BUTTON_ENABLED,
                     "msg_reactions"
                 )
             } else {
                 AndroidUtilities.runOnUIThread { dismissPetFab() }
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_STREAK_PET_FAB_DISABLED,
+                    TranslationKey.Status.Success.PET_BUTTON_DISABLED,
                     "msg_reactions"
                 )
             }
@@ -779,23 +779,23 @@ class Plugin {
                 "try to create streak-pet for $accountId:$peerUserId"
             ) {
                 if (streakPetsController.get(accountId, peerUserId) != null) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_ALREADY_EXISTS_FOR_CHAT)
                     return@enqueue
                 }
 
                 AndroidUtilities.runOnUIThread {
                     val fragment = LaunchActivity.getSafeLastFragment()
                     if (fragment == null) {
-                        bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
+                        bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
                         return@runOnUIThread
                     }
 
                     fragment.showDialog(
                         AlertDialog.Builder(fragment.context)
-                            .setTitle(translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_TITLE))
-                            .setMessage(translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_MESSAGE))
+                            .setTitle(translator.translate(TranslationKey.Dialog.CreatePet.TITLE))
+                            .setMessage(translator.translate(TranslationKey.Dialog.CreatePet.MESSAGE))
                             .setPositiveButton(
-                                translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_YES)
+                                translator.translate(TranslationKey.Dialog.CreatePet.CONFIRM)
                             ) { _, _ ->
                                 streaksController.setServiceMessagesEnabled(
                                     accountId,
@@ -805,7 +805,7 @@ class Plugin {
                                 serviceMessagesController.sendPetInvite(accountId, peerUserId)
                             }
                             .setNegativeButton(
-                                translator.translate(TranslationKey.DIALOG_CREATE_STREAK_PET_NO)
+                                translator.translate(TranslationKey.Dialog.CreatePet.CANCEL)
                             ) { _, _ ->
                                 accountTaskRunnerRegistry.enqueue(
                                     accountId,
@@ -815,14 +815,14 @@ class Plugin {
                                         is StreakPetsController.CreateResult.Created -> {
                                             refreshPetFabForOpenChat()
                                             bulletinHelper.showTranslated(
-                                                TranslationKey.OK_STREAK_PET_CREATED,
+                                                TranslationKey.Status.Success.PET_CREATED,
                                                 "msg_reactions"
                                             )
                                         }
 
                                         is StreakPetsController.CreateResult.AlreadyExists -> {
                                             bulletinHelper.showTranslated(
-                                                TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT
+                                                TranslationKey.Status.Info.PET_ALREADY_EXISTS_FOR_CHAT
                                             )
                                         }
                                     }
@@ -841,7 +841,7 @@ class Plugin {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
             if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_PRIVATE_USER_ONLY)
+                bulletinHelper.showTranslated(TranslationKey.Status.Info.CHAT_PRIVATE_USERS_ONLY)
                 return@add
             }
 
@@ -849,12 +849,12 @@ class Plugin {
                 ?.takeIf { it.dialogId == peerUserId }
 
             if (chatActivity == null) {
-                bulletinHelper.showTranslated(TranslationKey.ERR_CANNOT_OPEN_CHAT_CONTEXT)
+                bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
                 logger.info("[Context Menu] Go-to-streak-start failed: no chat context for $peerUserId")
                 return@add
             }
 
-            bulletinHelper.showTranslated(TranslationKey.INFO_SEARCHING_STREAK_START_MESSAGE)
+            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_SEARCHING_START_MESSAGE)
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -864,7 +864,7 @@ class Plugin {
                     val streak = streaksController.get(accountId, peerUserId)
 
                     if (streak == null) {
-                        bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                        bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
                         return@enqueue
                     }
 
@@ -877,7 +877,7 @@ class Plugin {
                                 try {
                                     chatActivity.scrollToMessageId(messageId, 0, true, 0, true, 0)
                                     bulletinHelper.showTranslated(
-                                        TranslationKey.OK_JUMPED_TO_STREAK_START_MESSAGE
+                                        TranslationKey.Status.Success.STREAK_JUMP_TO_START_COMPLETED
                                     )
                                     return@runOnUIThread
                                 } catch (e: Throwable) {
@@ -889,7 +889,7 @@ class Plugin {
 
                             chatActivity.jumpToDate(jumpTs)
                             bulletinHelper.showTranslated(
-                                TranslationKey.INFO_EXACT_START_MESSAGE_NOT_FOUND
+                                TranslationKey.Status.Info.STREAK_START_MESSAGE_NOT_FOUND
                             )
                         } catch (e: Throwable) {
                             logger.fatal(
@@ -897,13 +897,13 @@ class Plugin {
                                 e
                             )
                             bulletinHelper.showTranslated(
-                                TranslationKey.ERR_FAILED_JUMP_TO_STREAK_START
+                                TranslationKey.Status.Error.STREAK_JUMP_TO_START_FAILED
                             )
                         }
                     }
                 } catch (e: Throwable) {
                     logger.fatal("Go-to-streak-start lookup failed for peer $peerUserId", e)
-                    bulletinHelper.showTranslated(TranslationKey.ERR_FAILED_JUMP_TO_STREAK_START)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Error.STREAK_JUMP_TO_START_FAILED)
                 }
             }
 
@@ -918,9 +918,9 @@ class Plugin {
 
             bulletinHelper.showTranslated(
                 if (enabled) {
-                    TranslationKey.OK_UPGRADE_SERVICE_MESSAGES_ENABLED
+                    TranslationKey.Status.Success.CHAT_LEVEL_MESSAGES_ENABLED
                 } else {
-                    TranslationKey.OK_UPGRADE_SERVICE_MESSAGES_DISABLED
+                    TranslationKey.Status.Success.CHAT_LEVEL_MESSAGES_DISABLED
                 },
                 "msg_reactions"
             )
@@ -939,22 +939,22 @@ class Plugin {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
                     return@enqueue
                 }
 
                 if (!streak.dead) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_ENDED_YET)
                     return@enqueue
                 }
 
                 if (!streak.canRevive) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
                     return@enqueue
                 }
 
                 if (!streaksController.reviveNow(accountId, peerUserId)) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
                     return@enqueue
                 }
 
@@ -964,7 +964,7 @@ class Plugin {
                 streakEmojiRegistry.refreshByPeerUserId(peerUserId)
                 AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_STREAK_RESTORED,
+                    TranslationKey.Status.Success.STREAK_RESTORED,
                     "msg_reactions"
                 )
             }
@@ -981,7 +981,7 @@ class Plugin {
                 streaksController.debugSetThreeDayStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_DEBUG_STREAK_SET_3,
+                    TranslationKey.Status.Success.DEBUG_STREAK_SET_TO_3_DAYS,
                     "msg_reactions"
                 )
             }
@@ -1000,7 +1000,7 @@ class Plugin {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
                     return@enqueue
                 }
 
@@ -1009,7 +1009,7 @@ class Plugin {
                     .firstOrNull { level -> level.length > streak.level.length }
 
                 if (nextLevel == null) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_DEBUG_STREAK_ALREADY_MAX)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.DEBUG_STREAK_ALREADY_MAX)
                     return@enqueue
                 }
 
@@ -1018,7 +1018,7 @@ class Plugin {
                         ?: return@enqueue
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_DEBUG_STREAK_UPGRADED,
+                    TranslationKey.Status.Success.DEBUG_STREAK_UPGRADED,
                     mapOf("days" to newLength.toString()),
                     "msg_reactions"
                 )
@@ -1038,7 +1038,7 @@ class Plugin {
                 streaksController.debugFreezeStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_DEBUG_STREAK_FROZEN,
+                    TranslationKey.Status.Success.DEBUG_STREAK_FROZEN,
                     "msg_reactions"
                 )
             }
@@ -1057,7 +1057,7 @@ class Plugin {
                 streaksController.debugMarkDead(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_DEBUG_STREAK_MARKED_DEAD,
+                    TranslationKey.Status.Success.DEBUG_STREAK_MARKED_DEAD,
                     "msg_reactions"
                 )
             }
@@ -1074,13 +1074,13 @@ class Plugin {
                 "delete debug streak for $accountId:$peerUserId"
             ) {
                 if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
                     return@enqueue
                 }
 
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_DEBUG_STREAK_DELETED,
+                    TranslationKey.Status.Success.DEBUG_STREAK_DELETED,
                     "msg_reactions"
                 )
             }
@@ -1097,14 +1097,14 @@ class Plugin {
                 "delete debug streak for $accountId:$peerUserId"
             ) {
                 if (!streakPetsController.delete(accountId, peerUserId)) {
-                    bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_PET_FOR_CHAT)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_NOT_CREATED_FOR_CHAT)
                     return@enqueue
                 }
 
                 AndroidUtilities.runOnUIThread { dismissPetFab() }
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
-                    TranslationKey.OK_DEBUG_STREAK_PET_DELETED,
+                    TranslationKey.Status.Success.DEBUG_PET_DELETED,
                     "msg_reactions"
                 )
             }
@@ -1135,12 +1135,12 @@ class Plugin {
             val accountId = UserConfig.selectedAccount
 
             if (streaksController.isRebuildRunning()) {
-                bulletinHelper.showTranslated(TranslationKey.INFO_FORCE_CHECK_ALREADY_RUNNING)
+                bulletinHelper.showTranslated(TranslationKey.Status.Info.REBUILD_ALREADY_RUNNING)
                 return@add
             }
 
             bulletinHelper.showTranslated(
-                TranslationKey.INFO_FORCE_CHECK_STARTED_ALL,
+                TranslationKey.Status.Info.REBUILD_STARTED_ALL_CHATS,
                 "msg_retry"
             )
 
@@ -1149,7 +1149,7 @@ class Plugin {
                     val result =
                         streaksController.rebuildAll(accountId) { index, total, _, progress ->
                             bulletinHelper.showTranslated(
-                                TranslationKey.FORCE_CHECK_DAY_PROGRESS_ALL_SIMPLE,
+                                TranslationKey.Rebuild.Streak.PROGRESS_ALL_CHATS,
                                 mapOf(
                                     "peer_name" to progress.peerUser.label,
                                     "days_checked" to progress.daysChecked.toString(),
@@ -1163,13 +1163,13 @@ class Plugin {
                     syncPeersUi(result.uiSyncTargets)
 
                     bulletinHelper.showTranslated(
-                        TranslationKey.FORCE_CHECK_SUMMARY_ALL_SIMPLE,
+                        TranslationKey.Rebuild.Streak.SUMMARY_ALL_CHATS,
                         mapOf("checked" to result.totalChats.toString()),
                         "msg_retry"
                     )
                 } catch (e: Throwable) {
                     logger.fatal("Failed to rebuild all private chats for account $accountId", e)
-                    bulletinHelper.showTranslated(TranslationKey.ERR_FORCE_CHECK_FAILED_LOGS)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Error.REBUILD_FAILED_CHECK_LOGS)
                 }
             }
         }
@@ -1179,13 +1179,13 @@ class Plugin {
                 try {
                     val backup = databaseBackupManager.exportNow()
                     bulletinHelper.showTranslated(
-                        TranslationKey.OK_BACKUP_EXPORTED,
+                        TranslationKey.Status.Success.BACKUP_EXPORTED,
                         mapOf("name" to backup.name),
                         "msg_save"
                     )
                 } catch (e: Throwable) {
                     logger.fatal("Failed to export database backup", e)
-                    bulletinHelper.showTranslated(TranslationKey.ERR_BACKUP_EXPORT_FAILED)
+                    bulletinHelper.showTranslated(TranslationKey.Status.Error.BACKUP_EXPORT_FAILED)
                 }
             }
         }
@@ -1372,7 +1372,7 @@ class Plugin {
 
                 TLRPC.TL_messageActionCustomAction().apply {
                     val messageText =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_CREATE_TEXT)
+                        translator.translate(TranslationKey.Service.Streak.STARTED_TEXT)
                     (this as TLRPC.MessageAction).message = messageText
                 } as TLRPC.MessageAction
             }
@@ -1387,7 +1387,7 @@ class Plugin {
 
                 TLRPC.TL_messageActionCustomAction().apply {
                     val messageText =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_UPGRADE_TEXT)
+                        translator.translate(TranslationKey.Service.Streak.LEVEL_UP_TEXT)
                             .replace("{days}", days.toString())
 
                     (this as TLRPC.MessageAction).message = messageText
@@ -1420,7 +1420,7 @@ class Plugin {
 
                 val messageText =
                     if (!byPeer) {
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_SELF)
+                        translator.translate(TranslationKey.Service.Streak.RESTORED_SELF)
                     } else {
                         val peerName =
                             peerId
@@ -1430,7 +1430,7 @@ class Plugin {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_RESTORE_TEXT_PEER)
+                        translator.translate(TranslationKey.Service.Streak.RESTORED_PEER)
                             .replace("{name}", peerName)
                     }
 
@@ -1446,7 +1446,7 @@ class Plugin {
                 if (message.out) {
                     TLRPC.TL_messageActionCustomAction().apply {
                         val messageText =
-                            translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_TEXT_SELF)
+                            translator.translate(TranslationKey.Service.Pet.Invite.SENT_SELF)
                         (this as TLRPC.MessageAction).message = messageText
                     } as TLRPC.MessageAction
                 } else {
@@ -1473,7 +1473,7 @@ class Plugin {
 
                 val messageText =
                     if (!byPeer) {
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_ACCEPTED_TEXT_SELF)
+                        translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_SELF)
                     } else {
                         val peerName =
                             peerId
@@ -1483,7 +1483,7 @@ class Plugin {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_ACCEPTED_TEXT_PEER)
+                        translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_PEER)
                             .replace("{name}", peerName)
                     }
 
@@ -1507,7 +1507,7 @@ class Plugin {
 
                 val messageText =
                     if (!byPeer) {
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_SET_NAME_TEXT_SELF)
+                        translator.translate(TranslationKey.Service.Pet.Rename.SELF)
                             .replace("{petName}", name)
                     } else {
                         val peerName =
@@ -1518,7 +1518,7 @@ class Plugin {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_SET_NAME_TEXT_PEER)
+                        translator.translate(TranslationKey.Service.Pet.Rename.PEER)
                             .replace("{peerName}", peerName)
                             .replace("{petName}", name)
                     }
@@ -1573,22 +1573,22 @@ class Plugin {
                         val streak = streaksController.get(accountId, peerUserId)
 
                         if (streak == null) {
-                            bulletinHelper.showTranslated(TranslationKey.INFO_NO_STREAK_RECORD_FOR_CHAT)
+                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
                             return@enqueue
                         }
 
                         if (!streak.dead) {
-                            bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_NOT_ENDED_YET)
+                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_ENDED_YET)
                             return@enqueue
                         }
 
                         if (!streak.canRevive) {
-                            bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
                             return@enqueue
                         }
 
                         if (!streaksController.reviveNow(accountId, peerUserId)) {
-                            bulletinHelper.showTranslated(TranslationKey.INFO_STREAK_RESTORE_UNAVAILABLE)
+                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
                             return@enqueue
                         }
                     }
@@ -1610,14 +1610,14 @@ class Plugin {
                                 syncPeerUi(accountId, peerUserId)
                                 refreshPetFabForOpenChat()
                                 bulletinHelper.showTranslated(
-                                    TranslationKey.OK_STREAK_PET_CREATED,
+                                    TranslationKey.Status.Success.PET_CREATED,
                                     "msg_reactions"
                                 )
                             }
 
                             is StreakPetsController.CreateResult.AlreadyExists -> {
                                 bulletinHelper.showTranslated(
-                                    TranslationKey.INFO_STREAK_PET_ALREADY_EXISTS_FOR_CHAT
+                                    TranslationKey.Status.Info.PET_ALREADY_EXISTS_FOR_CHAT
                                 )
                             }
                         }
@@ -1660,25 +1660,25 @@ class Plugin {
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
-                    param.args[0] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_TITLE)
+                    param.args[0] = translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
                     param.args[1] =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_SUBTITLE)
-                    param.args[3] = translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_HINT)
+                        translator.translate(TranslationKey.Service.Streak.ENDED_SUBTITLE)
+                    param.args[3] = translator.translate(TranslationKey.Service.Streak.ENDED_HINT)
                     param.args[5] =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_DEATH_BUTTON)
+                        translator.translate(TranslationKey.Service.Streak.ENDED_ACTION)
                     param.args[9] = false
                     param.args[10] = true
                 }
 
                 ServiceMessage.PET_INVITE_TEXT -> {
                     param.args[0] =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_TITLE)
+                        translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
                     param.args[1] =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_SUBTITLE)
+                        translator.translate(TranslationKey.Service.Pet.Invite.DESCRIPTION)
                     param.args[3] =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_HINT)
+                        translator.translate(TranslationKey.Service.Pet.Invite.HINT)
                     param.args[5] =
-                        translator.translate(TranslationKey.SERVICE_MESSAGE_PET_INVITE_BUTTON)
+                        translator.translate(TranslationKey.Service.Pet.Invite.ACTION)
                     param.args[9] = false
                     param.args[10] = true
                 }
