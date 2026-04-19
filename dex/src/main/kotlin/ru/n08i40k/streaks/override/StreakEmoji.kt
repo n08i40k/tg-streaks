@@ -255,11 +255,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         }
 
         val parentView =
-            getFieldValue<View>(
-                SwapAnimatedEmojiDrawable::class.java,
-                this,
-                "parentView"
-            ) ?: return
+            getFieldValue<View>(SwapAnimatedEmojiDrawable::class.java, this, "parentView")
+                ?: return
 
         replaceStreakView(
             object : SwapAnimatedEmojiDrawable(parentView, size) {
@@ -298,11 +295,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         }
 
         val parentView =
-            getFieldValue<View>(
-                SwapAnimatedEmojiDrawable::class.java,
-                this,
-                "parentView"
-            ) ?: return
+            getFieldValue<View>(SwapAnimatedEmojiDrawable::class.java, this, "parentView")
+                ?: return
 
         replaceBadgeView(
             SwapAnimatedEmojiDrawable(parentView, size).apply {

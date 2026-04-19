@@ -41,7 +41,7 @@ class FixupCalendarActivity : CalendarActivity {
         private const val ACTIVITY_COLOR_ALPHA = 170
 
         private val monthViewClass: Class<*> by lazy {
-            Class.forName("org.telegram.ui.CalendarActivity\$MonthView")
+            Class.forName($$"org.telegram.ui.CalendarActivity$MonthView")
         }
 
         private val currentYearField by lazy {
@@ -68,9 +68,7 @@ class FixupCalendarActivity : CalendarActivity {
             Class.forName("androidx.core.view.GestureDetectorCompat")
         }
 
-        private val periodDayClass: Class<*> by lazy {
-            Class.forName("org.telegram.ui.CalendarActivity\$PeriodDay")
-        }
+        private val thisClass = CalendarActivity::class.java
 
         fun create(peerUserId: Long, chatActivity: ChatActivity): FixupCalendarActivity {
             val bundle = Bundle()
@@ -159,12 +157,9 @@ class FixupCalendarActivity : CalendarActivity {
 
     override fun createView(context: Context): View {
         val view = super.createView(context)
-        val listView =
-            getFieldValue<RecyclerListView>(
-                CalendarActivity::class.java,
-                this,
-                "listView"
-            ) ?: return view
+
+        val listView = getFieldValue<RecyclerListView>(thisClass, this, "listView")
+            ?: return view
 
         disableBuiltInSelectionUi()
         installActivityStatusDecoration(listView)
@@ -174,22 +169,25 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private fun disableBuiltInSelectionUi() {
-        getFieldValue<View>(CalendarActivity::class.java, this, "bottomBar")?.apply {
-            visibility = View.GONE
-            isEnabled = false
-        }
-        getFieldValue<View>(CalendarActivity::class.java, this, "selectDaysButton")?.apply {
-            visibility = View.GONE
-            isEnabled = false
-        }
-        getFieldValue<View>(CalendarActivity::class.java, this, "removeDaysButton")?.apply {
-            visibility = View.GONE
-            isEnabled = false
-        }
+        getFieldValue<View>(thisClass, this, "bottomBar")
+            ?.apply {
+                visibility = View.GONE
+                isEnabled = false
+            }
+        getFieldValue<View>(thisClass, this, "selectDaysButton")
+            ?.apply {
+                visibility = View.GONE
+                isEnabled = false
+            }
+        getFieldValue<View>(thisClass, this, "removeDaysButton")
+            ?.apply {
+                visibility = View.GONE
+                isEnabled = false
+            }
 
-        setFieldValue(CalendarActivity::class.java, this, "inSelectionMode", false)
-        setFieldValue(CalendarActivity::class.java, this, "dateSelectedStart", 0)
-        setFieldValue(CalendarActivity::class.java, this, "dateSelectedEnd", 0)
+        setFieldValue(thisClass, this, "inSelectionMode", false)
+        setFieldValue(thisClass, this, "dateSelectedStart", 0)
+        setFieldValue(thisClass, this, "dateSelectedEnd", 0)
     }
 
     private fun installActivityStatusDecoration(listView: RecyclerListView) {
@@ -543,12 +541,8 @@ class FixupCalendarActivity : CalendarActivity {
             return
         }
 
-        val original =
-            getFieldValue<SparseArray<Any>>(
-                CalendarActivity::class.java,
-                this,
-                "messagesByYearMounth"
-            ) ?: return
+        val original = getFieldValue<SparseArray<Any>>(thisClass, this, "messagesByYearMounth")
+            ?: return
 
         if (original is MessagesByYearMonthProxy) {
             messagesByYearMonthProxy = original
@@ -557,20 +551,18 @@ class FixupCalendarActivity : CalendarActivity {
 
         val proxy = MessagesByYearMonthProxy().apply { copyFrom(original) }
         messagesByYearMonthProxy = proxy
-        setFieldValue(CalendarActivity::class.java, this, "messagesByYearMounth", proxy)
+        setFieldValue(thisClass, this, "messagesByYearMounth", proxy)
     }
 
     private fun patchPeriodDay(monthKey: Int, dayIndex: Int, value: Any?): Any? {
-        if (value == null) {
+        if (value == null)
             return null
-        }
 
         val year = monthKey / 100
         val monthIndex = monthKey % 100
 
-        if (shouldDecorateDay(year, monthIndex, dayIndex)) {
-            setFieldValue(periodDayClass, value, "hasImage", false)
-        }
+        if (shouldDecorateDay(year, monthIndex, dayIndex))
+            setFieldValue(value, "hasImage", false)
 
         return value
     }

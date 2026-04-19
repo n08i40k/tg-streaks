@@ -1,4 +1,4 @@
-@file:Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+@file:Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN", "unused")
 
 package ru.n08i40k.streaks.util
 
@@ -31,8 +31,19 @@ fun getField(klass: Class<*>, name: String): Field {
     return field
 }
 
+inline fun <reified T> getFieldValue(obj: Any, name: String): T? =
+    getField(obj.javaClass, name).get(obj) as? T
+
 inline fun <reified T> getFieldValue(klass: Class<*>, obj: Any, name: String): T? =
     getField(klass, name).get(obj) as? T
 
+fun setFieldValue(obj: Any, name: String, value: Any?) =
+    getField(obj.javaClass, name).set(obj, value)
+
 fun setFieldValue(klass: Class<*>, obj: Any, name: String, value: Any?) =
     getField(klass, name).set(obj, value)
+
+fun addIntFieldValue(obj: Any, name: String, value: Int) {
+    val field = getField(obj.javaClass, name)
+    field.set(obj, field.get(obj) as Int + value)
+}

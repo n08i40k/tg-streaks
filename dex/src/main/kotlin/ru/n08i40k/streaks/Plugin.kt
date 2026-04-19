@@ -9,6 +9,7 @@ package ru.n08i40k.streaks
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.view.View
 import android.webkit.ValueCallback
 import androidx.collection.LongSparseArray
@@ -525,10 +526,11 @@ class Plugin {
             return
         }
 
-        val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity ?: run {
-            AndroidUtilities.runOnUIThread { dismissPetFab() }
-            return
-        }
+        val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
+            ?: run {
+                AndroidUtilities.runOnUIThread { dismissPetFab() }
+                return
+            }
 
         val accountId = UserConfig.selectedAccount
         val peerUserId = chatActivity.dialogId
@@ -568,8 +570,10 @@ class Plugin {
 
                 dismissPetFab()
 
-                val context =
-                    currentChat.parentActivity ?: currentChat.context ?: return@runOnUIThread
+                val context = currentChat.parentActivity
+                    ?: currentChat.context
+                    ?: return@runOnUIThread
+
                 val dialog = StreakPetFabDialog(
                     context,
                     accountId,
@@ -612,7 +616,9 @@ class Plugin {
             val refreshedState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             AndroidUtilities.runOnUIThread {
-                val dialog = openedPetDialog ?: return@runOnUIThread
+                val dialog = openedPetDialog
+                    ?: return@runOnUIThread
+
                 if (!dialog.matches(accountId, peerUserId) || !dialog.isShowing) {
                     clearTrackedPetDialog(dialog)
                     return@runOnUIThread
@@ -655,11 +661,11 @@ class Plugin {
         onComplete: (() -> Unit)? = null,
     ) {
         val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
-        if (!isPeerValid(peerUser)) {
+
+        if (peerUser == null || !isPeerValid(peerUser)) {
             bulletinHelper.showTranslated(TranslationKey.Status.Info.CHAT_PRIVATE_USERS_ONLY)
             return
         }
-        peerUser ?: return
 
         accountTaskRunnerRegistry.enqueue(
             accountId,
@@ -739,7 +745,10 @@ class Plugin {
 
         add(ChatContextMenuButton.REBUILD) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            validatePrivatePeer(accountId, peerUserId)
+                ?: return@add
+
             enqueueRebuildForPeer(accountId, peerUserId)
 
             logger.info("[Context Menu] Rebuild clicked on $peerUserId")
@@ -747,7 +756,9 @@ class Plugin {
 
         add(ChatContextMenuButton.REBUILD_PET) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validatePrivatePeer(accountId, peerUserId)
+                ?: return@add
 
             if (streakPetsController.isRebuildRunning()) {
                 bulletinHelper.showTranslated(TranslationKey.Status.Info.REBUILD_ALREADY_RUNNING)
@@ -782,7 +793,9 @@ class Plugin {
 
         add(ChatContextMenuButton.TOGGLE_PET_FAB) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            validatePrivatePeer(accountId, peerUserId)
+                ?: return@add
 
             petFabEnabled = !petFabEnabled
 
@@ -805,7 +818,9 @@ class Plugin {
 
         add(ChatContextMenuButton.CREATE_PET) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            validatePrivatePeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -945,7 +960,9 @@ class Plugin {
 
         add(ChatContextMenuButton.TOGGLE_SERVICE_MESSAGES) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            validatePrivatePeer(accountId, peerUserId)
+                ?: return@add
 
             val enabled = streaksController.toggleServiceMessages(accountId, peerUserId)
 
@@ -963,7 +980,9 @@ class Plugin {
 
         add(ChatContextMenuButton.REVIVE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validatePrivatePeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validatePrivatePeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -1005,11 +1024,10 @@ class Plugin {
 
         add(ChatContextMenuButton.REVIVE_EXACT) { _ ->
             val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
-
-            if (chatActivity == null) {
-                bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
-                return@add
-            }
+                ?: run {
+                    bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
+                    return@add
+                }
 
             AndroidUtilities.runOnUIThread {
                 chatActivity.presentFragment(
@@ -1023,7 +1041,9 @@ class Plugin {
 
         add(ChatContextMenuButton.DEBUG_CREATE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validateDebugPeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -1042,7 +1062,9 @@ class Plugin {
 
         add(ChatContextMenuButton.DEBUG_UPGRADE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validateDebugPeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -1064,9 +1086,9 @@ class Plugin {
                     return@enqueue
                 }
 
-                val newLength =
-                    streaksController.debugUpgradeStreak(accountId, peerUserId)
-                        ?: return@enqueue
+                val newLength = streaksController.debugUpgradeStreak(accountId, peerUserId)
+                    ?: return@enqueue
+
                 syncPeerUi(accountId, peerUserId)
                 bulletinHelper.showTranslated(
                     TranslationKey.Status.Success.DEBUG_STREAK_UPGRADED,
@@ -1080,7 +1102,9 @@ class Plugin {
 
         add(ChatContextMenuButton.DEBUG_FREEZE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validateDebugPeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -1099,7 +1123,9 @@ class Plugin {
 
         add(ChatContextMenuButton.DEBUG_KILL) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validateDebugPeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -1118,7 +1144,9 @@ class Plugin {
 
         add(ChatContextMenuButton.DEBUG_DELETE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validateDebugPeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -1141,7 +1169,9 @@ class Plugin {
 
         add(ChatContextMenuButton.DEBUG_DELETE_PET) { peerUserId ->
             val accountId = UserConfig.selectedAccount
-            val peerUser = validateDebugPeer(accountId, peerUserId) ?: return@add
+
+            val peerUser = validateDebugPeer(accountId, peerUserId)
+                ?: return@add
 
             accountTaskRunnerRegistry.enqueue(
                 accountId,
@@ -1318,8 +1348,7 @@ class Plugin {
             val thisObject = param.thisObject as DialogCell
             val thisClass = DialogCell::class.java
 
-            val currentDialogId =
-                getFieldValue<Long>(thisClass, thisObject, "currentDialogId")!!
+            val currentDialogId = getFieldValue<Long>(thisClass, thisObject, "currentDialogId")!!
 
             getFieldValue<StreakEmoji>(
                 thisClass,
@@ -1374,9 +1403,8 @@ class Plugin {
             val thisObject = param.thisObject as ChatMessageCell
             val thisClass = ChatMessageCell::class.java
 
-            val currentUser =
-                getFieldValue<TLRPC.User>(thisClass, thisObject, "currentUser")
-                    ?: return@after
+            val currentUser = getFieldValue<TLRPC.User>(thisClass, thisObject, "currentUser")
+                ?: return@after
 
             StreakEmoji.encapsulate(
                 thisObject,
@@ -1397,10 +1425,10 @@ class Plugin {
                 Int::class.java,
                 TLRPC.Message::class.java,
                 MessageObject::class.java,
-                java.util.AbstractMap::class.java,
-                java.util.AbstractMap::class.java,
-                androidx.collection.LongSparseArray::class.java,
-                androidx.collection.LongSparseArray::class.java,
+                AbstractMap::class.java,
+                AbstractMap::class.java,
+                LongSparseArray::class.java,
+                LongSparseArray::class.java,
                 Boolean::class.java,
                 Boolean::class.java,
                 Long::class.java,
@@ -1411,7 +1439,9 @@ class Plugin {
             )
 
         ) { param ->
-            val message = param.args[1] as? TLRPC.Message ?: return@before
+            val message = param.args[1] as? TLRPC.Message
+                ?: return@before
+
             val currentAccount = param.args[0] as? Int ?: 0
 
             if (message.message == null)
@@ -1434,7 +1464,8 @@ class Plugin {
                     ?.groupValues
                     ?.getOrNull(1)
                     ?.toIntOrNull()
-                    ?.takeIf { it > 0 } ?: return@streakUpgrade null
+                    ?.takeIf { it > 0 }
+                    ?: return@streakUpgrade null
 
                 TLRPC.TL_messageActionCustomAction().apply {
                     val messageText =
@@ -1607,13 +1638,12 @@ class Plugin {
                 LongSparseArray::class.java,
             )
         ) { param ->
-            val messageObject = param.thisObject as? MessageObject ?: return@after
+            val thisObject = param.thisObject as MessageObject
 
-            val prizeStars =
-                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@after
+            val prizeStars = thisObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                ?: return@after
 
-            messageObject.messageText = when (prizeStars.transaction_id) {
+            thisObject.messageText = when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT ->
                     translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
 
@@ -1637,9 +1667,9 @@ class Plugin {
                 "currentMessageObject"
             ) ?: return@before
 
-            val prizeStars =
-                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@before
+            val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                ?: return@before
+
             val accountId = UserConfig.selectedAccount
             val peerUserId = messageObject.dialogId
 
@@ -1733,9 +1763,8 @@ class Plugin {
                 "currentMessageObject"
             ) ?: return@before
 
-            val prizeStars =
-                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@before
+            val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                ?: return@before
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
@@ -1777,9 +1806,8 @@ class Plugin {
                 "currentMessageObject"
             ) ?: return@after
 
-            val prizeStars =
-                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@after
+            val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                ?: return@after
 
             if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT)
                 return@after
@@ -1801,9 +1829,8 @@ class Plugin {
                 "currentMessageObject"
             ) ?: return@after
 
-            val prizeStars =
-                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@after
+            val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                ?: return@after
 
             if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT)
                 return@after
@@ -1820,11 +1847,11 @@ class Plugin {
                 Boolean::class.java,
             )
         ) { param ->
-            val messageObject = param.args[0] as? MessageObject ?: return@after
+            val messageObject = param.args[0] as? MessageObject
+                ?: return@after
 
-            val prizeStars =
-                messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                    ?: return@after
+            val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+                ?: return@after
 
             if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT)
                 return@after
@@ -1832,14 +1859,15 @@ class Plugin {
             val thisObject = param.thisObject as ChatActionCell
             val thisClass = ChatActionCell::class.java
 
-            val imageReceiver =
-                getFieldValue<ImageReceiver>(thisClass, thisObject, "imageReceiver")!!
-            imageReceiver.setAllowStartLottieAnimation(false)
-            imageReceiver.setDelegate(null)
-            imageReceiver.setImageBitmap(null as Bitmap?)
-            imageReceiver.clearImage()
-            imageReceiver.clearDecorators()
-            imageReceiver.setVisible(false, true)
+            getFieldValue<ImageReceiver>(thisClass, thisObject, "imageReceiver")
+                ?.apply {
+                    setAllowStartLottieAnimation(false)
+                    setDelegate(null)
+                    setImageBitmap(null as Bitmap?)
+                    clearImage()
+                    clearDecorators()
+                    setVisible(false, true)
+                }
         }
 
         // Исправление размера сообщения в чате
@@ -1875,28 +1903,14 @@ class Plugin {
         ) { param ->
             val thisObject = param.thisObject as UserCell
             val thisClass = UserCell::class.java
-            val nameTextView =
-                getFieldValue<SimpleTextView>(thisClass, thisObject, "nameTextView")!!
-            val rightDrawableField = getField(SimpleTextView::class.java, "rightDrawable")
-            val rightDrawable2Field = getField(SimpleTextView::class.java, "rightDrawable2")
 
             val dialogId = getFieldValue<Long>(thisClass, thisObject, "dialogId")!!
 
             if (dialogId < 0)
                 return@after
 
-            val oldEmojiStatus =
-                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
-                    thisClass,
-                    thisObject,
-                    "emojiStatus"
-                )
-            val oldEmojiStatus2 =
-                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
-                    thisClass,
-                    thisObject,
-                    "emojiStatus2"
-                )
+            val nameTextView =
+                getFieldValue<SimpleTextView>(thisClass, thisObject, "nameTextView")!!
 
             StreakEmoji.encapsulate(
                 thisObject,
@@ -1906,13 +1920,28 @@ class Plugin {
                 nameTextView = nameTextView
             )
 
+            val rightDrawable = getFieldValue<Drawable>(nameTextView, "rightDrawable")
+            val rightDrawable2 = getFieldValue<Drawable>(nameTextView, "rightDrawable2")
+
+            val emojiStatus =
+                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
+                    thisClass,
+                    thisObject,
+                    "emojiStatus"
+                )
+            val emojiStatus2 =
+                getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
+                    thisClass,
+                    thisObject,
+                    "emojiStatus2"
+                )
+
             val newEmojiStatus =
                 getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
                     thisClass,
                     thisObject,
                     "emojiStatus"
                 )
-
             val newEmojiStatus2 =
                 getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
                     thisClass,
@@ -1920,17 +1949,14 @@ class Plugin {
                     "emojiStatus2"
                 )
 
-            val currentRightDrawable = rightDrawableField.get(nameTextView)
-            val currentRightDrawable2 = rightDrawable2Field.get(nameTextView)
-
-            if (currentRightDrawable === oldEmojiStatus)
+            if (rightDrawable === emojiStatus)
                 nameTextView.rightDrawable = newEmojiStatus
-            else if (currentRightDrawable === oldEmojiStatus2)
+            else if (rightDrawable === emojiStatus2)
                 nameTextView.rightDrawable = newEmojiStatus2
 
-            if (currentRightDrawable2 === oldEmojiStatus)
+            if (rightDrawable2 === emojiStatus)
                 nameTextView.rightDrawable2 = newEmojiStatus
-            else if (currentRightDrawable2 === oldEmojiStatus2)
+            else if (rightDrawable2 === emojiStatus2)
                 nameTextView.rightDrawable2 = newEmojiStatus2
         }
 
@@ -1947,7 +1973,7 @@ class Plugin {
             val thisObject = param.thisObject as ProfileActivity
             val thisClass = ProfileActivity::class.java
 
-            val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
+            val userId = getFieldValue<Long>(thisObject, "userId")!!
 
             if (userId < 0)
                 return@after
@@ -1986,20 +2012,18 @@ class Plugin {
         ) { param ->
             val thisObject = param.thisObject as ChatAvatarContainer
             val thisClass = ChatAvatarContainer::class.java
-            val titleTextView =
-                getFieldValue<SimpleTextView>(thisClass, thisObject, "titleTextView")
-                    ?: return@after
 
-            val dialogId = getFieldValue<ChatActivity>(
-                thisClass,
-                thisObject,
-                "parentFragment"
-            )?.dialogId ?: return@after
+            val dialogId =
+                getFieldValue<ChatActivity>(thisClass, thisObject, "parentFragment")?.dialogId
+                    ?: return@after
 
             if (dialogId < 0)
                 return@after
 
-            val oldDrawable = titleTextView.rightDrawable
+            val titleTextView =
+                getFieldValue<SimpleTextView>(thisClass, thisObject, "titleTextView")
+                    ?: return@after
+
             val newDrawable = StreakEmoji.encapsulate(
                 thisObject,
                 getField(thisClass, "emojiStatusDrawable"),
@@ -2007,13 +2031,10 @@ class Plugin {
                 dialogId
             ) ?: return@after
 
-            if (oldDrawable !== newDrawable && oldDrawable is AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) {
+            if (titleTextView.rightDrawable !== newDrawable && titleTextView.rightDrawable is AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable)
                 titleTextView.rightDrawable = newDrawable
-            }
 
-            backgroundScope.launch {
-                streaksController.flushCurrentChatPopup()
-            }
+            backgroundScope.launch { streaksController.flushCurrentChatPopup() }
         }
 
         // Хук отображения диалоговых окон для замены PremiumPreviewBottomSheet
@@ -2023,7 +2044,8 @@ class Plugin {
                 .filter { it.name == "showDialog" }
                 .sortedByDescending { it.parameterCount }[0]
         ) { param ->
-            val dialog = param.args[0] as? PremiumPreviewBottomSheet ?: return@before
+            val dialog = param.args[0] as? PremiumPreviewBottomSheet
+                ?: return@before
 
             val user = getFieldValue<TLRPC.User>(
                 PremiumPreviewBottomSheet::class.java,
@@ -2048,8 +2070,11 @@ class Plugin {
                 Boolean::class.java,
             )
         ) { param ->
-            val messagesController = param.thisObject as? MessagesController ?: return@before
-            val user = param.args[0] as? TLRPC.User ?: return@before
+            val messagesController = param.thisObject as MessagesController
+
+            val user = param.args[0] as? TLRPC.User
+                ?: return@before
+
             val accountId =
                 getFieldValue<Int>(BaseController::class.java, messagesController, "currentAccount")
                     ?: return@before
@@ -2181,11 +2206,11 @@ class Plugin {
                 Boolean::class.java
             )
         ) { param ->
-            val thisObject = param.thisObject as? BaseController ?: return@before
+            val thisObject = param.thisObject as BaseController
             val thisClass = BaseController::class.java
 
-            val accountId =
-                getFieldValue<Int>(thisClass, thisObject, "currentAccount") ?: return@before
+            val accountId = getFieldValue<Int>(thisClass, thisObject, "currentAccount")
+                ?: return@before
 
             if (accountId != UserConfig.selectedAccount)
                 return@before
@@ -2203,12 +2228,12 @@ class Plugin {
                 SendMessagesHelper.SendMessageParams::class.java
             )
         ) { param ->
-            val thisObject = param.thisObject as? BaseController ?: return@before
+            val thisObject = param.thisObject as BaseController
             val thisClass = BaseController::class.java
+
             val sendMessageParams = param.args[0] as SendMessagesHelper.SendMessageParams
-            val accountId =
-                getFieldValue<Int>(thisClass, thisObject, "currentAccount")
-                    ?: UserConfig.selectedAccount
+            val accountId = getFieldValue<Int>(thisClass, thisObject, "currentAccount")
+                ?: UserConfig.selectedAccount
 
             accountTaskRunnerRegistry.enqueue(accountId, "handle outgoing message") {
                 val peerUserId = sendMessageParams.peer
@@ -2230,6 +2255,7 @@ class Plugin {
                     sendMessageParams.message,
                     true
                 )
+
                 refreshOpenedPetDialog(accountId, peerUserId)
 
                 if (result.changed) {
