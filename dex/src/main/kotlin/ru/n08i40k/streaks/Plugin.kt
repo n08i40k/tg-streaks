@@ -73,7 +73,6 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
-import ru.n08i40k.streaks.util.WidthCache
 import java.lang.reflect.Member
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -243,8 +242,6 @@ class Plugin {
     val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
     val streakPetLevelRegistry: StreakPetLevelRegistry = StreakPetLevelRegistry()
     private val isAutoBackupLoopStarted = AtomicBoolean(false)
-
-    val chatMessageCellWidthCache = WidthCache()
 
     constructor(
         logReceiver: LogReceiver,

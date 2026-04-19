@@ -43,6 +43,11 @@ fun setFieldValue(obj: Any, name: String, value: Any?) =
 fun setFieldValue(klass: Class<*>, obj: Any, name: String, value: Any?) =
     getField(klass, name).set(obj, value)
 
+fun addIntFieldValue(klass: Class<*>, obj: Any, name: String, value: Int) {
+    val field = getField(klass, name)
+    field.set(obj, field.get(obj) as Int + value)
+}
+
 fun addIntFieldValue(obj: Any, name: String, value: Int) {
     val field = getField(obj.javaClass, name)
     field.set(obj, field.get(obj) as Int + value)
