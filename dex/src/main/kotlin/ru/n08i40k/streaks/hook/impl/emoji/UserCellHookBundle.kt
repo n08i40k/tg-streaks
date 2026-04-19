@@ -42,7 +42,7 @@ class UserCellHookBundle : HookBundle() {
                 getField(thisClass, "emojiStatus"),
                 null,
                 currentUser.id,
-                nameTextView = nameTextView
+                simpleTextView = nameTextView
             )
 
             nameTextView.rightDrawable = emoji

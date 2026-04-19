@@ -59,6 +59,7 @@ import ru.n08i40k.streaks.hook.impl.emoji.ChatMessageCellHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.DialogCellHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.ProfileActivityHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.ProfileSearchCellHookBundle
+import ru.n08i40k.streaks.hook.impl.emoji.StatusBadgeComponentHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.UserCellHookBundle
 import ru.n08i40k.streaks.override.FixupCalendarActivity
 import ru.n08i40k.streaks.registry.LockableActionRegistry
@@ -1070,6 +1071,7 @@ class Plugin {
                 DialogCellHookBundle(),
                 ProfileActivityHookBundle(),
                 ProfileSearchCellHookBundle(),
+                StatusBadgeComponentHookBundle(),
                 UserCellHookBundle(),
                 AccountSwitchHookBundle(),
                 UserPutHookBundle(),

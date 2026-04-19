@@ -77,7 +77,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             arrayIndex: Int?,
             peerUserId: Long,
             canDrawBadge: Boolean = false,
-            nameTextView: SimpleTextView? = null,
+            simpleTextView: SimpleTextView? = null,
         ): StreakEmoji? {
             if (arrayIndex == null) {
                 val drawable = (field.get(obj) ?: return null) as? SwapAnimatedEmojiDrawable
@@ -102,7 +102,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                         WeakReference(obj),
                         field,
                         arrayIndex,
-                        nameTextView?.let(::WeakReference)
+                        simpleTextView?.let(::WeakReference)
                     )
                 )
                 return newDrawable
@@ -142,7 +142,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     WeakReference(obj),
                     field,
                     arrayIndex,
-                    nameTextView?.let(::WeakReference)
+                    simpleTextView?.let(::WeakReference)
                 )
             )
 
