@@ -11,9 +11,12 @@ import android.text.Spanned
 import android.text.StaticLayout
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessageObject
+import org.telegram.messenger.UserConfig
+import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.ChatMessageCell
 import org.telegram.ui.Cells.DialogCell
+import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakEmoji
@@ -124,6 +127,24 @@ class ChatMessageCellHookBundle : HookBundle() {
             addIntFieldValue(thisClass, thisObject, "viaWidth", extraPx)
 
             thisObject.invalidate()
+        }
+
+        before(
+            Class.forName($$"org.telegram.ui.ChatActivity$ChatMessageCellDelegate")
+                .getDeclaredMethod(
+                    "didPressUserStatus",
+                    ChatMessageCell::class.java,
+                    TLRPC.User::class.java,
+                    TLRPC.Document::class.java,
+                    String::class.java,
+                )
+        ) { param ->
+            Plugin.getInstance().streaksController.getViewDataBlocking(
+                UserConfig.selectedAccount,
+                (param.args[1] as TLRPC.User).id
+            ) ?: return@before
+
+            param.args[3] = ""
         }
     }
 }
