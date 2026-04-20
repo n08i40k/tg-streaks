@@ -420,7 +420,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             width += getTextWidth()
         }
 
-        if (hasBadge)
+        if (canDrawBadge && hasBadge)
             width += size
 
         return width
