@@ -22,7 +22,7 @@ from android_utils import run_on_ui_thread
 from base_plugin import BasePlugin, MenuItemData, MenuItemType
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
-from java.lang import Class, Integer, Long, Runnable, String
+from java.lang import Class, Integer, Long, String
 from java.nio import ByteBuffer  # ty:ignore[unresolved-import]
 from java.util.function import Function
 from org.telegram.messenger import ApplicationLoader, LocaleController

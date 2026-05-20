@@ -70,6 +70,7 @@ import ru.n08i40k.streaks.registry.StreakPetLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.StreakPetUiManager
 import ru.n08i40k.streaks.util.AccountTaskRunnerRegistry
+import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
@@ -332,6 +333,11 @@ class Plugin {
     }
 
     private fun onInject() {
+        BadgesCompat.takeException()?.let {
+            logger.fatal("Failed to init BadgesCompat", it)
+            return
+        }
+
         taskQueue.startWorker(backgroundScope)
 
         registerChatContextMenuCallbacks()

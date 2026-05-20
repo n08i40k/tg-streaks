@@ -9,8 +9,6 @@ package ru.n08i40k.streaks.override
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.View
-import com.exteragram.messenger.api.dto.BadgeDTO
-import com.exteragram.messenger.badges.BadgesController
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -20,6 +18,7 @@ import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.StreakViewData
+import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
@@ -270,9 +269,9 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         invalidateSelf()
     }
 
-    fun setBadge(user: TLRPC.User?, badge: BadgeDTO?) {
+    fun setBadge(user: TLRPC.User?, badgeDocumentId: Long?) {
         // do not draw badge, as it will be shown instead of an empty emoji status
-        if (!canDrawBadge || badge == null || user?.emoji_status == null) {
+        if (!canDrawBadge || badgeDocumentId == null || user?.emoji_status == null) {
             clearBadgeView()
             invalidateSelf()
             return
@@ -284,7 +283,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
         replaceBadgeView(
             SwapAnimatedEmojiDrawable(parentView, size).apply {
-                set(badge.documentId, false)
+                set(badgeDocumentId, false)
                 setParticles(true, false)
                 color = Theme.getColor(Theme.key_chats_verifiedBackground)
             }
@@ -308,7 +307,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
             when (dialog) {
                 is TLRPC.User -> {
-                    val badge = BadgesController.INSTANCE.getBadge(dialog)
+                    val badge = BadgesCompat.getDocumentId(dialog)
                     this.hasBadge = badge != null
 
                     AndroidUtilities.runOnUIThread {
@@ -336,7 +335,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             ?.let {
                 hideOriginal = it.premium && it.emoji_status == null
 
-                val badge = BadgesController.INSTANCE.getBadge(it)
+                val badge = BadgesCompat.getDocumentId(it)
 
                 AndroidUtilities.runOnUIThread {
                     setStreak(it, streakViewData)
