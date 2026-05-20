@@ -15,7 +15,7 @@ from android.content import Intent
 from android.content import DialogInterface
 from android.graphics import Color
 from android.net import Uri
-from android.os import Environment
+from android.os import Environment, Process
 from android.util import Log
 from android.webkit import ValueCallback
 from android_utils import run_on_ui_thread
@@ -58,6 +58,7 @@ PLUGIN_UPDATE_API_URL = (
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
+SETTING_LAST_LOADED_VERSION = "last_loaded_version"
 SETTING_PET_FAB_SIZE_INDEX = "pet_fab_size_index"
 PET_FAB_SIZE_OPTIONS_DP = (64, 80, 96, 112, 128)
 
@@ -152,6 +153,10 @@ I18N_STATUS: dict[str, dict[str, str]] = {
     "status.error.update.open_link_failed": {
         "en": "Couldn't open update link",
         "ru": "Не удалось открыть ссылку обновления",
+    },
+    "status.error.update.restart_failed": {
+        "en": "Couldn't restart client",
+        "ru": "Не удалось перезапустить клиент",
     },
     "status.error.rebuild.failed_check_logs": {
         "en": "Rebuild failed, check logs",
@@ -501,6 +506,16 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "en": "Choose backup",
         "ru": "Выберите бэкап",
     },
+    "dialog.update_restart.title": {
+        "en": "Restart client?",
+        "ru": "Перезапустить клиент?",
+    },
+    "dialog.update_restart.message": {
+        "en": "Streaks was updated from {previous} to {current}. Restart the client to finish the update.",
+        "ru": "Streaks обновлён с {previous} до {current}. Перезапустите клиент, чтобы завершить обновление.",
+    },
+    "dialog.update_restart.restart": {"en": "Restart", "ru": "Перезапустить"},
+    "dialog.update_restart.later": {"en": "Later", "ru": "Позже"},
     "dialog.calendar_fix.manual_revive.title": {
         "en": "Mark restore day?",
         "ru": "Пометить день восстановлением?",
@@ -1743,6 +1758,7 @@ class PluginUpdateChecker:
 
 class TgStreaksPlugin(BasePlugin):
     _reinitialize_lock = threading.Lock()
+    _full_load_lock = threading.Lock()
 
     settings_actions: SettingsActions
 
@@ -1804,6 +1820,136 @@ class TgStreaksPlugin(BasePlugin):
 
     def _show_success(self, message: str):
         run_on_ui_thread(lambda: BulletinHelper.show_success(message))
+
+    def _get_last_loaded_version(self) -> str:
+        previous_version = ""
+
+        try:
+            previous_version = str(self.get_setting(SETTING_LAST_LOADED_VERSION, ""))
+        except Exception as e:
+            self.log_exception("Failed to read last loaded plugin version", e)
+
+        return previous_version
+
+    def _persist_current_loaded_version(self):
+        try:
+            self.set_setting(SETTING_LAST_LOADED_VERSION, __version__)
+        except Exception as e:
+            self.log_exception("Failed to persist last loaded plugin version", e)
+
+    def _should_pause_full_load_for_update(self) -> bool:
+        previous_version = self._get_last_loaded_version()
+
+        if len(previous_version) == 0 or previous_version == __version__:
+            self._persist_current_loaded_version()
+            return False
+
+        self._show_update_restart_dialog(previous_version)
+        return True
+
+    def _show_update_restart_dialog(self, previous_version: str):
+        def show():
+            try:
+                fragment = get_last_fragment()
+            except Exception:
+                fragment = None
+
+            if fragment is None:
+                self.log("Update restart dialog deferred: UI context is unavailable")
+                self._schedule_update_restart_dialog_retry(previous_version)
+                return
+
+            self_outer = self
+
+            class RestartClickListener(
+                dynamic_proxy(AlertDialog.OnButtonClickListener)
+            ):
+                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
+                    self_outer._persist_current_loaded_version()
+                    self_outer._restart_client()
+
+            class LaterClickListener(dynamic_proxy(AlertDialog.OnButtonClickListener)):
+                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
+                    self_outer._persist_current_loaded_version()
+                    self_outer._schedule_continue_plugin_load()
+
+            try:
+                fragment.showDialog(
+                    AlertDialog.Builder(fragment.getContext())
+                    .setTitle(String(self._t("dialog.update_restart.title")))
+                    .setMessage(
+                        String(
+                            self._t(
+                                "dialog.update_restart.message",
+                                previous=previous_version,
+                                current=__version__,
+                            )
+                        )
+                    )
+                    .setPositiveButton(
+                        String(self._t("dialog.update_restart.restart")),
+                        RestartClickListener(),
+                    )
+                    .setNegativeButton(
+                        String(self._t("dialog.update_restart.later")),
+                        LaterClickListener(),
+                    )
+                    .create()
+                )
+            except Exception as e:
+                self.log_exception("Failed to show update restart dialog", e)
+                self._show_info(
+                    self._t(
+                        "dialog.update_restart.message",
+                        previous=previous_version,
+                        current=__version__,
+                    )
+                )
+                self._schedule_update_restart_dialog_retry(previous_version)
+
+        run_on_ui_thread(show)
+
+    def _schedule_update_restart_dialog_retry(self, previous_version: str):
+        timer = threading.Timer(
+            1.0,
+            lambda: self._show_update_restart_dialog(previous_version),
+        )
+        timer.daemon = True
+        timer.start()
+
+    def _schedule_continue_plugin_load(self):
+        threading.Thread(
+            target=self._continue_plugin_load,
+            name="tg-streaks-continue-plugin-load",
+            daemon=True,
+        ).start()
+
+    def _restart_client(self):
+        def restart():
+            try:
+                context = self._resolve_popup_context()
+                if context is None:
+                    raise RuntimeError("no context")
+
+                package_name = context.getPackageName()
+                intent = context.getPackageManager().getLaunchIntentForPackage(
+                    package_name
+                )
+                if intent is None:
+                    raise RuntimeError("launch intent not found")
+
+                intent.addFlags(
+                    int(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    | int(Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                )
+                context.startActivity(intent)
+                Process.killProcess(Process.myPid())
+            except Exception as e:
+                self.log_exception("Failed to restart client", e)
+                self._show_error(self._t("status.error.update.restart_failed"))
+                self._schedule_continue_plugin_load()
+
+        run_on_ui_thread(restart)
 
     def _show_download_progress(self, title: str, subtitle: str):
         def show():
@@ -2397,8 +2543,12 @@ class TgStreaksPlugin(BasePlugin):
             daemon=True,
         ).start()
 
-    def on_plugin_load(self):
-        self.resources_bridge = ZipResourcesBridge(self)
+    def _continue_plugin_load(self):
+        with self._full_load_lock:
+            if getattr(self, "_full_load_started", False):
+                return
+            self._full_load_started = True
+
         self._load_jvm_plugin()
 
         self._register_streak_levels()
@@ -2419,6 +2569,15 @@ class TgStreaksPlugin(BasePlugin):
             daemon=True,
         ).start()
 
+    def on_plugin_load(self):
+        self.resources_bridge = ZipResourcesBridge(self)
+        self._full_load_started = False
+
+        if self._should_pause_full_load_for_update():
+            return
+
+        self._continue_plugin_load()
+
     def on_plugin_unload(self):
         try:
             self.update_checker.stop()
@@ -2430,13 +2589,14 @@ class TgStreaksPlugin(BasePlugin):
         except Exception as e:
             self.log_exception("Failed to unregister chat context menu", e)
 
-        if self.jvm_plugin.klass is None:
+        jvm_plugin = getattr(self, "jvm_plugin", None)
+        if jvm_plugin is None or jvm_plugin.klass is None:
             return
 
         try:
-            self.jvm_plugin.klass.getDeclaredMethod(String("eject")).invoke(None)  # ty:ignore[invalid-argument-type]
+            jvm_plugin.klass.getDeclaredMethod(String("eject")).invoke(None)
             self.log("JVM plugin ejected successfully")
         except Exception as e:
             self.log_exception("Failed to eject JVM plugin", e)
 
-        self.jvm_plugin.klass = None
+        jvm_plugin.klass = None
