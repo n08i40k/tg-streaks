@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Optional, cast
 
 import requests
-from java import dynamic_proxy, jarray
+from java import dynamic_proxy, jarray, jbyte
 from android.content import Intent
 from android.content import DialogInterface
 from android.graphics import Color
@@ -19,7 +19,7 @@ from android.os import Environment, Process
 from android.util import Log
 from android.webkit import ValueCallback
 from android_utils import run_on_ui_thread
-from base_plugin import BasePlugin, MenuItemData, MenuItemType
+from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
 from java.lang import Class, Integer, Long, String
@@ -48,9 +48,9 @@ REPO_OWNER = "n08i40k"
 REPO_NAME = __id__
 
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
-DEX_SHA256 = "33f1fe9cc9d27149b4aa5465fb4d9edb7322fc3f8ea6ee9c4528a502d840cc74"
+DEX_SHA256 = "5aa43ac560f5fe4dc848b7f5a9ef6f7d94608cdd16dbbb92cfa0314f6010cede"
 RESOURCES_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/resources.zip"
-RESOURCES_SHA256 = "e7d9b68ace46d4c39ab5445156b218491d002655eeb4f7062ef1cc0a7835ae13"
+RESOURCES_SHA256 = "be8d99de6965f9646d4c4b3133e528a81eec372be0e7218f68bd698c81002c08"
 
 PLUGIN_UPDATE_API_URL = (
     f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
@@ -505,6 +505,10 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
     "dialog.backup_restore.title": {
         "en": "Choose backup",
         "ru": "Выберите бэкап",
+    },
+    "dialog.backup_restore.browse": {
+        "en": "Browse from device...",
+        "ru": "Выбрать с устройства...",
     },
     "dialog.update_restart.title": {
         "en": "Restart client?",
@@ -2378,9 +2382,6 @@ class TgStreaksPlugin(BasePlugin):
 
     def _show_restore_backup_file_dialog(self):
         backup_files = self._list_backup_files()
-        if len(backup_files) == 0:
-            self._show_error(self._t("status.error.backup.not_found"))
-            return
 
         def show():
             try:
@@ -2397,16 +2398,21 @@ class TgStreaksPlugin(BasePlugin):
                 return
 
             names = [os.path.basename(path) for path in backup_files]
+            names.append(self._t("dialog.backup_restore.browse"))
 
             try:
 
                 class BackupClickListener(
                     dynamic_proxy(DialogInterface.OnClickListener)
                 ):
-                    def onClick(self, _dialog, which):
-                        self_outer._schedule_restore_backup_reinitialize(
-                            backup_files[int(which)]
-                        )
+                    def onClick(self, _dialog, which):  # ty:ignore[invalid-method-override]
+                        idx = int(which)
+                        if idx < len(backup_files):
+                            self_outer._schedule_restore_backup_reinitialize(
+                                backup_files[idx]
+                            )
+                        else:
+                            self_outer._open_backup_file_picker(fragment)
 
                 self_outer = self
                 fragment.showDialog(
@@ -2426,10 +2432,131 @@ class TgStreaksPlugin(BasePlugin):
 
         run_on_ui_thread(show)
 
-    def _schedule_restore_backup_reinitialize(self, backup_path: str):
-        reason = (
-            f"Backup restore requested from settings: {os.path.basename(backup_path)}"
-        )
+    _BACKUP_FILE_PICKER_REQUEST_CODE = 0x5A7B
+    _file_picker_hook_unhooks: "list[Any] | None" = None
+
+    def _open_backup_file_picker(self, fragment):
+        if self._file_picker_hook_unhooks is not None:
+            return
+
+        self_outer = self
+
+        class ActivityResultHook(MethodHook):
+            def after_hooked_method(self, param):
+                request_code = int(param.args[0])
+                if request_code != self_outer._BACKUP_FILE_PICKER_REQUEST_CODE:
+                    return
+
+                unhooks = self_outer._file_picker_hook_unhooks
+                self_outer._file_picker_hook_unhooks = None
+                if unhooks:
+                    for u in unhooks:
+                        try:
+                            u.unhook()
+                        except Exception:
+                            pass
+
+                result_code = int(param.args[1])
+                if result_code != -1:  # Activity.RESULT_OK
+                    return
+
+                data_intent = param.args[2]
+                if data_intent is None:
+                    return
+
+                uri = data_intent.getData()
+                if uri is None:
+                    return
+
+                self_outer._restore_from_uri(uri)
+
+        try:
+            from hook_utils import find_class
+
+            base_fragment_class = find_class("org.telegram.ui.ActionBar.BaseFragment")
+            if base_fragment_class is None:
+                raise RuntimeError("BaseFragment class not found")
+
+            self._file_picker_hook_unhooks = self.hook_all_methods(
+                base_fragment_class,
+                "onActivityResultFragment",
+                ActivityResultHook(),
+            )
+
+            intent = Intent()
+            intent.setAction(String(Intent.ACTION_GET_CONTENT))
+            intent.setType(String("*/*"))
+            intent.addCategory(String(Intent.CATEGORY_OPENABLE))
+
+            fragment.startActivityForResult(
+                intent, self._BACKUP_FILE_PICKER_REQUEST_CODE
+            )
+        except Exception as e:
+            unhooks = self._file_picker_hook_unhooks
+            self._file_picker_hook_unhooks = None
+            if unhooks:
+                for u in unhooks:
+                    try:
+                        u.unhook()
+                    except Exception:
+                        pass
+            self.log_exception("Failed to open backup file picker", e)
+            self._show_error(
+                self._t("status.error.backup.apply_failed").format(reason=str(e))
+            )
+
+    def _restore_from_uri(self, uri):
+        def worker():
+            try:
+                context = ApplicationLoader.applicationContext
+                cr = context.getContentResolver()
+
+                display_name = "backup"
+                try:
+                    cursor = cr.query(uri, None, None, None, None)  # ty:ignore[invalid-argument-type]
+                    if cursor is not None and cursor.moveToFirst():
+                        col = cursor.getColumnIndex(String("_display_name"))
+                        if col >= 0:
+                            display_name = str(cursor.getString(col))
+                        cursor.close()
+                except Exception:
+                    pass
+
+                temp_path = os.path.join(
+                    str(context.getCacheDir().getAbsolutePath()),
+                    "tg-streaks-restore-import.sqlite3",
+                )
+
+                input_stream = cr.openInputStream(uri)
+                try:
+                    buf = jarray(jbyte)(65536)
+                    with open(temp_path, "wb") as f:
+                        while True:
+                            n = input_stream.read(buf)
+                            if n < 0:
+                                break
+                            f.write(bytes(buf[:n]))
+                finally:
+                    input_stream.close()
+
+                self._schedule_restore_backup_reinitialize(temp_path, display_name)
+            except Exception as e:
+                self.log_exception("Failed to read backup from URI", e)
+                self._show_error(
+                    self._t("status.error.backup.apply_failed").format(reason=str(e))
+                )
+
+        threading.Thread(
+            target=worker,
+            name="tg-streaks-backup-restore-from-uri",
+            daemon=True,
+        ).start()
+
+    def _schedule_restore_backup_reinitialize(
+        self, backup_path: str, display_name: str | None = None
+    ):
+        name = display_name or os.path.basename(backup_path)
+        reason = f"Backup restore requested from settings: {name}"
 
         if not self._reinitialize_lock.acquire(blocking=False):
             self.log(f"Skipped duplicate backup restore request: {reason}")
@@ -2461,7 +2588,7 @@ class TgStreaksPlugin(BasePlugin):
                     if os.path.exists(target_path):
                         os.remove(target_path)
 
-                    shutil.copy2(backup_path, target_path)
+                    shutil.copy(backup_path, target_path)
                     self.log(f"Database restored from backup: {backup_path}")
                 except BaseException as e:
                     self.log_exception("Failed to apply backup file", e)
@@ -2483,7 +2610,7 @@ class TgStreaksPlugin(BasePlugin):
                 self._show_success(
                     self._t(
                         "status.success.backup.imported",
-                        name=os.path.basename(backup_path),
+                        name=name,
                     )
                 )
                 self.log("Backup restore and plugin reinitialization completed")
