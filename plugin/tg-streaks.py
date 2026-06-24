@@ -68,6 +68,10 @@ def get_plugin_cache_dir(*parts: str) -> str:
     return os.path.join(cache_root, __id__, *parts)
 
 
+def _sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest().lower()
+
+
 I18N_SETTINGS: dict[str, dict[str, str]] = {
     "settings.updates.title": {"en": "Updates", "ru": "Обновления"},
     "settings.updates.auto_check.title": {
@@ -886,7 +890,7 @@ class JvmPluginBridge:
         if dex_data is None:
             return
 
-        downloaded_sha256 = self._compute_sha256(dex_data)
+        downloaded_sha256 = _sha256_hex(dex_data)
         if downloaded_sha256 != expected_sha256:
             raise RuntimeError("Downloaded DEX SHA256 mismatch")
 
@@ -900,16 +904,13 @@ class JvmPluginBridge:
         except Exception as e:
             self.plugin.log_exception("Failed to load cached DEX", e)
 
-    def _compute_sha256(self, data: bytes) -> str:
-        return hashlib.sha256(data).hexdigest().lower()
-
     def _compute_file_sha256(self, path: str) -> Optional[str]:
         if not os.path.exists(path):
             return None
 
         try:
             with open(path, "rb") as f:
-                return self._compute_sha256(f.read())
+                return _sha256_hex(f.read())
         except Exception as e:
             self.plugin.log_exception("Failed to read cached DEX for SHA256", e)
             return None
@@ -940,7 +941,7 @@ class JvmPluginBridge:
                 if dex_data is None:
                     return
 
-                downloaded_sha256 = self._compute_sha256(dex_data)
+                downloaded_sha256 = _sha256_hex(dex_data)
                 if downloaded_sha256 != str(DEX_SHA256).strip().lower():
                     raise RuntimeError("Downloaded DEX SHA256 mismatch")
 
@@ -1018,9 +1019,7 @@ class ZipResourcesBridge:
                 "Resources ZIP download is already in progress. Waiting for the existing run to finish..."
             )
             wait_lock_fd = self._acquire_download_lock(blocking=True)
-            try:
-                pass
-            finally:
+            if wait_lock_fd is not None:
                 self._release_download_lock(wait_lock_fd)
 
         if os.path.isdir(self.resources_root):
@@ -1028,6 +1027,7 @@ class ZipResourcesBridge:
 
         if os.path.exists(self.zip_path):
             extract_lock_fd = self._acquire_download_lock(blocking=True)
+            assert extract_lock_fd is not None
             try:
                 if not os.path.isdir(self.resources_root):
                     self._extract_zip()
@@ -1058,6 +1058,7 @@ class ZipResourcesBridge:
                 "Resources ZIP update is already in progress. Waiting for the existing run to finish..."
             )
             wait_lock_fd = self._acquire_download_lock(blocking=True)
+            assert wait_lock_fd is not None
             try:
                 result_path, refresh_needed = self._load_release_slow_path_locked(
                     expected_sha256,
@@ -1119,7 +1120,7 @@ class ZipResourcesBridge:
                 self.resources_root
             ) else None, False
 
-        downloaded_sha256 = self._compute_sha256(zip_data)
+        downloaded_sha256 = _sha256_hex(zip_data)
         if downloaded_sha256 != expected_sha256:
             raise RuntimeError("Downloaded resources ZIP SHA256 mismatch")
 
@@ -1130,16 +1131,13 @@ class ZipResourcesBridge:
             self.resources_root
         ) else None, False
 
-    def _compute_sha256(self, data: bytes) -> str:
-        return hashlib.sha256(data).hexdigest().lower()
-
     def _compute_file_sha256(self, path: str) -> Optional[str]:
         if not os.path.exists(path):
             return None
 
         try:
             with open(path, "rb") as f:
-                return self._compute_sha256(f.read())
+                return _sha256_hex(f.read())
         except Exception as e:
             self.plugin.log_exception(
                 "Failed to read cached resources ZIP for SHA256", e
@@ -1202,7 +1200,7 @@ class ZipResourcesBridge:
                 if zip_data is None:
                     return
 
-                downloaded_sha256 = self._compute_sha256(zip_data)
+                downloaded_sha256 = _sha256_hex(zip_data)
                 if downloaded_sha256 != expected_sha256:
                     raise RuntimeError("Downloaded resources ZIP SHA256 mismatch")
 
@@ -1630,10 +1628,7 @@ class PluginUpdateChecker:
         self._inflight = False
 
     def is_enabled(self) -> bool:
-        try:
-            return bool(self.plugin.get_setting(SETTING_UPDATE_CHECK_ENABLED, True))
-        except Exception:
-            return True
+        return self.plugin._is_update_check_enabled()
 
     def set_enabled(self, enabled: bool):
         enabled = bool(enabled)
@@ -2391,9 +2386,7 @@ class TgStreaksPlugin(BasePlugin):
 
             if fragment is None:
                 self._show_error(
-                    self._t("status.error.backup.apply_failed").format(
-                        reason="No UI context"
-                    )
+                    self._t("status.error.backup.apply_failed", reason="No UI context")
                 )
                 return
 
@@ -2401,6 +2394,7 @@ class TgStreaksPlugin(BasePlugin):
             names.append(self._t("dialog.backup_restore.browse"))
 
             try:
+                self_outer = self
 
                 class BackupClickListener(
                     dynamic_proxy(DialogInterface.OnClickListener)
@@ -2414,7 +2408,6 @@ class TgStreaksPlugin(BasePlugin):
                         else:
                             self_outer._open_backup_file_picker(fragment)
 
-                self_outer = self
                 fragment.showDialog(
                     AlertDialog.Builder(fragment.getContext())
                     .setTitle(cast("String", self._t("dialog.backup_restore.title")))
@@ -2427,7 +2420,7 @@ class TgStreaksPlugin(BasePlugin):
             except Exception as e:
                 self.log_exception("Failed to show restore backup dialog", e)
                 self._show_error(
-                    self._t("status.error.backup.apply_failed").format(reason=str(e))
+                    self._t("status.error.backup.apply_failed", reason=str(e))
                 )
 
         run_on_ui_thread(show)
@@ -2501,9 +2494,7 @@ class TgStreaksPlugin(BasePlugin):
                     except Exception:
                         pass
             self.log_exception("Failed to open backup file picker", e)
-            self._show_error(
-                self._t("status.error.backup.apply_failed").format(reason=str(e))
-            )
+            self._show_error(self._t("status.error.backup.apply_failed", reason=str(e)))
 
     def _restore_from_uri(self, uri):
         def worker():
@@ -2543,7 +2534,7 @@ class TgStreaksPlugin(BasePlugin):
             except Exception as e:
                 self.log_exception("Failed to read backup from URI", e)
                 self._show_error(
-                    self._t("status.error.backup.apply_failed").format(reason=str(e))
+                    self._t("status.error.backup.apply_failed", reason=str(e))
                 )
 
         threading.Thread(
@@ -2593,9 +2584,7 @@ class TgStreaksPlugin(BasePlugin):
                 except BaseException as e:
                     self.log_exception("Failed to apply backup file", e)
                     self._show_error(
-                        self._t("status.error.backup.apply_failed").format(
-                            reason=str(e)
-                        )
+                        self._t("status.error.backup.apply_failed", reason=str(e))
                     )
                     return
 
@@ -2647,9 +2636,7 @@ class TgStreaksPlugin(BasePlugin):
                 except BaseException as e:
                     self.log_exception("Failed to delete plugin database", e)
                     self._show_error(
-                        self._t("status.error.database.delete_failed").format(
-                            reason=str(e)
-                        )
+                        self._t("status.error.database.delete_failed", reason=str(e))
                     )
                     return
 
