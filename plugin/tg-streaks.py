@@ -955,7 +955,7 @@ class JvmPluginBridge:
 
         try:
             loader = InMemoryDexClassLoader(
-                ByteBuffer.wrap(dex_data),  # ty:ignore[unresolved-attribute]
+                ByteBuffer.wrap(dex_data),
                 ApplicationLoader.applicationContext.getClassLoader(),
             )
             self.klass = loader.loadClass(String(class_path))
@@ -1610,7 +1610,7 @@ class SettingsActions:
             self.plugin.jvm_plugin.klass.getDeclaredMethod(
                 String("invokeSettingsActionCallback"),
                 String.getClass(),
-            ).invoke(None, key)  # ty:ignore[no-matching-overload]
+            ).invoke(None, key)  # ty:ignore[invalid-argument-type]
         except Exception as e:
             self.plugin.log_exception(
                 f"Failed to resolve settings callback {key}",
@@ -1767,7 +1767,7 @@ class TgStreaksPlugin(BasePlugin):
         super().log(text)
 
         try:
-            Log.i(LOGCAT_TAG, text)
+            Log.i(cast("String", LOGCAT_TAG), cast("String", text))
         except Exception:
             pass
 
@@ -1777,7 +1777,7 @@ class TgStreaksPlugin(BasePlugin):
 
         if DEBUG_MODE:
             try:
-                Log.e(LOGCAT_TAG, text)
+                Log.e(cast("String", LOGCAT_TAG), cast("String", text))
             except Exception:
                 pass
 
@@ -1791,7 +1791,7 @@ class TgStreaksPlugin(BasePlugin):
                     self.log(line)
                     if DEBUG_MODE:
                         try:
-                            Log.e(LOGCAT_TAG, line)
+                            Log.e(cast("String", LOGCAT_TAG), cast("String", line))
                         except Exception:
                             pass
 
@@ -2082,7 +2082,7 @@ class TgStreaksPlugin(BasePlugin):
                 String("setPetFabSizeDp"),
                 Integer.TYPE,
             ).invoke(
-                None,
+                None,  # ty:ignore[invalid-argument-type]
                 Integer(int(size_dp)),
             )
         except Exception as e:
@@ -2232,7 +2232,7 @@ class TgStreaksPlugin(BasePlugin):
                 Integer.TYPE,
                 Color.getClass(),
                 Long.TYPE,
-                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),
             )
 
             for level in StreakLevels:
@@ -2257,13 +2257,13 @@ class TgStreaksPlugin(BasePlugin):
             register_method = self.jvm_plugin.klass.getDeclaredMethod(
                 String("registerStreakPetLevel"),
                 Integer.TYPE,
-                String.getClass(),  # ty:ignore[unresolved-attribute]
-                String.getClass(),  # ty:ignore[unresolved-attribute]
-                String.getClass(),  # ty:ignore[unresolved-attribute]
-                String.getClass(),  # ty:ignore[unresolved-attribute]
-                String.getClass(),  # ty:ignore[unresolved-attribute]
-                String.getClass(),  # ty:ignore[unresolved-attribute]
-                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),
+                String.getClass(),
+                String.getClass(),
+                String.getClass(),
+                String.getClass(),
+                String.getClass(),
+                String.getClass(),
             )
 
             for level in StreakPetLevels:
@@ -2328,13 +2328,14 @@ class TgStreaksPlugin(BasePlugin):
                 String("inject"),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
-                String.getClass(),  # ty:ignore[unresolved-attribute]
+                String.getClass(),
             ).invoke(
-                None,
-                Logger(),
-                TranslationResolver(),
+                None,  # ty:ignore[invalid-argument-type]
+                Logger(),  # ty:ignore[invalid-argument-type]
+                TranslationResolver(),  # ty:ignore[invalid-argument-type]
                 String(self.resources_bridge.resources_root),
-            )  # ty:ignore[no-matching-overload]
+            )
+
             self.log("JVM plugin injected successfully")
             self._apply_pet_fab_size_dp(self._get_pet_fab_size_dp())
         except Exception as e:
@@ -2410,7 +2411,7 @@ class TgStreaksPlugin(BasePlugin):
                 self_outer = self
                 fragment.showDialog(
                     AlertDialog.Builder(fragment.getContext())
-                    .setTitle(self._t("dialog.backup_restore.title"))
+                    .setTitle(cast("String", self._t("dialog.backup_restore.title")))
                     .setItems(
                         jarray(String)([String(name) for name in names]),
                         BackupClickListener(),
