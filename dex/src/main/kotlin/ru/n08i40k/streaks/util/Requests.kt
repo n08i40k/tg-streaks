@@ -39,9 +39,8 @@ suspend fun fetchPeerUsers(
         }
 
     return when (val result = connectionsManager.sendRequestBlocking(req, 10000)) {
-        is RequestOutcome.Success -> result.cast<Vector>()
+        is RequestOutcome.Success -> result.cast<Vector<TLRPC.User>>()
             .objects
-            .map { it as TLRPC.User }
             .associateBy { it.id }
 
         is RequestOutcome.Failure -> throw RuntimeException(

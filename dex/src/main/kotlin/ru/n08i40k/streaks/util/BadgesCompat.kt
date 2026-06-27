@@ -20,7 +20,8 @@ object BadgesCompat {
     }
 
     fun init() {
-        if (!isClientVersionBelow("12.6.4"))
+        // Starting from 12.8.0 BadgesController is unobfuscated again
+        if (!isClientVersionBelow("12.6.4") && isClientVersionBelow("12.8.0"))
             return
 
         val controllerClass = Class.forName("com.exteragram.messenger.badges.BadgesController")

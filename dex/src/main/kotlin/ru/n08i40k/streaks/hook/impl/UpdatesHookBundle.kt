@@ -15,6 +15,7 @@ import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
+import ru.n08i40k.streaks.util.TLCompat
 import ru.n08i40k.streaks.util.getFieldValue
 import java.time.Instant
 import java.time.LocalDate
@@ -64,43 +65,41 @@ class UpdatesHookBundle : HookBundle() {
 
             is TLRPC.TL_updates -> {
                 updates.updates.mapNotNull {
-                    when (it) {
-                        is TLRPC.TL_updateNewMessage -> resolvePrivatePeerUserId(it.message)
-                            ?.let { peerUserId ->
-                                PendingIncomingUpdate(
-                                    peerUserId,
-                                    Instant.ofEpochSecond(it.message.date.toLong())
-                                        .atZone(ZoneId.systemDefault())
-                                        .toLocalDate(),
-                                    it.message.out,
-                                    it.message.id,
-                                    it.message.message
-                                )
-                            }
+                    if (it.javaClass.name != TLCompat.TL_updateNewMessage.CLASS_NAME)
+                        return@mapNotNull null
 
-                        else -> null
-                    }
+                    val message = TLCompat.TL_updateNewMessage(it).message
+                    val peerUserId = resolvePrivatePeerUserId(message) ?: return@mapNotNull null
+
+                    PendingIncomingUpdate(
+                        peerUserId,
+                        Instant.ofEpochSecond(message.date.toLong())
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate(),
+                        message.out,
+                        message.id,
+                        message.message
+                    )
                 }
             }
 
             is TLRPC.TL_updatesCombined -> {
                 updates.updates.mapNotNull {
-                    when (it) {
-                        is TLRPC.TL_updateNewMessage -> resolvePrivatePeerUserId(it.message)
-                            ?.let { peerUserId ->
-                                PendingIncomingUpdate(
-                                    peerUserId,
-                                    Instant.ofEpochSecond(it.message.date.toLong())
-                                        .atZone(ZoneId.systemDefault())
-                                        .toLocalDate(),
-                                    it.message.out,
-                                    it.message.id,
-                                    it.message.message
-                                )
-                            }
+                    if (it.javaClass.name != TLCompat.TL_updateNewMessage.CLASS_NAME)
+                        return@mapNotNull null
 
-                        else -> null
-                    }
+                    val message = TLCompat.TL_updateNewMessage(it).message
+                    val peerUserId = resolvePrivatePeerUserId(message) ?: return@mapNotNull null
+
+                    PendingIncomingUpdate(
+                        peerUserId,
+                        Instant.ofEpochSecond(message.date.toLong())
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate(),
+                        message.out,
+                        message.id,
+                        message.message
+                    )
                 }
             }
 
