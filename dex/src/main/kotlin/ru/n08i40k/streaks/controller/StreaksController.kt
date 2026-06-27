@@ -6,7 +6,6 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.runBlocking
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -18,7 +17,6 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.chat_history_fetcher.CachedChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
-import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.data.StreakActivityCache
 import ru.n08i40k.streaks.data.StreakActivityStatus
@@ -33,7 +31,6 @@ import ru.n08i40k.streaks.extension.getPeerType
 import ru.n08i40k.streaks.extension.isPeerIdInvalid
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
-import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
@@ -77,24 +74,7 @@ class StreaksController(
     data class RebuildProgress(
         val peerUser: TLRPC.User,
         val daysChecked: Int,
-    ) {
-        fun showBulletin() {
-            val plugin = Plugin.getInstance()
-
-            val message = plugin.translator.translate(
-                TranslationKey.Rebuild.Streak.PROGRESS_CHAT,
-                mapOf(
-                    "peer_name" to peerUser.label,
-                    "days_checked" to daysChecked.toString(),
-                )
-            )
-
-            AndroidUtilities.runOnUIThread {
-                org.telegram.ui.Components.Bulletin.hideVisible()
-                plugin.bulletinHelper.show("msg_retry", message)
-            }
-        }
-    }
+    )
 
     data class CalendarInteractionSnapshot(
         val streak: Streak?,
@@ -919,12 +899,6 @@ class StreaksController(
     suspend fun flushCurrentChatPopup() =
         streakPopupController.flushCurrentChat()
 
-    suspend fun getCachedActivityStatuses(
-        accountId: Int,
-        peerUserId: Long,
-    ): List<StreakActivityCache> =
-        activityCacheDao.findByRelation(accountId, peerUserId)
-
     suspend fun getCalendarInteractionSnapshot(
         accountId: Int,
         peerUserId: Long,
@@ -1118,8 +1092,7 @@ class StreaksController(
                 if (messages.isEmpty())
                     break
 
-                for (messageAny in messages) {
-                    val message = messageAny as? TLRPC.Message ?: continue
+                for (message in messages) {
                     val messageDate = message.date
 
                     if (messageDate !in startTs until endTs)
@@ -1135,7 +1108,7 @@ class StreaksController(
                     }
                 }
 
-                val oldest = messages.lastOrNull() as? TLRPC.Message ?: break
+                val oldest = messages.lastOrNull() ?: break
                 offsetId = oldest.id
                 offsetDate = oldest.date
 

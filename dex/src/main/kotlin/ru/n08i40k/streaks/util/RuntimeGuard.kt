@@ -68,11 +68,14 @@ object RuntimeGuard {
     suspend fun pauseAwareDelay(
         delayMs: Long,
         reason: String,
+        onTick: ((remainingMs: Long, totalMs: Long) -> Unit)? = null,
     ) {
         var remainingMs = delayMs.coerceAtLeast(0L)
+        val totalMs = remainingMs
 
         while (remainingMs > 0L) {
             awaitAppForeground(reason)
+            onTick?.invoke(remainingMs, totalMs)
 
             val chunkMs = minOf(remainingMs, POLL_DELAY_MS)
             delay(chunkMs)

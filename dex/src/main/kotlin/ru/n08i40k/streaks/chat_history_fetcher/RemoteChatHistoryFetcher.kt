@@ -4,10 +4,10 @@ package ru.n08i40k.streaks.chat_history_fetcher
 
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
+import ru.n08i40k.streaks.extension.label
 import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
-import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.extension.RequestOutcome
 import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.isPeerIdInvalid
@@ -26,12 +26,19 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         const val RETRY_DELAY_MS = 15_000L
     }
 
-    private fun showRetryBulletin(retryDelayMs: Long) {
-        Plugin.getInstance().bulletinHelper.showTranslated(
-            TranslationKey.Rebuild.Streak.RETRY_DELAY,
-            mapOf("seconds" to (retryDelayMs / 1000L).toString()),
-            "msg_retry"
-        )
+    private suspend fun pauseWithRetryNotification(
+        accountId: Int,
+        peerUserId: Long,
+        retryDelayMs: Long,
+        reason: String,
+    ) {
+        val plugin = Plugin.getInstance()
+        val peerName = MessagesController.getInstance(accountId).getUser(peerUserId)?.label
+            ?: peerUserId.toString()
+
+        RuntimeGuard.pauseAwareDelay(retryDelayMs, reason) { remainingMs, totalMs ->
+            plugin.rebuildNotificationHelper.showRateLimitCountdown(peerName, remainingMs, totalMs)
+        }
     }
 
     private suspend fun requestHistory(
@@ -83,11 +90,8 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                         "History request for $accountId:$peerUserId is rate-limited " +
                                 "(attempt $attempt), retrying in ${result.retryDelay / 1000}s"
                     )
-
-                    showRetryBulletin(result.retryDelay)
-
-                    RuntimeGuard.pauseAwareDelay(
-                        result.retryDelay,
+                    pauseWithRetryNotification(
+                        accountId, peerUserId, result.retryDelay,
                         "history retry delay for $accountId:$peerUserId",
                     )
                     continue
@@ -98,11 +102,8 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                         "History request failed temporarily with ${result.error.fmt()} for " +
                                 "$accountId:$peerUserId (attempt $attempt), retrying in ${result.retryDelay / 1000}s"
                     )
-
-                    showRetryBulletin(result.retryDelay)
-
-                    RuntimeGuard.pauseAwareDelay(
-                        result.retryDelay,
+                    pauseWithRetryNotification(
+                        accountId, peerUserId, result.retryDelay,
                         "history transient retry delay for $accountId:$peerUserId",
                     )
                     continue
@@ -113,11 +114,8 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                         "History request timed out after ${REQUEST_TIMEOUT_MS / 1000}s for " +
                                 "$accountId:$peerUserId (attempt $attempt), retrying in ${RETRY_DELAY_MS / 1000}s"
                     )
-
-                    showRetryBulletin(RETRY_DELAY_MS)
-
-                    RuntimeGuard.pauseAwareDelay(
-                        RETRY_DELAY_MS,
+                    pauseWithRetryNotification(
+                        accountId, peerUserId, RETRY_DELAY_MS,
                         "history retry delay for $accountId:$peerUserId",
                     )
                     continue
@@ -159,8 +157,6 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 break@reqLoop // break loop if no messages found (probably start of the chat?)
 
             for (message in res.messages) {
-                val message = message as? TLRPC.Message ?: continue
-
                 if (message.date !in startLocalEpoch..endLocalEpoch)
                     break@reqLoop // no more messages for today
 
@@ -185,7 +181,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                     break@reqLoop // no need to check other messages more
             }
 
-            val oldestMessage = res.messages.lastOrNull() as? TLRPC.Message ?: break@reqLoop
+            val oldestMessage = res.messages.lastOrNull() ?: break@reqLoop
             if (oldestMessage.date == endLocalEpoch && oldestMessage.id == offsetId) {
                 Plugin.getInstance().logger.info(
                     "History cursor stalled for $accountId:$peerUserId on $day " +
@@ -243,8 +239,6 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 break@reqLoop // break loop if no messages found (probably start of the chat?)
 
             for (message in res.messages) {
-                val message = message as? TLRPC.Message ?: continue
-
                 if (message.date !in startLocalEpoch..endLocalEpoch)
                     break@reqLoop // no more messages for today
 
@@ -259,7 +253,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
             if (fromOwnerCount >= fromOwnerMax && fromPeerCount >= fromPeerMax)
                 break@reqLoop
 
-            val oldestMessage = res.messages.lastOrNull() as? TLRPC.Message ?: break@reqLoop
+            val oldestMessage = res.messages.lastOrNull() ?: break@reqLoop
             if (oldestMessage.date == endLocalEpoch && oldestMessage.id == offsetId) {
                 Plugin.getInstance().logger.info(
                     "History ids cursor stalled for $accountId:$peerUserId on $day " +

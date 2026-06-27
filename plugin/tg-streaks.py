@@ -234,14 +234,6 @@ I18N_STATUS: dict[str, dict[str, str]] = {
         "en": "Only for private chats",
         "ru": "Только для личных чатов",
     },
-    "status.info.chat.bots_not_supported": {
-        "en": "Bots are not supported",
-        "ru": "Для ботов недоступно",
-    },
-    "status.info.chat.deleted_users_not_supported": {
-        "en": "Deleted users are not supported",
-        "ru": "Для удалённых аккаунтов недоступно",
-    },
     "status.info.pet.not_created_for_chat": {
         "en": "No streak pet in this chat yet",
         "ru": "В этом чате ещё нет стрик-пета",
@@ -273,10 +265,6 @@ I18N_STATUS: dict[str, dict[str, str]] = {
     "status.info.rebuild.already_running": {
         "en": "Rebuild already running",
         "ru": "Пересчёт уже идёт",
-    },
-    "status.info.rebuild.started_all_chats": {
-        "en": "Rebuild started",
-        "ru": "Пересчёт запущен",
     },
     "status.info.debug.private_users_only": {
         "en": "Debug: only for private chats",
@@ -571,14 +559,6 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
 }
 
 I18N_REBUILD: dict[str, dict[str, str]] = {
-    "rebuild.streak.progress.chat": {
-        "en": "Streak rebuild: {peer_name} • {days_checked} d.",
-        "ru": "Пересчёт стрика: {peer_name} • {days_checked} д.",
-    },
-    "rebuild.streak.progress.all_chats": {
-        "en": "Streak rebuild: {peer_name} [{checked_chats}/{total_chats}] • {days_checked} d.",
-        "ru": "Пересчёт стрика: {peer_name} [{checked_chats}/{total_chats}] • {days_checked} д.",
-    },
     "rebuild.streak.summary.all_chats": {
         "en": "Rebuilt {checked} private chats",
         "ru": "Пересчитано {checked} личных чатов",
@@ -587,9 +567,49 @@ I18N_REBUILD: dict[str, dict[str, str]] = {
         "en": "Streak with {peer_name}: {days} d., {revives} revives.",
         "ru": "Стрик с {peer_name}: {days} д., восстановлений: {revives}.",
     },
-    "rebuild.streak.retry_delay": {
-        "en": "Telegram didn't respond. Retry in {seconds}s.",
-        "ru": "Telegram не ответил. Повтор через {seconds} сек.",
+    "rebuild.notification.channel_name": {
+        "en": "Streak Rebuild",
+        "ru": "Пересчёт стрика",
+    },
+    "rebuild.notification.streak.single.title": {
+        "en": "Rebuilding streak",
+        "ru": "Пересчёт стрика",
+    },
+    "rebuild.notification.streak.all.title": {
+        "en": "Rebuilding all streaks",
+        "ru": "Пересчёт всех стриков",
+    },
+    "rebuild.notification.all.global.text": {
+        "en": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked} d.",
+        "ru": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked} д.",
+    },
+    "rebuild.notification.progress.text": {
+        "en": "{peer_name} • {days_checked} d.",
+        "ru": "{peer_name} • {days_checked} д.",
+    },
+    "rebuild.notification.pet.single.title": {
+        "en": "Rebuilding pet",
+        "ru": "Пересчёт пета",
+    },
+    "rebuild.notification.done.streak.title": {
+        "en": "Streak rebuilt",
+        "ru": "Стрик пересчитан",
+    },
+    "rebuild.notification.done.all.title": {
+        "en": "Rebuild complete",
+        "ru": "Пересчёт завершён",
+    },
+    "rebuild.notification.done.pet.title": {
+        "en": "Pet rebuilt",
+        "ru": "Пет пересчитан",
+    },
+    "rebuild.notification.rate_limit.title": {
+        "en": "Telegram rate limit",
+        "ru": "Лимит запросов Telegram",
+    },
+    "rebuild.notification.rate_limit.text": {
+        "en": "{peer_name} — retrying in {seconds}s",
+        "ru": "{peer_name} — повтор через {seconds} с.",
     },
 }
 

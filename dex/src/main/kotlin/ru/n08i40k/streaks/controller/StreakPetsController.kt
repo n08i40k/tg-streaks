@@ -3,16 +3,13 @@
 package ru.n08i40k.streaks.controller
 
 import androidx.room.withTransaction
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.chat_history_fetcher.CachedChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
 import ru.n08i40k.streaks.constants.ServiceMessage
-import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.data.StreakPet
 import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
@@ -92,24 +89,7 @@ class StreakPetsController(
     data class RebuildProgress(
         val peerUser: TLRPC.User,
         val daysChecked: Int,
-    ) {
-        fun showBulletin() {
-            val plugin = Plugin.getInstance()
-
-            val message = plugin.translator.translate(
-                TranslationKey.Rebuild.Streak.PROGRESS_CHAT,
-                mapOf(
-                    "peer_name" to peerUser.label,
-                    "days_checked" to daysChecked.toString(),
-                )
-            )
-
-            AndroidUtilities.runOnUIThread {
-                org.telegram.ui.Components.Bulletin.hideVisible()
-                plugin.bulletinHelper.show("msg_retry", message)
-            }
-        }
-    }
+    )
 
     fun isRebuildRunning(): Boolean = rebuildLock.get()
 

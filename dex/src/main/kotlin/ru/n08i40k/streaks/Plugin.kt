@@ -23,7 +23,6 @@ import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
-import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.ChatActivity
@@ -73,6 +72,7 @@ import ru.n08i40k.streaks.util.AccountTaskRunnerRegistry
 import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
@@ -224,6 +224,7 @@ class Plugin {
     val translator: Translator
     val resourcesProvider: ResourcesProvider
     val bulletinHelper: BulletinHelper
+    val rebuildNotificationHelper: RebuildNotificationHelper
 
     // callback registries
     private val chatContextMenuCallbackRegistry = LockableCallbackRegistry()
@@ -256,6 +257,7 @@ class Plugin {
         this.translator = Translator(translationResolver)
         this.resourcesProvider = resourcesProvider
         this.bulletinHelper = BulletinHelper(this.translator)
+        this.rebuildNotificationHelper = RebuildNotificationHelper(this.translator)
 
         // background work
         RuntimeGuard.setLogger(this.logger)
@@ -369,6 +371,7 @@ class Plugin {
         backgroundScope.cancel()
 
         petUiManager.dismissAll()
+        rebuildNotificationHelper.cancelAll()
 
         try {
             hooks.forEach { it.unhook() }
@@ -436,28 +439,24 @@ class Plugin {
             accountId,
             "rebuild streak for $accountId:$peerUserId"
         ) {
-            streaksController.rebuild(
-                accountId,
-                peerUser
-            ) { progress -> progress.showBulletin() }
+            val peerName = peerUser.label
+
+            streaksController.rebuild(accountId, peerUser) { progress ->
+                rebuildNotificationHelper.updateSingleStreakProgress(peerName, progress.daysChecked)
+            }
 
             syncPeerUi(accountId, peerUserId)
 
             val rebuiltStreak = streaksController.get(accountId, peerUserId)
 
             if (rebuiltStreak != null) {
-                bulletinHelper.showTranslated(
-                    TranslationKey.Rebuild.Streak.SUMMARY_CHAT,
-                    mapOf(
-                        "peer_name" to (peerUser.username?.takeIf { it.isNotBlank() }
-                            ?.let { "@$it" }
-                            ?: UserObject.getUserName(peerUser).takeIf { it.isNotBlank() }
-                            ?: peerUser.id.toString()),
-                        "days" to rebuiltStreak.length.toString(),
-                        "revives" to rebuiltStreak.revivesCount.toString(),
-                    ),
-                    "msg_retry"
+                rebuildNotificationHelper.completeSingleStreak(
+                    peerName,
+                    rebuiltStreak.length,
+                    rebuiltStreak.revivesCount,
                 )
+            } else {
+                rebuildNotificationHelper.cancelSingleProgress()
             }
 
             if (onComplete != null) {
@@ -540,9 +539,13 @@ class Plugin {
                     return@enqueue
                 }
 
+                val peerName = peerUser.label
+
                 streakPetsController.rebuild(accountId, peerUser) { progress ->
-                    progress.showBulletin()
+                    rebuildNotificationHelper.updateSinglePetProgress(peerName, progress.daysChecked)
                 }
+
+                rebuildNotificationHelper.completeSinglePet(peerName)
             }
 
             logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
@@ -975,36 +978,23 @@ class Plugin {
                 return@add
             }
 
-            bulletinHelper.showTranslated(
-                TranslationKey.Status.Info.REBUILD_STARTED_ALL_CHATS,
-                "msg_retry"
-            )
-
             accountTaskRunnerRegistry.enqueue(accountId, "rebuild all streaks for $accountId") {
                 try {
                     val result =
                         streaksController.rebuildAll(accountId) { index, total, _, progress ->
-                            bulletinHelper.showTranslated(
-                                TranslationKey.Rebuild.Streak.PROGRESS_ALL_CHATS,
-                                mapOf(
-                                    "peer_name" to progress.peerUser.label,
-                                    "days_checked" to progress.daysChecked.toString(),
-                                    "checked_chats" to (index + 1).toString(),
-                                    "total_chats" to total.toString(),
-                                ),
-                                "msg_retry"
+                            rebuildNotificationHelper.updateAllStreakProgress(
+                                index,
+                                total,
+                                progress.peerUser.label,
+                                progress.daysChecked,
                             )
                         }
 
                     syncPeersUi(result.uiSyncTargets)
-
-                    bulletinHelper.showTranslated(
-                        TranslationKey.Rebuild.Streak.SUMMARY_ALL_CHATS,
-                        mapOf("checked" to result.totalChats.toString()),
-                        "msg_retry"
-                    )
+                    rebuildNotificationHelper.completeAllStreaks(result.totalChats)
                 } catch (e: Throwable) {
                     logger.fatal("Failed to rebuild all private chats for account $accountId", e)
+                    rebuildNotificationHelper.cancelAllProgress()
                     bulletinHelper.showTranslated(TranslationKey.Status.Error.REBUILD_FAILED_CHECK_LOGS)
                 }
             }

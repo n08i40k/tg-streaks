@@ -40,32 +40,36 @@ object TranslationKey {
     }
 
     object Rebuild {
+        object Notification {
+            const val CHANNEL_NAME = "rebuild.notification.channel_name"
+            const val STREAK_SINGLE_TITLE = "rebuild.notification.streak.single.title"
+            const val STREAK_ALL_TITLE = "rebuild.notification.streak.all.title"
+            const val ALL_GLOBAL_TEXT = "rebuild.notification.all.global.text"
+            const val PROGRESS_TEXT = "rebuild.notification.progress.text"
+            const val PET_SINGLE_TITLE = "rebuild.notification.pet.single.title"
+            const val DONE_STREAK_TITLE = "rebuild.notification.done.streak.title"
+            const val DONE_ALL_TITLE = "rebuild.notification.done.all.title"
+            const val DONE_PET_TITLE = "rebuild.notification.done.pet.title"
+            const val RATE_LIMIT_TITLE = "rebuild.notification.rate_limit.title"
+            const val RATE_LIMIT_TEXT = "rebuild.notification.rate_limit.text"
+        }
+
         object Streak {
-            const val PROGRESS_CHAT = "rebuild.streak.progress.chat"
-            const val PROGRESS_ALL_CHATS = "rebuild.streak.progress.all_chats"
             const val SUMMARY_ALL_CHATS = "rebuild.streak.summary.all_chats"
             const val SUMMARY_CHAT = "rebuild.streak.summary.chat"
-            const val RETRY_DELAY = "rebuild.streak.retry_delay"
         }
     }
 
     object Status {
         object Error {
-            const val CHAT_DETECT_CURRENT_FAILED = "status.error.chat.detect_current_failed"
             const val CHAT_OPEN_CONTEXT_FAILED = "status.error.chat.open_context_failed"
             const val STREAK_JUMP_TO_START_FAILED = "status.error.streak.jump_to_start_failed"
             const val BACKUP_EXPORT_FAILED = "status.error.backup.export_failed"
-            const val BACKUP_NOT_FOUND = "status.error.backup.not_found"
-            const val BACKUP_APPLY_FAILED = "status.error.backup.apply_failed"
-            const val DATABASE_DELETE_FAILED = "status.error.database.delete_failed"
-            const val UPDATE_OPEN_LINK_FAILED = "status.error.update.open_link_failed"
             const val REBUILD_FAILED_CHECK_LOGS = "status.error.rebuild.failed_check_logs"
         }
 
         object Success {
             const val BACKUP_EXPORTED = "status.success.backup.exported"
-            const val BACKUP_IMPORTED = "status.success.backup.imported"
-            const val DATABASE_RESET_STARTED = "status.success.database.reset_started"
             const val STREAK_JUMP_TO_START_COMPLETED =
                 "status.success.streak.jump_to_start_completed"
             const val STREAK_RESTORED = "status.success.streak.restored"
@@ -87,9 +91,6 @@ object TranslationKey {
 
         object Info {
             const val CHAT_PRIVATE_USERS_ONLY = "status.info.chat.private_users_only"
-            const val CHAT_BOTS_NOT_SUPPORTED = "status.info.chat.bots_not_supported"
-            const val CHAT_DELETED_USERS_NOT_SUPPORTED =
-                "status.info.chat.deleted_users_not_supported"
             const val PET_NOT_CREATED_FOR_CHAT = "status.info.pet.not_created_for_chat"
             const val PET_ALREADY_EXISTS_FOR_CHAT =
                 "status.info.pet.already_exists_for_chat"
@@ -102,8 +103,6 @@ object TranslationKey {
                 "status.info.streak.start_message_not_found"
             const val STREAK_NOT_FOUND_FOR_CHAT = "status.info.streak.not_found_for_chat"
             const val REBUILD_ALREADY_RUNNING = "status.info.rebuild.already_running"
-            const val REBUILD_STARTED_ALL_CHATS =
-                "status.info.rebuild.started_all_chats"
             const val DEBUG_PRIVATE_USERS_ONLY =
                 "status.info.debug.private_users_only"
             const val DEBUG_STREAK_ALREADY_MAX =
@@ -138,9 +137,6 @@ object TranslationKey {
             const val OK = "dialog.calendar_fix.ok"
         }
 
-        object BackupRestore {
-            const val TITLE = "dialog.backup_restore.title"
-        }
     }
 
     object Service {
