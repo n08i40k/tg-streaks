@@ -1,1 +1,2 @@
 plugin/tg-streaks.py filter=tg-streaks-urls
+dex/libs/Telegram.jar filter=lfs diff=lfs merge=lfs -text
