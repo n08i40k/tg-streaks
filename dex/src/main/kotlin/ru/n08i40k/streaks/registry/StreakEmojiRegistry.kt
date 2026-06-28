@@ -3,11 +3,13 @@
 package ru.n08i40k.streaks.registry
 
 import android.view.View
+import org.telegram.ui.ActionBar.ActionBarLayout
 import org.telegram.ui.ActionBar.INavigationLayout
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.util.getField
+import ru.n08i40k.streaks.util.getFieldValue
 import java.util.concurrent.ConcurrentHashMap
 
 class StreakEmojiRegistry {
@@ -72,9 +74,11 @@ class StreakEmojiRegistry {
             }
         }
 
-        launchActivity.actionBarLayout?.let(::populateSet)
-        launchActivity.rightActionBarLayout?.let(::populateSet)
-        launchActivity.layersActionBarLayout?.let(::populateSet)
+        // Удивительно, что баг проявился только после обновления jar до версии 12.8.0
+        // Как это вообще работало?
+        getFieldValue<ActionBarLayout>(launchActivity, "actionBarLayout")?.let(::populateSet)
+        getFieldValue<ActionBarLayout>(launchActivity, "rightActionBarLayout")?.let(::populateSet)
+        getFieldValue<ActionBarLayout>(launchActivity, "layersActionBarLayout")?.let(::populateSet)
 
         @Suppress("UNCHECKED_CAST")
         val viewPages = dialogsActivities
