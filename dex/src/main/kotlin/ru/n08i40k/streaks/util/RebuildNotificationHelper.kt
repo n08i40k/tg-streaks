@@ -12,6 +12,7 @@ class RebuildNotificationHelper(private val translator: Translator) {
         private const val NOTIFICATION_ID_SINGLE = 7001
         private const val NOTIFICATION_ID_ALL = 7002
         private const val NOTIFICATION_ID_COMPLETE = 7003
+        private const val NOTIFICATION_ID_CHECK = 7004
     }
 
     // tracks which notification to overwrite during rate-limit pauses
@@ -167,9 +168,47 @@ class RebuildNotificationHelper(private val translator: Translator) {
         notify(rateLimitTargetId, progressNotification(title, text, progressDone, totalSec, false))
     }
 
+    fun beginCheckNotification() {
+        rateLimitTargetId = NOTIFICATION_ID_CHECK
+    }
+
+    fun updateCheckProgress(
+        index: Int,
+        total: Int,
+        peerName: String,
+        daysChecked: Int,
+        totalDays: Int,
+    ) {
+        rateLimitTargetId = NOTIFICATION_ID_CHECK
+        val title = translator.translate(TranslationKey.Check.Notification.TITLE)
+        val text = translator.translate(
+            TranslationKey.Check.Notification.TEXT,
+            mapOf(
+                "checked_chats" to (index + 1).toString(),
+                "total_chats" to total.toString(),
+                "peer_name" to peerName,
+                "days_checked" to daysChecked.toString(),
+                "total_days" to totalDays.toString(),
+            )
+        )
+        notify(
+            NOTIFICATION_ID_CHECK,
+            progressNotification(title, text, daysChecked, totalDays, false)
+        )
+    }
+
+    fun cancelCheckProgress() {
+        manager.cancel(NOTIFICATION_ID_CHECK)
+    }
+
+    fun cancelRateLimitNotification() {
+        manager.cancel(rateLimitTargetId)
+    }
+
     fun cancelAll() {
         manager.cancel(NOTIFICATION_ID_SINGLE)
         manager.cancel(NOTIFICATION_ID_ALL)
         manager.cancel(NOTIFICATION_ID_COMPLETE)
+        manager.cancel(NOTIFICATION_ID_CHECK)
     }
 }

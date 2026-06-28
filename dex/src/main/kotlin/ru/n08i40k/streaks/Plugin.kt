@@ -306,8 +306,19 @@ class Plugin {
             accountId,
             "check for updates and update UI for account $accountId ($reason)"
         ) {
-            syncPeersUi(streaksController.checkAllForUpdates(accountId))
+            rebuildNotificationHelper.beginCheckNotification()
 
+            val syncTargets = streaksController.checkAllForUpdates(
+                accountId
+            ) { index, total, peerName, daysChecked, totalDays ->
+                rebuildNotificationHelper.updateCheckProgress(
+                    index, total, peerName, daysChecked, totalDays
+                )
+            }
+
+            rebuildNotificationHelper.cancelCheckProgress()
+
+            syncPeersUi(syncTargets)
             streakPetsController.checkAllForUpdates(accountId)
             streaksController.flushCurrentChatPopup()
         }

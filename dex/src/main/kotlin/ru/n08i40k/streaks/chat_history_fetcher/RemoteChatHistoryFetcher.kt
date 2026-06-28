@@ -39,6 +39,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         RuntimeGuard.pauseAwareDelay(retryDelayMs, reason) { remainingMs, totalMs ->
             plugin.rebuildNotificationHelper.showRateLimitCountdown(peerName, remainingMs, totalMs)
         }
+        plugin.rebuildNotificationHelper.cancelRateLimitNotification()
     }
 
     private suspend fun requestHistory(

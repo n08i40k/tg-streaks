@@ -611,6 +611,14 @@ I18N_REBUILD: dict[str, dict[str, str]] = {
         "en": "{peer_name} — retrying in {seconds}s",
         "ru": "{peer_name} — повтор через {seconds} с.",
     },
+    "check.notification.title": {
+        "en": "Checking streaks",
+        "ru": "Обновление стриков",
+    },
+    "check.notification.text": {
+        "en": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked}/{total_days} d.",
+        "ru": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked}/{total_days} д.",
+    },
 }
 
 I18N_UPDATE: dict[str, dict[str, str]] = {

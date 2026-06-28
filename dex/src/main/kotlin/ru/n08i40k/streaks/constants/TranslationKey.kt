@@ -39,6 +39,13 @@ object TranslationKey {
         }
     }
 
+    object Check {
+        object Notification {
+            const val TITLE = "check.notification.title"
+            const val TEXT = "check.notification.text"
+        }
+    }
+
     object Rebuild {
         object Notification {
             const val CHANNEL_NAME = "rebuild.notification.channel_name"

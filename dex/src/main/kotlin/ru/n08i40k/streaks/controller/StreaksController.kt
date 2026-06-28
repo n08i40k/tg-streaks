@@ -31,6 +31,7 @@ import ru.n08i40k.streaks.extension.getPeerType
 import ru.n08i40k.streaks.extension.isPeerIdInvalid
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
+import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
@@ -638,6 +639,7 @@ class StreaksController(
     private suspend fun checkForUpdates(
         accountId: Int,
         streak: Streak,
+        onProgressUpdate: ((daysChecked: Int, totalDays: Int) -> Unit)? = null,
     ) {
         val now = LocalDate.now()
         val previousLength = streak.length
@@ -662,6 +664,9 @@ class StreaksController(
             else
                 it
         }
+
+        val startDay = currentDay
+        val totalDays = (now.toEpochDay() - startDay.toEpochDay() + 1L).coerceAtLeast(0L).toInt()
 
         var updateFromOwnerAt = streak.updateFromOwnerAt
         var updateFromPeerAt = streak.updateFromPeerAt
@@ -699,6 +704,7 @@ class StreaksController(
                         else if (action == Action.KILL_BY_PEER)
                             updateFromOwnerAt = currentDay
 
+                        onProgressUpdate?.invoke(totalDays, totalDays)
                         break
                     }
 
@@ -741,6 +747,11 @@ class StreaksController(
                     currentDay = reviveDay.next()
                 }
             }
+
+            onProgressUpdate?.invoke(
+                (currentDay.toEpochDay() - startDay.toEpochDay()).toInt(),
+                totalDays,
+            )
         }
 
         db.withTransaction {
@@ -762,13 +773,22 @@ class StreaksController(
             serviceMessagesController.sendUpgrade(accountId, peerUserId, currentStreak.length)
     }
 
-    suspend fun checkAllForUpdates(accountId: Int): List<UiSyncTarget> {
+    suspend fun checkAllForUpdates(
+        accountId: Int,
+        onProgressUpdate: ((index: Int, total: Int, peerName: String, daysChecked: Int, totalDays: Int) -> Unit)? = null,
+    ): List<UiSyncTarget> {
         val uiSyncTargets = mutableListOf<UiSyncTarget>()
         val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
-        streaks.forEach { streak ->
+        streaks.forEachIndexed { index, streak ->
+            val peerName = MessagesController.getInstance(accountId)
+                .getUser(streak.peerUserId)?.label
+                ?: streak.peerUserId.toString()
+
             try {
-                checkForUpdates(accountId, streak)
+                checkForUpdates(accountId, streak) { daysChecked, totalDays ->
+                    onProgressUpdate?.invoke(index, streaks.size, peerName, daysChecked, totalDays)
+                }
             } catch (_: InvalidPeerException) {
                 removeInvalidPeerStreak(accountId, streak.peerUserId)
             }
