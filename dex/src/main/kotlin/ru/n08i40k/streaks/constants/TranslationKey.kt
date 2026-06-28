@@ -39,6 +39,16 @@ object TranslationKey {
         }
     }
 
+    object Alert {
+        object Notification {
+            const val CHANNEL_NAME = "alert.notification.channel_name"
+            const val NEAR_DEATH_TITLE = "alert.notification.near_death.title"
+            const val NEAR_DEATH_TEXT = "alert.notification.near_death.text"
+            const val DEATH_TITLE = "alert.notification.death.title"
+            const val DEATH_TEXT = "alert.notification.death.text"
+        }
+    }
+
     object Check {
         object Notification {
             const val TITLE = "check.notification.title"

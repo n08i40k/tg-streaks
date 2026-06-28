@@ -37,9 +37,11 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.exception.InvalidPeerException
+import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
+import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.fetchPeerUsers
 import java.time.LocalDate
 import java.util.LinkedHashMap
@@ -51,6 +53,7 @@ class StreaksController(
     private val db: PluginDatabase,
     private val logger: Logger,
     resourcesProvider: ResourcesProvider,
+    private val alertNotificationHelper: StreakAlertNotificationHelper,
 ) {
     companion object {
         private const val MIN_VISIBLE_STREAK_LENGTH = 3
@@ -313,7 +316,7 @@ class StreaksController(
         streak: Streak,
         revives: Set<LocalDate>,
     ) {
-        val deadStreak = streak.copy(deathNotified = true)
+        val deadStreak = streak.copy(deathNotified = true, warningNotified = false)
 
         db.withTransaction {
             dao.update(deadStreak)
@@ -323,8 +326,13 @@ class StreaksController(
             }
         }
 
-        if (isVisibleLength(streak.length) && !streak.deathNotified)
+        if (isVisibleLength(streak.length) && !streak.deathNotified) {
             serviceMessagesController.sendDeath(accountId, streak.peerUserId)
+            val peerName = MessagesController.getInstance(accountId).getUser(streak.peerUserId)?.label
+                ?: streak.peerUserId.toString()
+            alertNotificationHelper.cancelNearDeath(streak.peerUserId)
+            alertNotificationHelper.showDeath(streak.peerUserId, peerName, streak.length)
+        }
     }
 
     private fun resolveDialogId(dialog: TLRPC.Dialog): Long {
@@ -727,14 +735,16 @@ class StreaksController(
                             streak.deathNotified,
                         )
 
-                        if (streakBeforeDeath.canRevive)
-                            preKill(
-                                accountId,
-                                streakBeforeDeath,
-                                revives,
-                            )
-                        else
+                        if (streakBeforeDeath.canRevive) {
+                            preKill(accountId, streakBeforeDeath, revives)
+                        } else {
+                            alertNotificationHelper.cancelNearDeath(peerUserId)
+                            if (isVisibleLength(streakBeforeDeath.length) && !streakBeforeDeath.deathNotified) {
+                                val peerName = peerUser.label
+                                alertNotificationHelper.showDeath(peerUserId, peerName, streakBeforeDeath.length)
+                            }
                             kill(accountId, peerUserId)
+                        }
 
                         return
                     }
@@ -754,6 +764,11 @@ class StreaksController(
             )
         }
 
+        val lastActiveDay = minOf(updateFromOwnerAt, updateFromPeerAt, compareBy { it.toEpochDay() })
+        val deathEpochSeconds = lastActiveDay.plusDays(2).toEpochSecondSystem()
+        val timeUntilDeathSeconds = deathEpochSeconds - System.currentTimeMillis() / 1000L
+        val isInWarningWindow = timeUntilDeathSeconds in 1..(8 * 3600)
+
         db.withTransaction {
             dao.update(
                 streak.copy(
@@ -761,6 +776,7 @@ class StreaksController(
                     updateFromPeerAt = updateFromPeerAt,
                     revivesCount = revives.size,
                     deathNotified = false,
+                    warningNotified = isInWarningWindow,
                 )
             )
 
@@ -771,6 +787,17 @@ class StreaksController(
 
         if (isVisibleLength(previousLength) && currentStreak.level.length > previousLevelLength)
             serviceMessagesController.sendUpgrade(accountId, peerUserId, currentStreak.length)
+
+        if (!isVisibleLength(currentStreak.length))
+            return
+
+        if (isInWarningWindow && !streak.warningNotified) {
+            alertNotificationHelper.showNearDeath(
+                peerUserId, peerUser.label, currentStreak.length, timeUntilDeathSeconds
+            )
+        } else if (!isInWarningWindow && streak.warningNotified) {
+            alertNotificationHelper.cancelNearDeath(peerUserId)
+        }
     }
 
     suspend fun checkAllForUpdates(
@@ -1275,6 +1302,9 @@ class StreaksController(
 
         val alreadyRevived = reviveDao.isRevived(streak.ownerUserId, streak.peerUserId, now)
 
+        alertNotificationHelper.cancelNearDeath(peerUserId)
+        alertNotificationHelper.cancelDeath(peerUserId)
+
         db.withTransaction {
             dao.update(
                 streak.copy(
@@ -1282,6 +1312,7 @@ class StreaksController(
                     updateFromOwnerAt = now,
                     updateFromPeerAt = now,
                     deathNotified = false,
+                    warningNotified = false,
                 )
             )
 

@@ -42,6 +42,7 @@ import ru.n08i40k.streaks.database.MIGRATION_3_5
 import ru.n08i40k.streaks.database.MIGRATION_5_6
 import ru.n08i40k.streaks.database.MIGRATION_6_7
 import ru.n08i40k.streaks.database.MIGRATION_7_8
+import ru.n08i40k.streaks.database.MIGRATION_8_9
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
@@ -74,6 +75,7 @@ import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.RuntimeGuard
+import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
 import java.lang.reflect.Member
@@ -225,6 +227,7 @@ class Plugin {
     val resourcesProvider: ResourcesProvider
     val bulletinHelper: BulletinHelper
     val rebuildNotificationHelper: RebuildNotificationHelper
+    val alertNotificationHelper: StreakAlertNotificationHelper
 
     // callback registries
     private val chatContextMenuCallbackRegistry = LockableCallbackRegistry()
@@ -258,6 +261,7 @@ class Plugin {
         this.resourcesProvider = resourcesProvider
         this.bulletinHelper = BulletinHelper(this.translator)
         this.rebuildNotificationHelper = RebuildNotificationHelper(this.translator)
+        this.alertNotificationHelper = StreakAlertNotificationHelper(this.translator)
 
         // background work
         RuntimeGuard.setLogger(this.logger)
@@ -271,13 +275,13 @@ class Plugin {
             "tg-streaks"
         )
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
-            .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
 
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
 
         // controllers
-        this.streaksController = StreaksController(this.db, this.logger, this.resourcesProvider)
+        this.streaksController = StreaksController(this.db, this.logger, this.resourcesProvider, this.alertNotificationHelper)
         this.streakPetsController =
             StreakPetsController(this.logger, this.db, this.streaksController)
         this.petUiManager = StreakPetUiManager(this)

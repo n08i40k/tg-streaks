@@ -619,6 +619,26 @@ I18N_REBUILD: dict[str, dict[str, str]] = {
         "en": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked}/{total_days} d.",
         "ru": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked}/{total_days} д.",
     },
+    "alert.notification.channel_name": {
+        "en": "Streak Alerts",
+        "ru": "Оповещения о стриках",
+    },
+    "alert.notification.near_death.title": {
+        "en": "Streak about to die",
+        "ru": "Стрик скоро умрёт",
+    },
+    "alert.notification.near_death.text": {
+        "en": "{peer_name} • {days} d. — {time} left",
+        "ru": "{peer_name} • {days} д. — осталось {time}",
+    },
+    "alert.notification.death.title": {
+        "en": "Streak died",
+        "ru": "Стрик умер",
+    },
+    "alert.notification.death.text": {
+        "en": "{peer_name} • {days} d.",
+        "ru": "{peer_name} • {days} д.",
+    },
 }
 
 I18N_UPDATE: dict[str, dict[str, str]] = {
