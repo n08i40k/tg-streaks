@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  attestations: write
+  id-token: write
 
 jobs:
   build-dex:
@@ -170,6 +172,14 @@ jobs:
           cp plugin/tg-streaks.py "$release_dir/tg-streaks.plugin"
           cp "$RUNNER_TEMP/release-inputs/classes.dex" "$release_dir/classes.dex"
           cp "$RUNNER_TEMP/release-inputs/resources.zip" "$release_dir/resources.zip"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/classes.dex
+            ${{ runner.temp }}/release/resources.zip
+            ${{ runner.temp }}/release/tg-streaks.plugin
 
       - name: Configure Git author
         run: |
