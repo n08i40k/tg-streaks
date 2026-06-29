@@ -1422,40 +1422,26 @@ class ChatContextMenu:
         def parse_dialog_id(value: Any) -> Optional[int]:
             if value is None:
                 return None
-
             try:
-                dialog_id = int(value)
+                return int(value) or None
             except Exception:
                 return None
 
-            return dialog_id or None
-
-        if isinstance(payload, dict):
-            payload_getter = payload.get
-        else:
-            try:
-                payload_getter = payload.get
-            except Exception:
-                payload_getter = None
-
+        payload_getter = getattr(payload, "get", None)
         if payload_getter is not None:
-            for candidate_key in self.MENU_PAYLOAD_DIALOG_KEYS:
-                dialog_id = parse_dialog_id(payload_getter(candidate_key))
-                if dialog_id is not None:
+            for key in self.MENU_PAYLOAD_DIALOG_KEYS:
+                if (dialog_id := parse_dialog_id(payload_getter(key))) is not None:
                     return dialog_id
 
-            for candidate_key in self.MENU_PAYLOAD_FRAGMENT_KEYS:
-                value = payload_getter(candidate_key)
+            for key in self.MENU_PAYLOAD_FRAGMENT_KEYS:
+                value = payload_getter(key)
                 if value is None:
                     continue
-
                 try:
-                    dialog_id = parse_dialog_id(value.getDialogId())
+                    if (dialog_id := parse_dialog_id(value.getDialogId())) is not None:
+                        return dialog_id
                 except Exception:
-                    dialog_id = None
-
-                if dialog_id is not None:
-                    return dialog_id
+                    pass
 
         try:
             return parse_dialog_id(payload.getDialogId())
@@ -1592,7 +1578,7 @@ class PluginUpdateChecker:
                 latest_version = self._normalize_version_tag(latest_tag)
                 current_version = self._normalize_version_tag(__version__)
 
-                if len(latest_version) == 0:
+                if not latest_version:
                     self.plugin.log(
                         "Update check skipped: latest release version is empty"
                     )
@@ -1622,7 +1608,7 @@ class PluginUpdateChecker:
             return ""
 
         normalized = str(value).strip()
-        if len(normalized) == 0:
+        if not normalized:
             return ""
 
         return normalized.removeprefix("v").removeprefix("V")
@@ -1644,7 +1630,7 @@ class PluginUpdateChecker:
             return None
 
         normalized = str(tag_name).strip()
-        if len(normalized) == 0:
+        if not normalized:
             return None
 
         return normalized
@@ -1692,14 +1678,16 @@ class TgStreaksPlugin(BasePlugin):
             pass
 
     def log_exception(self, message: str, exception: BaseException):
+        def _log_e(text: str):
+            if DEBUG_MODE:
+                try:
+                    Log.e(cast("String", LOGCAT_TAG), cast("String", text))
+                except Exception:
+                    pass
+
         text = f"{message}: {exception}"
         self.log(text)
-
-        if DEBUG_MODE:
-            try:
-                Log.e(cast("String", LOGCAT_TAG), cast("String", text))
-            except Exception:
-                pass
+        _log_e(text)
 
         for chunk in traceback.format_exception(
             type(exception),
@@ -1707,13 +1695,9 @@ class TgStreaksPlugin(BasePlugin):
             exception.__traceback__,
         ):
             for line in chunk.rstrip().splitlines():
-                if len(line) > 0:
+                if line:
                     self.log(line)
-                    if DEBUG_MODE:
-                        try:
-                            Log.e(cast("String", LOGCAT_TAG), cast("String", line))
-                        except Exception:
-                            pass
+                    _log_e(line)
 
     def create_settings(self) -> list[Any]:
         if not hasattr(self, "settings_actions"):
@@ -1972,7 +1956,7 @@ class TgStreaksPlugin(BasePlugin):
             if not chunk:
                 continue
 
-            chunks.append(cast("bytes", chunk))
+            chunks.append(chunk)
             downloaded += len(chunk)
 
             if not show_bulletins:
@@ -2072,56 +2056,34 @@ class TgStreaksPlugin(BasePlugin):
             self.log_exception("Failed to persist update check setting", e)
 
     def _get_app_language_code(self) -> str:
-        try:
-            locale_controller = LocaleController.getInstance()
-        except Exception:
-            locale_controller = None
+        def safe_call(fn):
+            try:
+                return fn()
+            except Exception:
+                return None
 
         lang_code = None
 
-        if locale_controller is not None:
-            try:
-                locale_info = locale_controller.getCurrentLocaleInfo()
-            except Exception:
-                locale_info = None
+        lc = safe_call(LocaleController.getInstance)
+        if lc is not None:
+            info = safe_call(lc.getCurrentLocaleInfo)
+            if info is not None:
+                raw = safe_call(info.getLangCode) or safe_call(lambda: info.shortName)
+                if raw:
+                    lang_code = str(raw)
 
-            if locale_info is not None:
-                try:
-                    lang_code = cast("str", locale_info.getLangCode())
-                except Exception:
-                    lang_code = None
+            if not lang_code:
+                locale = safe_call(lc.getCurrentLocale)
+                if locale is not None:
+                    raw = safe_call(locale.getLanguage)
+                    if raw:
+                        lang_code = str(raw)
 
-                if lang_code is None or len(str(lang_code)) == 0:
-                    try:
-                        lang_code = cast("str", locale_info.shortName)
-                    except Exception:
-                        lang_code = None
-
-            if lang_code is None or len(str(lang_code)) == 0:
-                try:
-                    current_locale = locale_controller.getCurrentLocale()
-                except Exception:
-                    current_locale = None
-
-                if current_locale is not None:
-                    try:
-                        lang_code = cast("str", current_locale.getLanguage())
-                    except Exception:
-                        lang_code = None
-
-        if lang_code is None:
+        if not lang_code:
             return "en"
 
-        normalized = str(lang_code).strip().lower()
-        if len(normalized) == 0:
-            return "en"
-
-        normalized = normalized.replace("-", "_")
-        base_code = normalized.split("_", 1)[0]
-        if len(base_code) == 0:
-            return "en"
-
-        return base_code
+        normalized = lang_code.strip().lower().replace("-", "_")
+        return normalized.split("_", 1)[0] or "en"
 
     def _t(self, key: str, **kwargs: Any) -> str:
         values = I18N_STRINGS.get(key, None)
@@ -2390,6 +2352,14 @@ class TgStreaksPlugin(BasePlugin):
     _BACKUP_FILE_PICKER_REQUEST_CODE = 0x5A7B
     _file_picker_hook_unhooks: "list[Any] | None" = None
 
+    def _cleanup_file_picker_hooks(self):
+        unhooks, self._file_picker_hook_unhooks = self._file_picker_hook_unhooks, None
+        for u in (unhooks or []):
+            try:
+                u.unhook()
+            except Exception:
+                pass
+
     def _open_backup_file_picker(self, fragment):
         if self._file_picker_hook_unhooks is not None:
             return
@@ -2402,14 +2372,7 @@ class TgStreaksPlugin(BasePlugin):
                 if request_code != self_outer._BACKUP_FILE_PICKER_REQUEST_CODE:
                     return
 
-                unhooks = self_outer._file_picker_hook_unhooks
-                self_outer._file_picker_hook_unhooks = None
-                if unhooks:
-                    for u in unhooks:
-                        try:
-                            u.unhook()
-                        except Exception:
-                            pass
+                self_outer._cleanup_file_picker_hooks()
 
                 result_code = int(param.args[1])
                 if result_code != -1:  # Activity.RESULT_OK
@@ -2447,14 +2410,7 @@ class TgStreaksPlugin(BasePlugin):
                 intent, self._BACKUP_FILE_PICKER_REQUEST_CODE
             )
         except Exception as e:
-            unhooks = self._file_picker_hook_unhooks
-            self._file_picker_hook_unhooks = None
-            if unhooks:
-                for u in unhooks:
-                    try:
-                        u.unhook()
-                    except Exception:
-                        pass
+            self._cleanup_file_picker_hooks()
             self.log_exception("Failed to open backup file picker", e)
             self._show_error(self._t("status.error.backup.apply_failed", reason=str(e)))
 

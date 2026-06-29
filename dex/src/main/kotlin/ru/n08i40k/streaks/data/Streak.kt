@@ -36,21 +36,21 @@ data class Streak(
     @Ignore
     val canRevive: Boolean
 
-    val level: StreakLevel
-        get() {
-            val registry = Plugin.getInstance().streakLevelRegistry
+    @delegate:Ignore
+    val level: StreakLevel by lazy {
+        val registry = Plugin.getInstance().streakLevelRegistry
 
-            return registry.findByLengthApproximate(length).let {
-                if (this.frozen) {
-                    val coldLevel = registry.findByLengthPrecise(0)
-                        ?: throw NullPointerException("Cold streak level is not registered")
+        registry.findByLengthApproximate(length).let {
+            if (this.frozen) {
+                val coldLevel = registry.findByLengthPrecise(0)
+                    ?: throw NullPointerException("Cold streak level is not registered")
 
-                    return@let coldLevel.copy(length = it.length)
-                }
-
-                return@let it
+                return@let coldLevel.copy(length = it.length)
             }
+
+            return@let it
         }
+    }
 
     init {
         val nowEpoch = LocalDate.now().toEpochDay()

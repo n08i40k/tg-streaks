@@ -14,6 +14,7 @@ class TaskQueue(private val logger: Logger) {
         val callback: suspend () -> Unit,
     )
 
+    @Volatile
     private var isWorkerStarted = false
     private val queue = Channel<WorkerTask>(Channel.UNLIMITED)
 
@@ -52,8 +53,6 @@ class TaskQueue(private val logger: Logger) {
         scope.launch { worker(queue) }
         isWorkerStarted = true
     }
-
-    val isWorkerRunning get() = isWorkerStarted
 
     fun stopWorker() {
         if (!isWorkerStarted)

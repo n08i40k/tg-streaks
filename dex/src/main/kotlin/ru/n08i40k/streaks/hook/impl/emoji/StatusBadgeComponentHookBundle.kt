@@ -8,13 +8,11 @@ package ru.n08i40k.streaks.hook.impl.emoji
 
 import android.view.View
 import org.telegram.tgnet.TLRPC
-import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.Components.StatusBadgeComponent
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
 
 class StatusBadgeComponentHookBundle : HookBundle() {
     override fun inject(

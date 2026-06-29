@@ -87,8 +87,10 @@ class ServiceMessagesController {
         send(accountId, peerUserId, ServiceMessage.RESTORE_TEXT)
     }
 
-    private fun send(accountId: Int, peerUserId: Long, message: String) {
-        if (isClientVersionBelow("12.2.0")) {
+    private val isLegacyVersion by lazy { isClientVersionBelow("12.2.0") }
+
+    private val prepareSendingText by lazy {
+        if (isLegacyVersion) {
             SendMessagesHelper::class.java.getDeclaredMethod(
                 "prepareSendingText",
                 AccountInstance::class.java,
@@ -97,14 +99,6 @@ class ServiceMessagesController {
                 Boolean::class.java,
                 Int::class.java,
                 Long::class.java
-            ).invoke(
-                null,
-                AccountInstance.getInstance(accountId),
-                message,
-                peerUserId,
-                false,
-                0,
-                0L
             )
         } else {
             SendMessagesHelper::class.java.getDeclaredMethod(
@@ -116,16 +110,16 @@ class ServiceMessagesController {
                 Int::class.java,
                 Int::class.java,
                 Long::class.java
-            ).invoke(
-                null,
-                AccountInstance.getInstance(accountId),
-                message,
-                peerUserId,
-                false,
-                0,
-                0,
-                0L
             )
         }
+    }
+
+    private fun send(accountId: Int, peerUserId: Long, message: String) {
+        val account = AccountInstance.getInstance(accountId)
+
+        if (isLegacyVersion)
+            prepareSendingText.invoke(null, account, message, peerUserId, false, 0, 0L)
+        else
+            prepareSendingText.invoke(null, account, message, peerUserId, false, 0, 0, 0L)
     }
 }

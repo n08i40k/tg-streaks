@@ -76,7 +76,7 @@ class StreakPetUiManager(private val plugin: Plugin) {
     }
 
     fun openDialog(accountId: Int, peerUserId: Long) {
-        plugin.uiScope.launch {
+        plugin.backgroundScope.launch {
             val uiState = plugin.streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             if (uiState == null) {
@@ -159,7 +159,7 @@ class StreakPetUiManager(private val plugin: Plugin) {
             return
         }
 
-        plugin.uiScope.launch {
+        plugin.backgroundScope.launch {
             val uiState = plugin.streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             AndroidUtilities.runOnUIThread {
@@ -233,7 +233,7 @@ class StreakPetUiManager(private val plugin: Plugin) {
             return
         }
 
-        plugin.uiScope.launch {
+        plugin.backgroundScope.launch {
             val refreshedState = plugin.streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             AndroidUtilities.runOnUIThread {

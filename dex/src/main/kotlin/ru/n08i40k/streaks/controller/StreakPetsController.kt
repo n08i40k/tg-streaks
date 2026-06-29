@@ -82,7 +82,7 @@ class StreakPetsController(
             streak = streaksController.get(accountId, peerUserId),
             ownerUser = messagesController.getUser(ownerUserId),
             peerUser = messagesController.getUser(peerUserId),
-            tasks = enumValues<StreakPetTaskType>().mapNotNull(taskByType::get),
+            tasks = StreakPetTaskType.entries.mapNotNull(taskByType::get),
         )
     }
 
@@ -230,12 +230,12 @@ class StreakPetsController(
         streakPet: StreakPet,
         notCompletedTasks: List<StreakPetTask>
     ) {
-        var streakPet = streakPet
+        var currentPet = streakPet
 
-        val lastCheckedDay = streakPet.lastCheckedAt
+        val lastCheckedDay = currentPet.lastCheckedAt
         val now = LocalDate.now()
 
-        val peerUserId = streakPet.peerUserId
+        val peerUserId = currentPet.peerUserId
 
         var currentDay = lastCheckedDay
 
@@ -290,8 +290,8 @@ class StreakPetsController(
                             ?.trim()
                             ?.takeIf { it.isNotEmpty() }
                             ?.let {
-                                streakPet = streakPet.copy(name = it)
-                                dao.update(streakPet)
+                                currentPet = currentPet.copy(name = it)
+                                dao.update(currentPet)
                             }
 
                         true
@@ -349,7 +349,7 @@ class StreakPetsController(
 
         val points = tasks.sumOf { if (it.isCompleted) it.type.points else 0 }
 
-        dao.update(streakPet.copy(lastCheckedAt = now, points = streakPet.points + points))
+        dao.update(currentPet.copy(lastCheckedAt = now, points = currentPet.points + points))
         tasks.forEach { taskDao.insertOrUpdateAll(it) }
     }
 
@@ -465,7 +465,7 @@ class StreakPetsController(
                 }
             }
 
-        val notCompletedTasks = enumValues<StreakPetTaskType>()
+        val notCompletedTasks = StreakPetTaskType.entries
             .mapNotNull(tasksByType::get)
             .filterNot { it.isCompleted }
 
@@ -646,24 +646,13 @@ class StreakPetsController(
     suspend fun pruneInvalid(accountId: Int) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val pets = dao.findAllByOwnerUserId(ownerUserId)
-        val petsByAccount = mapOf(accountId to pets)
 
-        val peerUsers = petsByAccount
-            .map { (accountId, pets) ->
-                Pair(
-                    accountId,
-                    fetchPeerUsers(
-                        accountId,
-                        ArrayList(pets.map { it.peerUserId })
-                    ) ?: return
-                )
-            }
-            .toMap()
+        val peerUsers = fetchPeerUsers(
+            accountId,
+            ArrayList(pets.map { it.peerUserId })
+        ) ?: return
 
-        val invalidPets = petsByAccount
-            .flatMap { (accountId, pets) ->
-                pets.filterNot { isPeerValidOrBot(peerUsers[accountId]?.get(it.peerUserId)) }
-            }
+        val invalidPets = pets.filterNot { isPeerValidOrBot(peerUsers[it.peerUserId]) }
 
         if (invalidPets.isEmpty())
             return

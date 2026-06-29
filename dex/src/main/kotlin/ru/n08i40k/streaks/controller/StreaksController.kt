@@ -54,6 +54,7 @@ class StreaksController(
     private val logger: Logger,
     resourcesProvider: ResourcesProvider,
     private val alertNotificationHelper: StreakAlertNotificationHelper,
+    private val serviceMessagesController: ServiceMessagesController,
 ) {
     companion object {
         private const val MIN_VISIBLE_STREAK_LENGTH = 3
@@ -119,7 +120,6 @@ class StreaksController(
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
     private val remoteFetcher: ChatHistoryFetcher = RemoteChatHistoryFetcher()
-    private val serviceMessagesController = ServiceMessagesController()
     private val streakPopupController = StreakPopupController(db, resourcesProvider)
 
     private val activityCacheDao = db.streakActivityCacheDao()
@@ -491,7 +491,7 @@ class StreaksController(
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
             val peerUserId = peerUser.id
 
-            val revives = revives?.toMutableSet() ?: loadRebuildRevives(ownerUserId, peerUserId)
+            val effectiveRevives = revives?.toMutableSet() ?: loadRebuildRevives(ownerUserId, peerUserId)
 
             val startDay = LocalDate.now()
             var currentDay = LocalDate.now()
@@ -501,7 +501,7 @@ class StreaksController(
             while (true) {
                 val checkedDay = currentDay
                 val action =
-                    fetchStreakActionForDay(accountId, peerUser, checkedDay, revives, false)
+                    fetchStreakActionForDay(accountId, peerUser, checkedDay, effectiveRevives, false)
                 logger.info("[StreakRebuild] $action at ${currentDay.fmt()} for $accountId:$peerUserId")
 
                 val progress = RebuildProgress(
@@ -524,12 +524,12 @@ class StreaksController(
                                     accountId,
                                     peerUser,
                                     checkedDay,
-                                    revives,
+                                    effectiveRevives,
                                     true
                                 ) == Action.REVIVE
                             ) {
                                 logger.info("[StreakRebuild] First-day-revive at ${currentDay.fmt()} for $accountId:$peerUserId")
-                                revives.add(checkedDay)
+                                effectiveRevives.add(checkedDay)
                                 currentDay = checkedDay.minusDays(2)
                                 continue
                             }
@@ -543,7 +543,7 @@ class StreaksController(
                                 accountId,
                                 peerUser,
                                 checkedDay.next(),
-                                revives,
+                                effectiveRevives,
                                 true
                             )
 
@@ -554,7 +554,7 @@ class StreaksController(
                             )
 
                             if (action == Action.REVIVE) {
-                                revives.add(checkedDay.next())
+                                effectiveRevives.add(checkedDay.next())
                                 currentDay = checkedDay.prev()
                                 continue
                             }
@@ -566,7 +566,7 @@ class StreaksController(
 
                     Action.REVIVE -> {
                         // Добавляем reviveNow, что бы след индексация была быстрее
-                        revives.add(checkedDay)
+                        effectiveRevives.add(checkedDay)
                         // Скипаем текущий и предыдущий день, так как сегодня reviveNow, а вчера 100% сдох
                         currentDay = checkedDay.minusDays(2)
                     }
@@ -594,13 +594,13 @@ class StreaksController(
                         rebuildFrom,
                         rebuildTo,
                         rebuildTo,
-                        revives.size
+                        effectiveRevives.size
                     )
                 )
 
                 // revives are children of streak on db side,
                 // so we need to insert already existing values too
-                revives.forEach {
+                effectiveRevives.forEach {
                     val record = StreakRevive(ownerUserId, peerUserId, it)
                     reviveDao.insertAll(record)
                 }
@@ -1396,24 +1396,13 @@ class StreaksController(
     suspend fun pruneInvalid(accountId: Int) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val streaks = dao.findAllByOwnerUserId(ownerUserId)
-        val streaksByAccount = mapOf(accountId to streaks)
 
-        val peerUsers = streaksByAccount
-            .map { (accountId, streaks) ->
-                Pair(
-                    accountId,
-                    fetchPeerUsers(
-                        accountId,
-                        ArrayList(streaks.map { it.peerUserId })
-                    ) ?: return
-                )
-            }
-            .toMap()
+        val peerUsers = fetchPeerUsers(
+            accountId,
+            ArrayList(streaks.map { it.peerUserId })
+        ) ?: return
 
-        val invalidStreaks = streaksByAccount
-            .flatMap { (accountId, streaks) ->
-                streaks.filterNot { isPeerValidOrBot(peerUsers[accountId]?.get(it.peerUserId)) }
-            }
+        val invalidStreaks = streaks.filterNot { isPeerValidOrBot(peerUsers[it.peerUserId]) }
 
         if (invalidStreaks.isEmpty())
             return
