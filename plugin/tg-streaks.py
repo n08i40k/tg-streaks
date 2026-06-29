@@ -556,6 +556,15 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
     },
     "dialog.calendar_fix.later": {"en": "Later", "ru": "Позже"},
     "dialog.calendar_fix.ok": {"en": "OK", "ru": "Ок"},
+    "dialog.sha256_mismatch.title": {
+        "en": "Streaks plugin disabled",
+        "ru": "Плагин Streaks отключён",
+    },
+    "dialog.sha256_mismatch.message": {
+        "en": "Checksum of downloaded {filename} does not match.\nThe plugin has been disabled for security.\n\nPlugin version: {version}\nTarget file: {filename}\nHash: {hash} ({expected_hash} expected)",
+        "ru": "Контрольная сумма скачанного {filename} не совпадает.\nПлагин отключён в целях безопасности.\n\nВерсия плагина: {version}\nФайл: {filename}\nХеш: {hash} (ожидался {expected_hash})",
+    },
+    "dialog.sha256_mismatch.ok": {"en": "OK", "ru": "Ок"},
 }
 
 I18N_REBUILD: dict[str, dict[str, str]] = {
@@ -892,7 +901,6 @@ class JvmPluginBridge:
         self.cache_dir = get_plugin_cache_dir("plugins_dex_cache")
         os.makedirs(self.cache_dir, exist_ok=True)
         self.dex_path = os.path.join(self.cache_dir, f"{__id__}.dex")
-        self._download_lock = threading.Lock()
 
     def load(self):
         if DEBUG_MODE:
@@ -920,27 +928,26 @@ class JvmPluginBridge:
 
         if cached_sha256 is not None:
             self.plugin.log(
-                f"Cached DEX SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Loading cached DEX and refreshing in background..."
-            )
-            self._load_cached_file()
-
-            if self.klass is not None:
-                self._refresh_async()
-                return
-
-            self.plugin.log(
-                "Cached DEX exists but failed to load. Downloading replacement synchronously..."
+                f"Cached DEX SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Downloading correct version..."
             )
         else:
-            self.plugin.log("Cached DEX not found. Downloading new file...")
+            self.plugin.log("Cached DEX not found. Downloading...")
 
         dex_data = self._download_bytes(show_bulletins=True)
         if dex_data is None:
+            if cached_sha256 is not None:
+                self.plugin.log(
+                    "DEX download failed. Falling back to stale cached DEX (version mismatch possible)..."
+                )
+                self._load_cached_file()
             return
 
         downloaded_sha256 = _sha256_hex(dex_data)
         if downloaded_sha256 != expected_sha256:
-            raise RuntimeError("Downloaded DEX SHA256 mismatch")
+            self.plugin._show_sha256_mismatch_dialog(
+                "classes.dex", downloaded_sha256, expected_sha256
+            )
+            return
 
         self._write_dex_file(dex_data)
         self._load(dex_data)
@@ -979,30 +986,6 @@ class JvmPluginBridge:
             self.plugin.log_exception("Failed to download DEX", e)
             return None
 
-    def _refresh_async(self):
-        def worker():
-            if not self._download_lock.acquire(blocking=False):
-                return
-
-            try:
-                dex_data = self._download_bytes(show_bulletins=True)
-                if dex_data is None:
-                    return
-
-                downloaded_sha256 = _sha256_hex(dex_data)
-                if downloaded_sha256 != str(DEX_SHA256).strip().lower():
-                    raise RuntimeError("Downloaded DEX SHA256 mismatch")
-
-                self._write_dex_file(dex_data)
-            except Exception as e:
-                self.plugin.log_exception("Failed to refresh DEX", e)
-            finally:
-                self._download_lock.release()
-
-        threading.Thread(
-            target=worker, name="tg-streaks-dex-refresh", daemon=True
-        ).start()
-
     def _load(self, dex_data: bytes):
         class_path = "ru.n08i40k.streaks.Plugin"
 
@@ -1032,20 +1015,60 @@ class ZipResourcesBridge:
         expected_sha256 = str(RESOURCES_SHA256).strip().lower()
         cached_sha256 = self._compute_file_sha256(self.zip_path)
 
-        if cached_sha256 == expected_sha256 and os.path.isdir(self.resources_root):
-            return self.resources_root
+        if cached_sha256 == expected_sha256:
+            if not os.path.isdir(self.resources_root):
+                self.plugin.log(
+                    "Resources ZIP is cached, but unpacked files are missing. Extracting..."
+                )
+                lock_fd = self._acquire_lock(blocking=True)
+                try:
+                    if not os.path.isdir(self.resources_root):
+                        self._extract_zip()
+                finally:
+                    self._release_lock(lock_fd)
+            return self.resources_root if os.path.isdir(self.resources_root) else None
 
-        if cached_sha256 is not None and os.path.isdir(self.resources_root):
+        if cached_sha256 is not None:
             self.plugin.log(
-                f"Cached resources ZIP SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Using current resources and refreshing in background..."
+                f"Cached resources ZIP SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Downloading correct version..."
             )
-            self._refresh_async()
-            return self.resources_root
+        else:
+            self.plugin.log("Cached resources ZIP not found. Downloading...")
 
-        return self._load_release_slow_path(expected_sha256)
+        lock_fd = self._acquire_lock(blocking=False)
+        if lock_fd is None:
+            self.plugin.log("Resources ZIP update is already in progress. Waiting...")
+            lock_fd = self._acquire_lock(blocking=True)
+            self._release_lock(lock_fd)
+            # Another process finished: re-check what it produced
+            return self.resources_root if os.path.isdir(self.resources_root) else None
+
+        try:
+            zip_data = self._download_bytes(show_bulletins=True)
+            if zip_data is None:
+                if os.path.isdir(self.resources_root):
+                    self.plugin.log(
+                        "Resources ZIP download failed. Falling back to stale extracted resources (version mismatch possible)..."
+                    )
+                    return self.resources_root
+                return None
+
+            downloaded_sha256 = _sha256_hex(zip_data)
+            if downloaded_sha256 != expected_sha256:
+                self.plugin._show_sha256_mismatch_dialog(
+                    "resources.zip", downloaded_sha256, expected_sha256
+                )
+                return None
+
+            self._write_zip_file(zip_data)
+            self._extract_zip()
+        finally:
+            self._release_lock(lock_fd)
+
+        return self.resources_root if os.path.isdir(self.resources_root) else None
 
     def _load_debug(self) -> Optional[str]:
-        lock_fd = self._acquire_download_lock(blocking=False)
+        lock_fd = self._acquire_lock(blocking=False)
         if lock_fd is not None:
             try:
                 self.plugin.log(
@@ -1055,129 +1078,14 @@ class ZipResourcesBridge:
                 if zip_data is not None:
                     self._write_zip_file(zip_data)
                     self._extract_zip()
-                    return (
-                        self.resources_root
-                        if os.path.isdir(self.resources_root)
-                        else None
-                    )
             finally:
-                self._release_download_lock(lock_fd)
+                self._release_lock(lock_fd)
         else:
-            self.plugin.log(
-                "Resources ZIP download is already in progress. Waiting for the existing run to finish..."
-            )
-            wait_lock_fd = self._acquire_download_lock(blocking=True)
-            if wait_lock_fd is not None:
-                self._release_download_lock(wait_lock_fd)
+            self.plugin.log("Resources ZIP download is already in progress. Waiting...")
+            wait_lock_fd = self._acquire_lock(blocking=True)
+            self._release_lock(wait_lock_fd)
 
-        if os.path.isdir(self.resources_root):
-            return self.resources_root
-
-        if os.path.exists(self.zip_path):
-            extract_lock_fd = self._acquire_download_lock(blocking=True)
-            assert extract_lock_fd is not None
-            try:
-                if not os.path.isdir(self.resources_root):
-                    self._extract_zip()
-            finally:
-                self._release_download_lock(extract_lock_fd)
-            if os.path.isdir(self.resources_root):
-                return self.resources_root
-
-        self.plugin.log(
-            "Resources ZIP download failed in debug mode. Falling back to current extracted resources if available..."
-        )
         return self.resources_root if os.path.isdir(self.resources_root) else None
-
-    def _load_release_slow_path(self, expected_sha256: str) -> Optional[str]:
-        refresh_needed = False
-
-        lock_fd = self._acquire_download_lock(blocking=False)
-        if lock_fd is not None:
-            try:
-                result_path, refresh_needed = self._load_release_slow_path_locked(
-                    expected_sha256,
-                    allow_download=True,
-                )
-            finally:
-                self._release_download_lock(lock_fd)
-        else:
-            self.plugin.log(
-                "Resources ZIP update is already in progress. Waiting for the existing run to finish..."
-            )
-            wait_lock_fd = self._acquire_download_lock(blocking=True)
-            assert wait_lock_fd is not None
-            try:
-                result_path, refresh_needed = self._load_release_slow_path_locked(
-                    expected_sha256,
-                    allow_download=False,
-                )
-            finally:
-                self._release_download_lock(wait_lock_fd)
-
-        if refresh_needed:
-            self._refresh_async()
-
-        return result_path
-
-    def _load_release_slow_path_locked(
-        self,
-        expected_sha256: str,
-        allow_download: bool,
-    ) -> tuple[Optional[str], bool]:
-        cached_sha256 = self._compute_file_sha256(self.zip_path)
-
-        if cached_sha256 == expected_sha256:
-            if not os.path.isdir(self.resources_root):
-                self.plugin.log(
-                    "Resources ZIP is cached, but unpacked files are missing. Extracting..."
-                )
-                self._extract_zip()
-            return self.resources_root if os.path.isdir(
-                self.resources_root
-            ) else None, False
-
-        if cached_sha256 is not None:
-            if not os.path.isdir(self.resources_root):
-                self.plugin.log(
-                    "Cached resources ZIP is outdated, but unpacked files are missing. Extracting cached version first..."
-                )
-                self._extract_zip()
-
-            if os.path.isdir(self.resources_root):
-                self.plugin.log(
-                    f"Cached resources ZIP SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Using current resources and refreshing in background..."
-                )
-                return self.resources_root, allow_download
-
-            if not allow_download:
-                return None, False
-
-            self.plugin.log(
-                "Cached resources ZIP exists but there are no usable extracted files. Downloading replacement synchronously..."
-            )
-        else:
-            if not allow_download:
-                return None, False
-
-            self.plugin.log("Cached resources ZIP not found. Downloading new file...")
-
-        zip_data = self._download_bytes(show_bulletins=True)
-        if zip_data is None:
-            return self.resources_root if os.path.isdir(
-                self.resources_root
-            ) else None, False
-
-        downloaded_sha256 = _sha256_hex(zip_data)
-        if downloaded_sha256 != expected_sha256:
-            raise RuntimeError("Downloaded resources ZIP SHA256 mismatch")
-
-        self._write_zip_file(zip_data)
-        self._extract_zip()
-
-        return self.resources_root if os.path.isdir(
-            self.resources_root
-        ) else None, False
 
     def _compute_file_sha256(self, path: str) -> Optional[str]:
         if not os.path.exists(path):
@@ -1196,11 +1104,9 @@ class ZipResourcesBridge:
         with open(self.zip_path, "wb") as f:
             f.write(zip_data)
 
-    def _acquire_download_lock(self, blocking: bool) -> Optional[int]:
+    def _acquire_lock(self, blocking: bool) -> Optional[int]:
         lock_fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o666)
-        lock_flags = fcntl.LOCK_EX
-        if not blocking:
-            lock_flags |= fcntl.LOCK_NB
+        lock_flags = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
 
         try:
             fcntl.flock(lock_fd, lock_flags)
@@ -1212,7 +1118,7 @@ class ZipResourcesBridge:
             os.close(lock_fd)
             raise
 
-    def _release_download_lock(self, lock_fd: int):
+    def _release_lock(self, lock_fd: int):
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
         finally:
@@ -1229,39 +1135,6 @@ class ZipResourcesBridge:
         except Exception as e:
             self.plugin.log_exception("Failed to download resources ZIP", e)
             return None
-
-    def _refresh_async(self):
-        def worker():
-            lock_fd = self._acquire_download_lock(blocking=False)
-            if lock_fd is None:
-                return
-
-            try:
-                expected_sha256 = str(RESOURCES_SHA256).strip().lower()
-                cached_sha256 = self._compute_file_sha256(self.zip_path)
-                if cached_sha256 == expected_sha256 and os.path.isdir(
-                    self.resources_root
-                ):
-                    return
-
-                zip_data = self._download_bytes(show_bulletins=True)
-                if zip_data is None:
-                    return
-
-                downloaded_sha256 = _sha256_hex(zip_data)
-                if downloaded_sha256 != expected_sha256:
-                    raise RuntimeError("Downloaded resources ZIP SHA256 mismatch")
-
-                self._write_zip_file(zip_data)
-                self._extract_zip()
-            except Exception as e:
-                self.plugin.log_exception("Failed to refresh resources ZIP", e)
-            finally:
-                self._release_download_lock(lock_fd)
-
-        threading.Thread(
-            target=worker, name="tg-streaks-resources-refresh", daemon=True
-        ).start()
 
     def _extract_zip(self):
         staging_root = os.path.join(self.cache_dir, "resources-staging")
@@ -1893,6 +1766,47 @@ class TgStreaksPlugin(BasePlugin):
 
         self._show_update_restart_dialog(previous_version)
         return True
+
+    def _show_sha256_mismatch_dialog(
+        self, filename: str, hash: str, expected_hash: str
+    ):
+        self.log(f"SHA256 mismatch for {filename}: plugin disabled")
+
+        def show():
+            try:
+                fragment = get_last_fragment()
+            except Exception:
+                fragment = None
+
+            title = self._t("dialog.sha256_mismatch.title")
+            message = self._t(
+                "dialog.sha256_mismatch.message",
+                filename=filename,
+                version=__version__,
+                hash=f"{hash[:4]}...{hash[-6:]}",
+                expected_hash=f"{expected_hash[:4]}...{expected_hash[-6:]}",
+            )
+
+            if fragment is None:
+                self._show_error(message)
+                return
+
+            try:
+                fragment.showDialog(
+                    AlertDialog.Builder(fragment.getContext())
+                    .setTitle(String(title))
+                    .setMessage(String(message))
+                    .setPositiveButton(
+                        String(self._t("dialog.sha256_mismatch.ok")),
+                        None,
+                    )
+                    .create()
+                )
+            except Exception as e:
+                self.log_exception("Failed to show SHA256 mismatch dialog", e)
+                self._show_error(message)
+
+        run_on_ui_thread(show)
 
     def _show_update_restart_dialog(self, previous_version: str):
         def show():
