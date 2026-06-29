@@ -34,16 +34,16 @@ fun getField(klass: Class<*>, name: String): Field {
 inline fun <reified T> getFieldValue(obj: Any, name: String): T? =
     getField(obj.javaClass, name).get(obj) as? T
 
-inline fun <reified T> getFieldValue(klass: Class<*>, obj: Any, name: String): T? =
+inline fun <reified T> getFieldValue(klass: Class<*>, obj: Any?, name: String): T? =
     getField(klass, name).get(obj) as? T
 
 fun setFieldValue(obj: Any, name: String, value: Any?) =
     getField(obj.javaClass, name).set(obj, value)
 
-fun setFieldValue(klass: Class<*>, obj: Any, name: String, value: Any?) =
+fun setFieldValue(klass: Class<*>, obj: Any?, name: String, value: Any?) =
     getField(klass, name).set(obj, value)
 
-fun addIntFieldValue(klass: Class<*>, obj: Any, name: String, value: Int) {
+fun addIntFieldValue(klass: Class<*>, obj: Any?, name: String, value: Int) {
     val field = getField(klass, name)
     field.set(obj, field.get(obj) as Int + value)
 }
