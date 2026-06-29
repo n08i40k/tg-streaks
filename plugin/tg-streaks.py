@@ -43,7 +43,6 @@ __min_version__ = "12.1.1"
 DEBUG_MODE = False
 LOGCAT_TAG = "tg-streaks"
 
-
 REPO_OWNER = "n08i40k"
 REPO_NAME = __id__
 
@@ -750,6 +749,21 @@ I18N_SERVICE_MESSAGES: dict[str, dict[str, str]] = {
     },
 }
 
+I18N_BADGES: dict[str, dict[str, str]] = {
+    "badge.me.text": {
+        "en": "little flames :p",
+        "ru": "огоньки :p",
+    },
+    "badge.channel.text": {
+        "en": "My official Streaks plugin channel!",
+        "ru": "Мой официальный канал плагина Streaks!",
+    },
+    "badge.chat.text": {
+        "en": "what brings you here?) *anything but a crash*",
+        "ru": "что вас привело сюда?) *только бы не краш*",
+    },
+}
+
 I18N_STRINGS: dict[str, dict[str, str]] = {
     **I18N_SETTINGS,
     **I18N_STATUS,
@@ -760,6 +774,7 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     **I18N_UPDATE,
     **I18N_DOWNLOAD,
     **I18N_SERVICE_MESSAGES,
+    **I18N_BADGES,
 }
 
 
@@ -2354,7 +2369,7 @@ class TgStreaksPlugin(BasePlugin):
 
     def _cleanup_file_picker_hooks(self):
         unhooks, self._file_picker_hook_unhooks = self._file_picker_hook_unhooks, None
-        for u in (unhooks or []):
+        for u in unhooks or []:
             try:
                 u.unhook()
             except Exception:

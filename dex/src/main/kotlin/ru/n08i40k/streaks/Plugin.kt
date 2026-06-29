@@ -41,6 +41,7 @@ import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
+import ru.n08i40k.streaks.override.PluginBadges
 import ru.n08i40k.streaks.hook.impl.UserPutHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.PremiumPreviewBottomSheetHookBundle
@@ -267,7 +268,13 @@ class Plugin {
         this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
 
         // controllers
-        this.streaksController = StreaksController(this.db, this.logger, this.resourcesProvider, this.alertNotificationHelper, this.serviceMessagesController)
+        this.streaksController = StreaksController(
+            this.db,
+            this.logger,
+            this.resourcesProvider,
+            this.alertNotificationHelper,
+            this.serviceMessagesController
+        )
         this.streakPetsController =
             StreakPetsController(this.logger, this.db, this.streaksController)
         this.petUiManager = StreakPetUiManager(this)
@@ -336,6 +343,8 @@ class Plugin {
     }
 
     private fun onInject() {
+        PluginBadges.add()
+
         BadgesCompat.takeException()?.let {
             logger.fatal("Failed to init BadgesCompat", it)
             return
@@ -365,6 +374,8 @@ class Plugin {
     private fun onEject() {
         logger.setFatalSuppression(true)
 
+        PluginBadges.remove()
+
         taskQueue.stopWorker()
         accountTaskRunnerRegistry.stopAll()
 
@@ -385,11 +396,11 @@ class Plugin {
 
         try {
             streakEmojiRegistry.restoreAll()
-
-            streaksController.restorePatchedUsers()
         } catch (e: Throwable) {
             logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
+
+        streaksController.restorePatchedUsers()
 
         chatContextMenuCallbackRegistry.clear()
         settingsActionCallbackRegistry.clear()

@@ -185,4 +185,10 @@ object TranslationKey {
             }
         }
     }
+
+    object Badge {
+        const val ME = "badge.me.text"
+        const val CHANNEL = "badge.channel.text"
+        const val CHAT = "badge.chat.text"
+    }
 }
