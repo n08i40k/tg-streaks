@@ -6,6 +6,7 @@
 
 package ru.n08i40k.streaks.hook.impl.emoji
 
+import android.view.View
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.ActionBar.SimpleTextView
@@ -44,7 +45,21 @@ class ProfileActivityHookBundle : HookBundle() {
                     "nameTextView"
                 )!![1]
 
-            nameTextView.setRightDrawableOnClick {
+            val rightDrawableOnClick =
+                getFieldValue<View.OnClickListener>(
+                    SimpleTextView::class.java,
+                    nameTextView,
+                    "rightDrawableOnClickListener"
+                )
+
+            nameTextView.setRightDrawableOnClick { view ->
+                val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
+
+                if (userId <= 0) {
+                    rightDrawableOnClick?.onClick(view)
+                    return@setRightDrawableOnClick
+                }
+
                 val dialog = PremiumPreviewBottomSheet(
                     thisObject,
                     UserConfig.selectedAccount,
