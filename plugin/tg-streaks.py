@@ -2264,11 +2264,13 @@ class TgStreaksPlugin(BasePlugin):
 
             self.jvm_plugin.klass.getDeclaredMethod(
                 String("inject"),
+                String.getClass(),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
                 Function.getClass(),  # ty:ignore[unresolved-attribute]
                 String.getClass(),
             ).invoke(
                 None,  # ty:ignore[invalid-argument-type]
+                String(__version__),
                 Logger(),  # ty:ignore[invalid-argument-type]
                 TranslationResolver(),  # ty:ignore[invalid-argument-type]
                 String(self.resources_bridge.resources_root),

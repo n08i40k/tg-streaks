@@ -72,6 +72,8 @@ import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
 import java.lang.reflect.Member
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 typealias LogReceiver = ValueCallback<String>
 typealias TranslationResolver = java.util.function.Function<String, String?>
@@ -80,6 +82,7 @@ class Plugin {
     @Suppress("unused")
     companion object {
         private var INSTANCE: Plugin? = null
+        private var VERSION: String? = null
 
         fun isInjected(): Boolean = INSTANCE != null
 
@@ -88,16 +91,24 @@ class Plugin {
         fun getInstance(): Plugin = INSTANCE!!
 
         @JvmStatic
-        fun getBuildDate(): String = Integer.toHexString(BuildConfig.BUILD_TIME.hashCode())
+        @OptIn(ExperimentalTime::class)
+        fun getBuildDate(): String =
+            Instant.fromEpochMilliseconds(BuildConfig.BUILD_TIME.toLong()).toString()
+
+        @JvmStatic
+        fun getVersion(): String? = VERSION
 
         @JvmStatic
         fun inject(
+            version: String,
             logReceiver: LogReceiver,
             translationResolver: TranslationResolver,
             resourcesRootPath: String,
         ) {
             if (INSTANCE != null)
                 return
+
+            VERSION = version
 
             try {
                 INSTANCE = Plugin(
@@ -111,7 +122,6 @@ class Plugin {
                 logReceiver.onReceiveValue(e.stackTrace.joinToString("\n"))
                 return
             }
-
 
             try {
                 INSTANCE!!.onInject()
