@@ -357,6 +357,24 @@ I18N_SHEETS: dict[str, dict[str, str]] = {
     },
     "sheet.pet.rename.save": {"en": "Save", "ru": "Сохранить"},
     "sheet.pet.rename.cancel": {"en": "Cancel", "ru": "Отмена"},
+    "sheet.crash.title": {
+        "en": "%g[Streaks] plugin has been crashed :(",
+        "ru": "Плагин %g[Streaks] крашнулся :(",
+    },
+    "sheet.crash.paragraph.reason": {"en": "reason", "ru": "причина"},
+    "sheet.crash.paragraph.stack_trace": {"en": "stack-trace", "ru": "стек-трейс"},
+    "sheet.crash.paragraph.plugins": {"en": "plugins", "ru": "плагины"},
+    "sheet.crash.info.client_version": {
+        "en": "{client_name} version",
+        "ru": "Версия {client_name}",
+    },
+    "sheet.crash.info.plugin_version": {
+        "en": "Plugin version",
+        "ru": "Версия плагина",
+    },
+    "sheet.crash.button.dismiss": {"en": "Dismiss", "ru": "Закрыть"},
+    "sheet.crash.button.copy": {"en": "Copy", "ru": "Копировать"},
+    "sheet.crash.button.send": {"en": "Send", "ru": "Отправить"},
 }
 
 I18N_MENU: dict[str, dict[str, str]] = {

@@ -2,11 +2,34 @@ package ru.n08i40k.streaks.util
 
 import org.telegram.messenger.ApplicationLoader
 
+fun getClientName(): String {
+    if (Package.getPackage("com.radolyn.ayugram") != null)
+        return "AyuGram"
+
+    if (Package.getPackage("com.exteragram.messenger") != null)
+        return "exteraGram"
+
+    return "Telegram"
+}
+
 fun getClientVersionName(): String {
     val context = ApplicationLoader.applicationContext
     val packageName = context.packageName
     val packageInfo = context.packageManager.getPackageInfo(packageName, 0)
     return packageInfo.versionName ?: "0.0.0"
+}
+
+fun getClientVersionFull(): String {
+    val context = ApplicationLoader.applicationContext
+    val packageName = context.packageName
+    val packageInfo = context.packageManager.getPackageInfo(packageName, 0)
+
+    val versionName = packageInfo.versionName ?: "0.0.0"
+
+    @Suppress("DEPRECATION")
+    val versionCode = packageInfo.versionCode
+
+    return "$versionName ($versionCode)"
 }
 
 fun isClientVersionBelow(target: String): Boolean {

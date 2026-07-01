@@ -37,6 +37,18 @@ object TranslationKey {
             const val RENAME_SAVE = "sheet.pet.rename.save"
             const val RENAME_CANCEL = "sheet.pet.rename.cancel"
         }
+
+        object Crash {
+            const val TITLE = "sheet.crash.title"
+            const val PARAGRAPH_REASON = "sheet.crash.paragraph.reason"
+            const val PARAGRAPH_STACK_TRACE = "sheet.crash.paragraph.stack_trace"
+            const val PARAGRAPH_PLUGINS = "sheet.crash.paragraph.plugins"
+            const val INFO_CLIENT_VERSION = "sheet.crash.info.client_version"
+            const val INFO_PLUGIN_VERSION = "sheet.crash.info.plugin_version"
+            const val BUTTON_DISMISS = "sheet.crash.button.dismiss"
+            const val BUTTON_COPY = "sheet.crash.button.copy"
+            const val BUTTON_SEND = "sheet.crash.button.send"
+        }
     }
 
     object Alert {

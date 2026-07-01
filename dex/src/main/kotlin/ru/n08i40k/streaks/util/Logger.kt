@@ -1,8 +1,8 @@
 package ru.n08i40k.streaks.util
 
-import org.telegram.messenger.AndroidUtilities
 import ru.n08i40k.streaks.LogReceiver
 import ru.n08i40k.streaks.Plugin
+import ru.n08i40k.streaks.ui.CrashBottomSheet
 
 class Logger(private val logReceiver: LogReceiver) {
     @Volatile private var suppressFatal = false
@@ -46,13 +46,8 @@ class Logger(private val logReceiver: LogReceiver) {
         logReceiver.onReceiveValue(formattedException)
 
         if (!suppressFatal && !preventEject && Plugin.isInjected()) {
-            AndroidUtilities.addToClipboard(
-                "```\n"
-                        + "${message}\n"
-                        + "${formattedException}\n"
-                        + "```"
-            )
-            BulletinHelper.show(null, "Streaks plugin has been ejected!")
+            CrashBottomSheet.show(message, exception)
+
             Plugin.eject()
         }
     }

@@ -5,6 +5,7 @@ desugar_jdk_libs = "2.1.5"
 kotlin = "2.2.0"
 kotlinxCoroutinesCore = "1.10.2"
 roomRuntime = "2.8.4"
+recyclerview = "1.4.0"
 
 [libraries]
 aliuhook = { module = "com.aliucord:Aliuhook", version.ref = "aliuhook" }
@@ -14,3 +15,4 @@ jetbrains-kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", versi
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutinesCore" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomRuntime" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
+androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }

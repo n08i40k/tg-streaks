@@ -2,13 +2,19 @@ import com.android.build.api.variant.BuildConfigField
 import dev.reformator.stacktracedecoroutinator.gradleplugin.DecoroutinatorPluginExtension
 import java.io.File
 import java.util.Properties
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.Sync
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.coreLibraryDesugaring
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.commons.ClassRemapper
+import org.objectweb.asm.commons.Remapper
 
 private val COMPILE_SDK = 36
 private val COMPILE_SDK_MINOR = 1
@@ -21,10 +27,51 @@ private val TELEGRAM_COMPILE_PACKAGE_PREFIXES =
     listOf(
         "org/telegram/",
         "com/exteragram/",
-        "androidx/recyclerview/",
+        "de/robv/android/xposed/",
+        "org/json/",
         "java/",
         "j$/"
     )
+
+private val SHADED_PACKAGE = "ru/n08i40k/streaks_shaded"
+
+// Packages that must NOT be relocated — provided by the host app or Android runtime.
+// compileOnly-only dependencies must also be listed here (their classes are resolved
+// from the host classloader at runtime, so references to them must stay unrelocated).
+private val RELOCATION_EXCLUDED_PREFIXES: List<String> by lazy {
+    TELEGRAM_COMPILE_PACKAGE_PREFIXES + listOf(
+        "ru/n08i40k/streaks/",
+        "android/",
+        "dalvik/",
+        "javax/",
+        "androidx/recyclerview/",
+    )
+}
+
+// Individual classes excluded from relocation (use when excluding the whole package is too broad)
+private val RELOCATION_EXCLUDED_CLASSES = setOf(
+    "androidx/collection/LongSparseArray",
+)
+
+private class ShadedRemapper : Remapper() {
+    override fun map(internalName: String): String {
+        if (RELOCATION_EXCLUDED_PREFIXES.any { internalName.startsWith(it) }) return internalName
+        if (internalName in RELOCATION_EXCLUDED_CLASSES) return internalName
+        // R and R$* are generated resource classes — they live in the host APK, not our DEX
+        val simpleName = internalName.substringAfterLast('/')
+        if (simpleName == "R" || simpleName.startsWith("R\$")) return internalName
+        return "$SHADED_PACKAGE/$internalName"
+    }
+}
+
+private val SHADED_REMAPPER = ShadedRemapper()
+
+private fun remapClassBytes(bytes: ByteArray): ByteArray {
+    val cr = ClassReader(bytes)
+    val cw = ClassWriter(0)
+    cr.accept(ClassRemapper(cw, SHADED_REMAPPER), 0)
+    return cw.toByteArray()
+}
 
 private fun File.isJarFile(): Boolean = isFile && extension.equals("jar", ignoreCase = true)
 
@@ -131,6 +178,14 @@ private fun Project.resolveAndroidJar(): File {
     }
 
     return androidJar
+}
+
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        classpath("org.ow2.asm:asm:9.7.1")
+        classpath("org.ow2.asm:asm-commons:9.7.1")
+    }
 }
 
 plugins {
@@ -247,6 +302,7 @@ val embed by configurations.creating {
 dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    compileOnly(libs.androidx.recyclerview)
     ksp(libs.androidx.room.compiler)
 
     compileOnly(libs.aliuhook)
@@ -277,7 +333,7 @@ fun registerBuildDexTask(variant: String) {
                 throw GradleException("Missing Proguard config: ${proguardRules.absolutePath}")
             }
 
-            val classInputCandidates = listOf(
+            val classRootCandidates = listOf(
                 buildDirFile.resolve("intermediates/built_in_kotlinc/$variant/compile${variantTitle}Kotlin/classes"),
                 buildDirFile.resolve("intermediates/javac/$variant/compile${variantTitle}JavaWithJavac/classes"),
                 buildDirFile.resolve(
@@ -285,24 +341,14 @@ fun registerBuildDexTask(variant: String) {
                             "bundleLibCompileToJar$variantTitle/classes.jar"
                 )
             )
-            val classInputs = classInputCandidates
-                .filter(File::exists)
-                .flatMap { input ->
-                    if (input.isDirectory) {
-                        fileTree(input)
-                            .matching { include("**/*.class") }
-                            .files
-                            .map(File::getAbsolutePath)
-                    } else {
-                        listOf(input.absolutePath)
-                    }
-                }
-                .ifEmpty {
-                    fileTree(buildDirFile.resolve("tmp/kotlin-classes/$variant"))
-                        .matching { include("**/*.class") }
-                        .files
-                        .map(File::getAbsolutePath)
-                }
+            val classRoots = classRootCandidates.filter(File::exists).ifEmpty {
+                listOf(buildDirFile.resolve("tmp/kotlin-classes/$variant")).filter(File::exists)
+            }
+            if (classRoots.isEmpty()) {
+                throw GradleException(
+                    "No class inputs found for variant '$variant'. Run $compileKotlinTask first."
+                )
+            }
 
             val extractedArtifactRoot =
                 buildDirFile.resolve("intermediates/extracted-classpath-artifacts")
@@ -316,18 +362,61 @@ fun registerBuildDexTask(variant: String) {
             val filteredRuntimeJars =
                 runtimeJars.filterNot { jarPath -> File(jarPath).artifactKey() in embeddedModules }
 
-            val dexInputs = (classInputs + filteredRuntimeJars + embeddedJars).distinct()
-            if (dexInputs.isEmpty()) {
-                throw GradleException(
-                    "No class inputs found for variant '$variant'. Run $compileKotlinTask first."
-                )
+            // Merge all inputs into a single JAR with package relocation applied.
+            // Plugin's own classes (ru.n08i40k.streaks.**) keep their names but get their
+            // bytecode references updated to point to the relocated library classes.
+            // Library JARs are moved to ru.n08i40k.streaks_shaded.* to avoid host conflicts.
+            val mergedShadedJar =
+                buildDirFile.resolve("intermediates/merged-shaded/$variant/classes.jar")
+            mergedShadedJar.parentFile.mkdirs()
+            val seen = HashSet<String>()
+            ZipOutputStream(mergedShadedJar.outputStream()).use { zos ->
+                fun add(name: String, bytes: ByteArray) {
+                    if (seen.add(name)) {
+                        zos.putNextEntry(ZipEntry(name))
+                        zos.write(bytes)
+                        zos.closeEntry()
+                    }
+                }
+                classRoots.forEach { root ->
+                    if (root.isDirectory) {
+                        root.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach { f ->
+                            val rel = f.toRelativeString(root).replace(File.separatorChar, '/')
+                            add(rel, remapClassBytes(f.readBytes()))
+                        }
+                    } else {
+                        ZipFile(root).use { zip ->
+                            zip.entries().asSequence()
+                                .filter { !it.isDirectory && it.name.endsWith(".class") }
+                                .forEach { e ->
+                                    add(e.name, remapClassBytes(zip.getInputStream(e).readBytes()))
+                                }
+                        }
+                    }
+                }
+                (filteredRuntimeJars + embeddedJars).distinct().map(::File).forEach { jar ->
+                    if (!jar.exists()) return@forEach
+                    ZipFile(jar).use { zip ->
+                        zip.entries().asSequence().filter { !it.isDirectory }.forEach { entry ->
+                            val bytes = zip.getInputStream(entry).readBytes()
+                            if (entry.name.endsWith(".class")) {
+                                val shadedName = SHADED_REMAPPER.map(entry.name.removeSuffix(".class"))
+                                add("$shadedName.class", remapClassBytes(bytes))
+                            } else {
+                                add(entry.name, bytes)
+                            }
+                        }
+                    }
+                }
             }
 
-            val dexInputKeys = dexInputs.map { File(it).artifactKey() }.toSet()
+            val dexInputs = listOf(mergedShadedJar.absolutePath)
+
+            val dexModules = (embeddedJars + filteredRuntimeJars).map { File(it).artifactKey() }.toSet()
             val classpathJars = compileJars
                 .filterNot {
                     val jar = File(it)
-                    it == androidJar.absolutePath || jar.artifactKey() in dexInputKeys
+                    it == androidJar.absolutePath || jar.artifactKey() in dexModules
                 }
                 .distinct()
 

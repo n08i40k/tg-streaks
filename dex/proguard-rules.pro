@@ -2,10 +2,5 @@
     *;
 }
 
--keepnames class android.util.LongSparseArray
--keepnames class androidx.collection.LongSparseArray
--keepnames class java.**
--keeppackagenames java.**
-
--repackageclasses 'ru.n08i40k.streaks_shaded'
+-dontobfuscate
 -keepattributes *Annotation*,InnerClasses,EnclosingMethod,Signature

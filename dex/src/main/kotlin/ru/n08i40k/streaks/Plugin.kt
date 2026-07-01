@@ -41,12 +41,11 @@ import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
-import ru.n08i40k.streaks.override.PluginBadges
-import ru.n08i40k.streaks.hook.impl.UserPutHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.PremiumPreviewBottomSheetHookBundle
 import ru.n08i40k.streaks.hook.impl.ServiceMessagesHookBundle
 import ru.n08i40k.streaks.hook.impl.UpdatesHookBundle
+import ru.n08i40k.streaks.hook.impl.UserPutHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.ChatAvatarContainerHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.ChatMessageCellHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.DialogCellHookBundle
@@ -54,6 +53,7 @@ import ru.n08i40k.streaks.hook.impl.emoji.ProfileActivityHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.ProfileSearchCellHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.StatusBadgeComponentHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.UserCellHookBundle
+import ru.n08i40k.streaks.override.PluginBadges
 import ru.n08i40k.streaks.registry.LockableActionRegistry
 import ru.n08i40k.streaks.registry.LockableCallbackRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
