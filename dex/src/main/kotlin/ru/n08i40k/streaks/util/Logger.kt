@@ -5,7 +5,7 @@ import ru.n08i40k.streaks.LogReceiver
 import ru.n08i40k.streaks.Plugin
 
 class Logger(private val logReceiver: LogReceiver) {
-    private var suppressFatal = false
+    @Volatile private var suppressFatal = false
 
     private fun Throwable.formatWithCauses(): String {
         val builder = StringBuilder()
