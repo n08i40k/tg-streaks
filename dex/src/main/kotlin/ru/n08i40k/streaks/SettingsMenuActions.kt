@@ -10,6 +10,7 @@ import org.telegram.messenger.UserConfig
 import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.extension.label
+import ru.n08i40k.streaks.util.Logger
 
 class SettingsMenuActions(private val plugin: Plugin) {
     fun register() = with(plugin) {
@@ -18,7 +19,7 @@ class SettingsMenuActions(private val plugin: Plugin) {
                 try {
                     callback()
                 } catch (e: Throwable) {
-                    logger.fatal("An error occurred while handling settings action", e)
+                    Logger.fatal("An error occurred while handling settings action", e)
                 }
             }
         }
@@ -47,7 +48,7 @@ class SettingsMenuActions(private val plugin: Plugin) {
                     syncPeersUi(result.uiSyncTargets)
                     rebuildNotificationHelper.completeAllStreaks(result.totalChats)
                 } catch (e: Throwable) {
-                    logger.fatal("Failed to rebuild all private chats for account $accountId", e)
+                    Logger.fatal("Failed to rebuild all private chats for account $accountId", e)
                     rebuildNotificationHelper.cancelAllProgress()
                     bulletinHelper.showTranslated(TranslationKey.Status.Error.REBUILD_FAILED_CHECK_LOGS)
                 }
@@ -64,7 +65,7 @@ class SettingsMenuActions(private val plugin: Plugin) {
                         "msg_save"
                     )
                 } catch (e: Throwable) {
-                    logger.fatal("Failed to export database backup", e)
+                    Logger.fatal("Failed to export database backup", e)
                     bulletinHelper.showTranslated(TranslationKey.Status.Error.BACKUP_EXPORT_FAILED)
                 }
             }

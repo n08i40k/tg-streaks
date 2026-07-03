@@ -110,7 +110,6 @@ class StreakPetUiManager(private val plugin: Plugin) {
                     peerUserId,
                     uiState,
                     plugin.resourcesProvider,
-                    plugin.translator,
                     onRenameRequested = { newName ->
                         plugin.accountTaskRunnerRegistry.enqueue(
                             accountId,

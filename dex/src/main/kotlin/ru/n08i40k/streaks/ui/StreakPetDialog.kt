@@ -34,6 +34,7 @@ import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.Translator
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -44,7 +45,6 @@ class StreakPetDialog(
     val peerUserId: Long,
     initialState: StreakPetsController.ViewStateSnapshot,
     private val resourcesProvider: ResourcesProvider,
-    private val translator: Translator,
     private val onRenameRequested: (String) -> Unit,
     private val onDismissed: (() -> Unit)? = null,
 ) : Dialog(
@@ -228,7 +228,7 @@ class StreakPetDialog(
 
     private fun log(message: String) {
         runCatching {
-            Plugin.getInstance().logger.info("[PetSheet] $message")
+            Logger.info("[PetSheet] $message")
         }
     }
 
@@ -262,7 +262,7 @@ class StreakPetDialog(
                 put("maxLevel", t(TranslationKey.Sheet.Pet.MAX_LEVEL))
                 put(
                     "pointsToEvolution",
-                    translator.translate(
+                    Translator.translate(
                         TranslationKey.Sheet.Pet.POINTS_TO_NEXT_STAGE,
                         mapOf("count" to "{count}")
                     )
@@ -417,7 +417,7 @@ class StreakPetDialog(
         }
     }
 
-    private fun t(key: String): String = translator.translate(key)
+    private fun t(key: String): String = Translator.translate(key)
 
     private fun buildHtml(safeTopPx: Int): String =
         StreakPetUiResources.loadSheetHtml(resourcesProvider, safeTopPx)

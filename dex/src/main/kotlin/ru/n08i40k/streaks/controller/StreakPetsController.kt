@@ -30,7 +30,6 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreakPetsController(
-    private val logger: Logger,
     private val db: PluginDatabase,
     private val streaksController: StreaksController,
 ) {
@@ -46,7 +45,7 @@ class StreakPetsController(
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         dao.deleteByRelation(ownerUserId, peerUserId)
 
-        logger.info("Removed streak-pet for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
+        Logger.info("Removed streak-pet for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
     }
 
     suspend fun get(accountId: Int, peerUserId: Long): StreakPet? =
@@ -210,7 +209,7 @@ class StreakPetsController(
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
         if (!rebuildLock.compareAndSet(false, true)) {
-            logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
+            Logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
             return
         }
 
@@ -219,7 +218,7 @@ class StreakPetsController(
         } catch (_: InvalidPeerException) {
             removeInvalidPeerPet(accountId, peerUser.id)
         } catch (e: Throwable) {
-            logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
+            Logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         } finally {
             rebuildLock.set(false)
         }

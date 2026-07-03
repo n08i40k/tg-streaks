@@ -22,6 +22,7 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.StreakPetsController
+import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getFieldValue
 import java.util.AbstractMap
@@ -53,8 +54,6 @@ class ServiceMessagesHookBundle : HookBundle() {
             )
 
         ) { param ->
-            val translator = Plugin.getInstance().translator
-
             val message = param.args[1] as? TLRPC.Message
                 ?: return@before
 
@@ -69,7 +68,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
                 TLRPC.TL_messageActionCustomAction().apply {
                     val messageText =
-                        translator.translate(TranslationKey.Service.Streak.STARTED_TEXT)
+                        Translator.translate(TranslationKey.Service.Streak.STARTED_TEXT)
                     (this as TLRPC.MessageAction).message = messageText
                 } as TLRPC.MessageAction
             }
@@ -84,9 +83,10 @@ class ServiceMessagesHookBundle : HookBundle() {
                     ?: return@streakUpgrade null
 
                 TLRPC.TL_messageActionCustomAction().apply {
-                    val messageText =
-                        translator.translate(TranslationKey.Service.Streak.LEVEL_UP_TEXT)
-                            .replace("{days}", days.toString())
+                    val messageText = Translator.translate(
+                        TranslationKey.Service.Streak.LEVEL_UP_TEXT,
+                        mapOf("days" to days.toString())
+                    )
 
                     (this as TLRPC.MessageAction).message = messageText
                 } as TLRPC.MessageAction
@@ -118,7 +118,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
                 val messageText =
                     if (!byPeer) {
-                        translator.translate(TranslationKey.Service.Streak.RESTORED_SELF)
+                        Translator.translate(TranslationKey.Service.Streak.RESTORED_SELF)
                     } else {
                         val peerName =
                             peerId
@@ -128,8 +128,10 @@ class ServiceMessagesHookBundle : HookBundle() {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translator.translate(TranslationKey.Service.Streak.RESTORED_PEER)
-                            .replace("{name}", peerName)
+                        Translator.translate(
+                            TranslationKey.Service.Streak.RESTORED_PEER,
+                            mapOf("name" to peerName)
+                        )
                     }
 
                 TLRPC.TL_messageActionCustomAction().apply {
@@ -144,7 +146,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                 if (message.out) {
                     TLRPC.TL_messageActionCustomAction().apply {
                         val messageText =
-                            translator.translate(TranslationKey.Service.Pet.Invite.SENT_SELF)
+                            Translator.translate(TranslationKey.Service.Pet.Invite.SENT_SELF)
                         (this as TLRPC.MessageAction).message = messageText
                     } as TLRPC.MessageAction
                 } else {
@@ -171,7 +173,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
                 val messageText =
                     if (!byPeer) {
-                        translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_SELF)
+                        Translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_SELF)
                     } else {
                         val peerName =
                             peerId
@@ -181,8 +183,10 @@ class ServiceMessagesHookBundle : HookBundle() {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_PEER)
-                            .replace("{name}", peerName)
+                        Translator.translate(
+                            TranslationKey.Service.Pet.Invite.ACCEPTED_PEER,
+                            mapOf("name" to peerName)
+                        )
                     }
 
                 TLRPC.TL_messageActionCustomAction().apply {
@@ -205,8 +209,10 @@ class ServiceMessagesHookBundle : HookBundle() {
 
                 val messageText =
                     if (!byPeer) {
-                        translator.translate(TranslationKey.Service.Pet.Rename.SELF)
-                            .replace("{petName}", name)
+                        Translator.translate(
+                            TranslationKey.Service.Pet.Rename.SELF,
+                            mapOf("petName" to name)
+                        )
                     } else {
                         val peerName =
                             peerId
@@ -216,9 +222,12 @@ class ServiceMessagesHookBundle : HookBundle() {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: "Unknown"
 
-                        translator.translate(TranslationKey.Service.Pet.Rename.PEER)
-                            .replace("{peerName}", peerName)
-                            .replace("{petName}", name)
+                        Translator.translate(
+                            TranslationKey.Service.Pet.Rename.PEER, mapOf(
+                                "peerName" to peerName,
+                                "petName" to name,
+                            )
+                        )
                     }
 
                 TLRPC.TL_messageActionCustomAction().apply {
@@ -259,14 +268,13 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = thisObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
 
-            val translator = Plugin.getInstance().translator
 
             thisObject.messageText = when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT ->
-                    translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
+                    Translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
 
                 ServiceMessage.PET_INVITE_TEXT ->
-                    translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
+                    Translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
 
                 else -> return@after
             }
@@ -393,29 +401,28 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@before
 
-            val translator = Plugin.getInstance().translator
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
-                    param.args[0] = translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
+                    param.args[0] = Translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
                     param.args[1] =
-                        translator.translate(TranslationKey.Service.Streak.ENDED_SUBTITLE)
-                    param.args[3] = translator.translate(TranslationKey.Service.Streak.ENDED_HINT)
+                        Translator.translate(TranslationKey.Service.Streak.ENDED_SUBTITLE)
+                    param.args[3] = Translator.translate(TranslationKey.Service.Streak.ENDED_HINT)
                     param.args[5] =
-                        translator.translate(TranslationKey.Service.Streak.ENDED_ACTION)
+                        Translator.translate(TranslationKey.Service.Streak.ENDED_ACTION)
                     param.args[9] = false
                     param.args[10] = true
                 }
 
                 ServiceMessage.PET_INVITE_TEXT -> {
                     param.args[0] =
-                        translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
+                        Translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
                     param.args[1] =
-                        translator.translate(TranslationKey.Service.Pet.Invite.DESCRIPTION)
+                        Translator.translate(TranslationKey.Service.Pet.Invite.DESCRIPTION)
                     param.args[3] =
-                        translator.translate(TranslationKey.Service.Pet.Invite.HINT)
+                        Translator.translate(TranslationKey.Service.Pet.Invite.HINT)
                     param.args[5] =
-                        translator.translate(TranslationKey.Service.Pet.Invite.ACTION)
+                        Translator.translate(TranslationKey.Service.Pet.Invite.ACTION)
                     param.args[9] = false
                     param.args[10] = true
                 }

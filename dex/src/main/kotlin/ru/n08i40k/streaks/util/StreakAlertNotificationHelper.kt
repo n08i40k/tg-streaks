@@ -6,7 +6,7 @@ import android.app.NotificationManager
 import org.telegram.messenger.ApplicationLoader
 import ru.n08i40k.streaks.constants.TranslationKey
 
-class StreakAlertNotificationHelper(private val translator: Translator) {
+class StreakAlertNotificationHelper {
     companion object {
         private const val CHANNEL_ID = "tg_streaks_alerts"
     }
@@ -22,7 +22,7 @@ class StreakAlertNotificationHelper(private val translator: Translator) {
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            translator.translate(TranslationKey.Alert.Notification.CHANNEL_NAME),
+            Translator.translate(TranslationKey.Alert.Notification.CHANNEL_NAME),
             NotificationManager.IMPORTANCE_DEFAULT
         )
         manager.createNotificationChannel(channel)
@@ -57,8 +57,8 @@ class StreakAlertNotificationHelper(private val translator: Translator) {
         val hours = timeUntilDeathSeconds / 3600
         val minutes = (timeUntilDeathSeconds % 3600) / 60
         val timeStr = if (hours > 0) "${hours}ч ${minutes}м" else "${minutes}м"
-        val title = translator.translate(TranslationKey.Alert.Notification.NEAR_DEATH_TITLE)
-        val text = translator.translate(
+        val title = Translator.translate(TranslationKey.Alert.Notification.NEAR_DEATH_TITLE)
+        val text = Translator.translate(
             TranslationKey.Alert.Notification.NEAR_DEATH_TEXT,
             mapOf(
                 "peer_name" to peerName,
@@ -78,8 +78,8 @@ class StreakAlertNotificationHelper(private val translator: Translator) {
     }
 
     fun showDeath(peerUserId: Long, peerName: String, streakLength: Int) {
-        val title = translator.translate(TranslationKey.Alert.Notification.DEATH_TITLE)
-        val text = translator.translate(
+        val title = Translator.translate(TranslationKey.Alert.Notification.DEATH_TITLE)
+        val text = Translator.translate(
             TranslationKey.Alert.Notification.DEATH_TEXT,
             mapOf(
                 "peer_name" to peerName,

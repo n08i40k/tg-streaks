@@ -21,6 +21,8 @@ import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.override.FixupCalendarActivity
+import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.Translator
 
 class ChatContextMenuActions(private val plugin: Plugin) {
     @OptIn(DelicateCoroutinesApi::class)
@@ -30,7 +32,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 try {
                     callback(it)
                 } catch (e: Throwable) {
-                    logger.fatal("An error occurred while handling context menu entry touch", e)
+                    Logger.fatal("An error occurred while handling context menu entry touch", e)
                 }
             }
         }
@@ -65,7 +67,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
             enqueueRebuildForPeer(accountId, peerUserId)
 
-            logger.info("[Context Menu] Rebuild clicked on $peerUserId")
+            Logger.info("[Context Menu] Rebuild clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.REBUILD_PET) { peerUserId ->
@@ -106,7 +108,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 rebuildNotificationHelper.completeSinglePet(peerName)
             }
 
-            logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
+            Logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.TOGGLE_PET_FAB) { peerUserId ->
@@ -129,7 +131,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 )
             }
 
-            logger.info("[Context Menu] Toggle pet fab clicked on $peerUserId; enabled=$petFabEnabled")
+            Logger.info("[Context Menu] Toggle pet fab clicked on $peerUserId; enabled=$petFabEnabled")
         }
 
         add(ChatContextMenuButton.CREATE_PET) { peerUserId ->
@@ -156,10 +158,10 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
                     fragment.showDialog(
                         AlertDialog.Builder(fragment.context)
-                            .setTitle(translator.translate(TranslationKey.Dialog.CreatePet.TITLE))
-                            .setMessage(translator.translate(TranslationKey.Dialog.CreatePet.MESSAGE))
+                            .setTitle(Translator.translate(TranslationKey.Dialog.CreatePet.TITLE))
+                            .setMessage(Translator.translate(TranslationKey.Dialog.CreatePet.MESSAGE))
                             .setPositiveButton(
-                                translator.translate(TranslationKey.Dialog.CreatePet.CONFIRM)
+                                Translator.translate(TranslationKey.Dialog.CreatePet.CONFIRM)
                             ) { _, _ ->
                                 streaksController.setServiceMessagesEnabled(
                                     accountId,
@@ -169,7 +171,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                                 serviceMessagesController.sendPetInvite(accountId, peerUserId)
                             }
                             .setNegativeButton(
-                                translator.translate(TranslationKey.Dialog.CreatePet.CANCEL)
+                                Translator.translate(TranslationKey.Dialog.CreatePet.CANCEL)
                             ) { _, _ ->
                                 accountTaskRunnerRegistry.enqueue(
                                     accountId,
@@ -197,7 +199,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 }
             }
 
-            logger.info("[Context Menu] Create pet clicked on $peerUserId")
+            Logger.info("[Context Menu] Create pet clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.GO_TO_STREAK_START) { peerUserId ->
@@ -214,7 +216,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
             if (chatActivity == null) {
                 bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
-                logger.info("[Context Menu] Go-to-streak-start failed: no chat context for $peerUserId")
+                Logger.info("[Context Menu] Go-to-streak-start failed: no chat context for $peerUserId")
                 return@add
             }
 
@@ -245,7 +247,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                                     )
                                     return@runOnUIThread
                                 } catch (e: Throwable) {
-                                    logger.info(
+                                    Logger.info(
                                         "[Context Menu] Go-to-streak-start scroll failed for $peerUserId: ${e.message}"
                                     )
                                 }
@@ -256,7 +258,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                                 TranslationKey.Status.Info.STREAK_START_MESSAGE_NOT_FOUND
                             )
                         } catch (e: Throwable) {
-                            logger.fatal(
+                            Logger.fatal(
                                 "Go-to-streak-start failed for peer $peerUserId",
                                 e
                             )
@@ -266,12 +268,12 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                         }
                     }
                 } catch (e: Throwable) {
-                    logger.fatal("Go-to-streak-start lookup failed for peer $peerUserId", e)
+                    Logger.fatal("Go-to-streak-start lookup failed for peer $peerUserId", e)
                     bulletinHelper.showTranslated(TranslationKey.Status.Error.STREAK_JUMP_TO_START_FAILED)
                 }
             }
 
-            logger.info("[Context Menu] Go-to-streak-start clicked on $peerUserId")
+            Logger.info("[Context Menu] Go-to-streak-start clicked on $peerUserId")
         }
 
         add(ChatContextMenuButton.TOGGLE_SERVICE_MESSAGES) { peerUserId ->
@@ -291,7 +293,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 "msg_reactions"
             )
 
-            logger.info("[Context Menu] Toggle service messages clicked on $peerUserId; enabled=$enabled")
+            Logger.info("[Context Menu] Toggle service messages clicked on $peerUserId; enabled=$enabled")
         }
 
         add(ChatContextMenuButton.REVIVE) { peerUserId ->
@@ -373,7 +375,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 )
             }
 
-            logger.info("[Context Menu] Debug-create clicked on ${peerUser.id}")
+            Logger.info("[Context Menu] Debug-create clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_UPGRADE) { peerUserId ->
@@ -413,7 +415,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 )
             }
 
-            logger.info("[Context Menu] Debug-upgrade clicked on ${peerUser.id}")
+            Logger.info("[Context Menu] Debug-upgrade clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_FREEZE) { peerUserId ->
@@ -434,7 +436,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 )
             }
 
-            logger.info("[Context Menu] Debug-freeze clicked on ${peerUser.id}")
+            Logger.info("[Context Menu] Debug-freeze clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_KILL) { peerUserId ->
@@ -455,7 +457,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 )
             }
 
-            logger.info("[Context Menu] Debug-kill clicked on ${peerUser.id}")
+            Logger.info("[Context Menu] Debug-kill clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_DELETE) { peerUserId ->
@@ -480,7 +482,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 )
             }
 
-            logger.info("[Context Menu] Debug-delete clicked on ${peerUser.id}")
+            Logger.info("[Context Menu] Debug-delete clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_DELETE_PET) { peerUserId ->
@@ -506,7 +508,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 )
             }
 
-            logger.info("[Context Menu] Debug-delete-pet clicked on ${peerUser.id}")
+            Logger.info("[Context Menu] Debug-delete-pet clicked on ${peerUser.id}")
         }
 
         add(ChatContextMenuButton.DEBUG_CRASH) { _ ->

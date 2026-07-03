@@ -36,6 +36,7 @@ import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.util.Logger
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -335,7 +336,7 @@ class StreakPopupController(
                     POPUP_AUTO_DISMISS_MS
                 )
             } catch (e: Throwable) {
-                Plugin.getInstance().logger.fatal("Failed to show streak popup", e)
+                Logger.fatal("Failed to show streak popup", e)
                 onDismiss()
             }
         }

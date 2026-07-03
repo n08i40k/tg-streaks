@@ -2,9 +2,14 @@ package ru.n08i40k.streaks.util
 
 import ru.n08i40k.streaks.TranslationResolver
 
-class Translator(private val translationResolver: TranslationResolver) {
-    fun translate(key: String): String =
-        translationResolver.apply(key) ?: key
+object Translator {
+    @Volatile private var resolver: TranslationResolver? = null
+
+    fun setResolver(resolver: TranslationResolver?) {
+        this.resolver = resolver
+    }
+
+    fun translate(key: String): String = resolver?.apply(key) ?: key
 
     fun translate(key: String, replacements: Map<String, String>): String {
         var value = translate(key)

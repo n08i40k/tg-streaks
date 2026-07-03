@@ -15,6 +15,7 @@ import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.exception.InvalidPeerException
+import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
 import java.time.LocalDate
 
@@ -87,7 +88,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 }
 
                 is RequestOutcome.RateLimit -> {
-                    Plugin.getInstance().logger.info(
+                    Logger.info(
                         "History request for $accountId:$peerUserId is rate-limited " +
                                 "(attempt $attempt), retrying in ${result.retryDelay / 1000}s"
                     )
@@ -99,7 +100,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 }
 
                 is RequestOutcome.TransientFailure -> {
-                    Plugin.getInstance().logger.info(
+                    Logger.info(
                         "History request failed temporarily with ${result.error.fmt()} for " +
                                 "$accountId:$peerUserId (attempt $attempt), retrying in ${result.retryDelay / 1000}s"
                     )
@@ -111,7 +112,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 }
 
                 is RequestOutcome.TimeOut -> {
-                    Plugin.getInstance().logger.info(
+                    Logger.info(
                         "History request timed out after ${REQUEST_TIMEOUT_MS / 1000}s for " +
                                 "$accountId:$peerUserId (attempt $attempt), retrying in ${RETRY_DELAY_MS / 1000}s"
                     )
@@ -184,7 +185,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
             val oldestMessage = res.messages.lastOrNull() ?: break@reqLoop
             if (oldestMessage.date == endLocalEpoch && oldestMessage.id == offsetId) {
-                Plugin.getInstance().logger.info(
+                Logger.info(
                     "History cursor stalled for $accountId:$peerUserId on $day " +
                             "(offset_date=$endLocalEpoch, offset_id=$offsetId), stopping to avoid loop"
                 )
@@ -256,7 +257,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
             val oldestMessage = res.messages.lastOrNull() ?: break@reqLoop
             if (oldestMessage.date == endLocalEpoch && oldestMessage.id == offsetId) {
-                Plugin.getInstance().logger.info(
+                Logger.info(
                     "History ids cursor stalled for $accountId:$peerUserId on $day " +
                             "(offset_date=$endLocalEpoch, offset_id=$offsetId), stopping to avoid loop"
                 )

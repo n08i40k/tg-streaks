@@ -66,7 +66,6 @@ import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
-import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
@@ -110,12 +109,13 @@ class Plugin {
 
             VERSION = version
 
+            Logger.setReceiver(logReceiver)
+            Logger.setFatalSuppression(false)
+
+            Translator.setResolver(translationResolver)
+
             try {
-                INSTANCE = Plugin(
-                    logReceiver,
-                    translationResolver,
-                    ResourcesProvider(resourcesRootPath),
-                )
+                INSTANCE = Plugin(ResourcesProvider(resourcesRootPath))
             } catch (e: Throwable) {
                 logReceiver.onReceiveValue("Failed to create plugin instance")
                 logReceiver.onReceiveValue(e.toString())
@@ -126,7 +126,7 @@ class Plugin {
             try {
                 INSTANCE!!.onInject()
             } catch (e: Throwable) {
-                INSTANCE!!.logger.fatal("Failed to inject plugin", e)
+                Logger.fatal("Failed to inject plugin", e)
             }
         }
 
@@ -200,8 +200,10 @@ class Plugin {
                 try {
                     INSTANCE?.onEject()
                     INSTANCE = null
+                    Logger.setReceiver(null)
+                    Translator.setResolver(null)
                 } catch (e: Throwable) {
-                    INSTANCE?.logger?.fatal("Failed to eject plugin", e, true)
+                    Logger.fatal("Failed to eject plugin", e, true)
                 }
             }
         }
@@ -209,7 +211,7 @@ class Plugin {
 
     val backgroundScope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, exception ->
-            logger.fatal("An unknown error occurred in background coroutine scope", exception)
+            Logger.fatal("An unknown error occurred in background coroutine scope", exception)
         })
 
     // database
@@ -219,8 +221,6 @@ class Plugin {
     val accountTaskRunnerRegistry: AccountTaskRunnerRegistry
 
     // helpers
-    val logger: Logger
-    val translator: Translator
     val resourcesProvider: ResourcesProvider
     val bulletinHelper: BulletinHelper
     val rebuildNotificationHelper: RebuildNotificationHelper
@@ -247,23 +247,15 @@ class Plugin {
     val streakPetLevelRegistry: StreakPetLevelRegistry = StreakPetLevelRegistry()
     private val isAutoBackupLoopStarted = AtomicBoolean(false)
 
-    constructor(
-        logReceiver: LogReceiver,
-        translationResolver: TranslationResolver,
-        resourcesProvider: ResourcesProvider,
-    ) {
-        // core utils
-        this.logger = Logger(logReceiver)
-        this.translator = Translator(translationResolver)
+    constructor(resourcesProvider: ResourcesProvider) {
         this.resourcesProvider = resourcesProvider
-        this.bulletinHelper = BulletinHelper(this.translator)
-        this.rebuildNotificationHelper = RebuildNotificationHelper(this.translator)
-        this.alertNotificationHelper = StreakAlertNotificationHelper(this.translator)
+        this.bulletinHelper = BulletinHelper()
+        this.rebuildNotificationHelper = RebuildNotificationHelper()
+        this.alertNotificationHelper = StreakAlertNotificationHelper()
 
         // background work
-        RuntimeGuard.setLogger(this.logger)
-        this.taskQueue = TaskQueue(this.logger)
-        this.accountTaskRunnerRegistry = AccountTaskRunnerRegistry(this.logger)
+        this.taskQueue = TaskQueue()
+        this.accountTaskRunnerRegistry = AccountTaskRunnerRegistry()
 
         // database
         this.db = Room.databaseBuilder(
@@ -275,18 +267,16 @@ class Plugin {
             .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
 
-        this.databaseBackupManager = DatabaseBackupManager(this.db, this.logger::info)
+        this.databaseBackupManager = DatabaseBackupManager(this.db, Logger::info)
 
         // controllers
         this.streaksController = StreaksController(
             this.db,
-            this.logger,
             this.resourcesProvider,
             this.alertNotificationHelper,
             this.serviceMessagesController
         )
-        this.streakPetsController =
-            StreakPetsController(this.logger, this.db, this.streaksController)
+        this.streakPetsController = StreakPetsController(this.db, this.streaksController)
         this.petUiManager = StreakPetUiManager(this)
     }
 
@@ -345,7 +335,7 @@ class Plugin {
                 } catch (_: CancellationException) {
                     // Suppress error
                 } catch (e: Throwable) {
-                    logger.fatal("Automatic database backup loop failed", e)
+                    Logger.fatal("Automatic database backup loop failed", e)
                     isAutoBackupLoopStarted.set(false)
                 }
             }
@@ -356,7 +346,7 @@ class Plugin {
         PluginBadges.add()
 
         BadgesCompat.takeException()?.let {
-            logger.fatal("Failed to init BadgesCompat", it)
+            Logger.fatal("Failed to init BadgesCompat", it)
             return
         }
 
@@ -365,24 +355,24 @@ class Plugin {
         ChatContextMenuActions(this).register()
         SettingsMenuActions(this).register()
 
-        logger.info("Injected!")
+        Logger.info("Injected!")
     }
 
     private fun onFinalizeInject() {
         try {
             hookMethods()
         } catch (e: Throwable) {
-            logger.fatal("Failed to hook methods!", e)
+            Logger.fatal("Failed to hook methods!", e)
         }
 
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
         enqueueAutoBackupLoopStart("plugin inject")
 
-        logger.info("Inject finalized!")
+        Logger.info("Inject finalized!")
     }
 
     private fun onEject() {
-        logger.setFatalSuppression(true)
+        Logger.setFatalSuppression(true)
 
         PluginBadges.remove()
 
@@ -401,13 +391,13 @@ class Plugin {
             hookBundles.forEach { it.eject() }
             hookBundles.clear()
         } catch (e: Throwable) {
-            logger.fatal("Failed to unhook methods!", e)
+            Logger.fatal("Failed to unhook methods!", e)
         }
 
         try {
             streakEmojiRegistry.restoreAll()
         } catch (e: Throwable) {
-            logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
+            Logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
         }
 
         streaksController.restorePatchedUsers()
@@ -418,10 +408,10 @@ class Plugin {
         try {
             db.close()
         } catch (e: Throwable) {
-            logger.fatal("Failed to close database on eject", e)
+            Logger.fatal("Failed to close database on eject", e)
         }
 
-        logger.info("Ejected!")
+        Logger.info("Ejected!")
     }
 
     suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
@@ -498,7 +488,7 @@ class Plugin {
                         try {
                             callback(param)
                         } catch (e: Throwable) {
-                            logger.fatal(
+                            Logger.fatal(
                                 "An error occurred in $method before-call hook!",
                                 e
                             )
@@ -516,7 +506,7 @@ class Plugin {
                         try {
                             callback(param)
                         } catch (e: Throwable) {
-                            logger.fatal(
+                            Logger.fatal(
                                 "An error occurred in $method after-call hook!",
                                 e
                             )

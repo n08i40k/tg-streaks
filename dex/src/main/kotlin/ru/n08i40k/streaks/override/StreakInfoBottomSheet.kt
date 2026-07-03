@@ -23,10 +23,10 @@ import org.telegram.ui.Components.Premium.GLIcon.GLIconTextureView
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.Components.Premium.StarParticlesView
 import org.telegram.ui.PremiumPreviewFragment
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.util.AnimatedEmojiView
+import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.setFieldValue
@@ -79,7 +79,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
 
     private val streakViewData: StreakViewData
 
-    private fun t(key: String): String = Plugin.getInstance().translator.translate(key)
+    private fun t(key: String): String = Translator.translate(key)
 
     @Suppress("SameParameterValue")
     private fun tf(key: String, vararg replacements: Pair<String, Any?>): String {

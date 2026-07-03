@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.time.Instant
 
-class TaskQueue(private val logger: Logger) {
+class TaskQueue {
     data class WorkerTask(
         val name: String,
         val callback: suspend () -> Unit,
@@ -28,19 +28,19 @@ class TaskQueue(private val logger: Logger) {
                     try {
                         RuntimeGuard.awaitAppForeground("task '${task.name}'")
 
-                        logger.info("[TaskQueue] Processing task '${task.name}'...")
+                        Logger.info("[TaskQueue] Processing task '${task.name}'...")
                         val start = Instant.now().toEpochMilli()
 
                         task.callback.invoke()
 
                         val end = Instant.now().toEpochMilli()
-                        logger.info("[TaskQueue] Task '${task.name}' was finished (took ${end - start} ms.)")
+                        Logger.info("[TaskQueue] Task '${task.name}' was finished (took ${end - start} ms.)")
                     } catch (_: CancellationException) {
                         // Suppress
                         stopWorker()
                         break
                     } catch (e: Throwable) {
-                        logger.fatal("[TaskQueue] Task '${task.name}' thrown an exception", e)
+                        Logger.fatal("[TaskQueue] Task '${task.name}' thrown an exception", e)
                         stopWorker()
                         break
                     }

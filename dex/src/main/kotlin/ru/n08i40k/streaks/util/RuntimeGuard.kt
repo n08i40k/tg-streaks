@@ -5,7 +5,6 @@ import org.telegram.messenger.ApplicationLoader
 import org.telegram.tgnet.ConnectionsManager
 
 object RuntimeGuard {
-    private lateinit var logger: Logger
     private const val POLL_DELAY_MS = 1_000L
 
     fun isAppForeground(): Boolean =
@@ -22,7 +21,7 @@ object RuntimeGuard {
 
         while (!isAppForeground()) {
             if (!loggedWait) {
-                logger.info("[RuntimeGuard] Paused $reason until the app returns to foreground")
+                Logger.info("[RuntimeGuard] Paused $reason until the app returns to foreground")
                 loggedWait = true
             }
 
@@ -30,7 +29,7 @@ object RuntimeGuard {
         }
 
         if (loggedWait)
-            logger.info("[RuntimeGuard] Resumed $reason after the app returned to foreground")
+            Logger.info("[RuntimeGuard] Resumed $reason after the app returned to foreground")
     }
 
     suspend fun awaitAppForegroundAndConnection(
@@ -47,14 +46,14 @@ object RuntimeGuard {
             val state = ConnectionsManager.getInstance(accountId).connectionState
             if (isTelegramConnectionStable(accountId)) {
                 if (loggedWait) {
-                    logger.info("[RuntimeGuard] Resumed $reason after Telegram connection recovered")
+                    Logger.info("[RuntimeGuard] Resumed $reason after Telegram connection recovered")
                 }
 
                 return
             }
 
             if (!loggedWait) {
-                logger.info(
+                Logger.info(
                     "[RuntimeGuard] Paused $reason until Telegram connection becomes stable " +
                             "(account=$accountId, state=${connectionStateLabel(state)})"
                 )
@@ -93,7 +92,4 @@ object RuntimeGuard {
             else -> "unknown($state)"
         }
 
-    fun setLogger(logger: Logger) {
-        this.logger = logger
-    }
 }

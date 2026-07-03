@@ -6,7 +6,6 @@ import org.telegram.messenger.MessagesStorage
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLRPC
 import org.telegram.tgnet.Vector
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.extension.RequestOutcome
 import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.sendRequestBlocking
@@ -16,8 +15,6 @@ suspend fun fetchPeerUsers(
     accountId: Int,
     peerUserIds: ArrayList<Long>,
 ): Map<Long, TLRPC.User>? {
-    val logger = Plugin.getInstance().logger
-
     val connectionsManager = ConnectionsManager.getInstance(accountId)
     val messagesController = MessagesStorage.getInstance(accountId)
 
@@ -49,19 +46,19 @@ suspend fun fetchPeerUsers(
         )
 
         is RequestOutcome.RateLimit -> {
-            logger.info("Users request for $accountId is rate-limited")
+            Logger.info("Users request for $accountId is rate-limited")
             null
         }
 
         is RequestOutcome.TransientFailure -> {
-            logger.info(
+            Logger.info(
                 "Users request for $accountId failed temporarily with ${result.error.fmt()}, skipping prune for now"
             )
             null
         }
 
         is RequestOutcome.TimeOut -> {
-            logger.info("Users request timed out for $accountId")
+            Logger.info("Users request timed out for $accountId")
             null
         }
     }

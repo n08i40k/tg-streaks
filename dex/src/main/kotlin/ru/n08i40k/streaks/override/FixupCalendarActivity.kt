@@ -27,6 +27,7 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.data.StreakActivityStatus
+import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.setFieldValue
 import java.time.LocalDate
@@ -568,7 +569,7 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private fun t(key: String): String =
-        Plugin.getInstance().translator.translate(key)
+        Translator.translate(key)
 
     private inner class DayMessagesSparseArray(
         private val monthKey: Int,

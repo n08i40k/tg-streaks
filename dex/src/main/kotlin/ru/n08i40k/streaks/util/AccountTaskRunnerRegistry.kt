@@ -7,9 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import java.util.concurrent.ConcurrentHashMap
 
-class AccountTaskRunnerRegistry(
-    private val logger: Logger,
-) {
+class AccountTaskRunnerRegistry {
     private data class AccountTaskRunner(
         val scope: CoroutineScope,
         val taskQueue: TaskQueue,
@@ -43,12 +41,12 @@ class AccountTaskRunnerRegistry(
     private fun createRunner(accountId: Int): AccountTaskRunner {
         val scope =
             CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, exception ->
-                logger.fatal(
+                Logger.fatal(
                     "An unknown error occurred in background coroutine scope for account $accountId",
                     exception
                 )
             })
-        val taskQueue = TaskQueue(logger)
+        val taskQueue = TaskQueue()
         taskQueue.startWorker(scope)
 
         return AccountTaskRunner(scope, taskQueue)

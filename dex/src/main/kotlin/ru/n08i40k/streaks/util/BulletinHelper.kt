@@ -7,7 +7,7 @@ import org.telegram.messenger.ApplicationLoader
 import org.telegram.ui.Components.BulletinFactory
 import org.telegram.ui.LaunchActivity
 
-class BulletinHelper(private val translator: Translator) {
+class BulletinHelper {
     companion object {
         fun show(icon: String?, message: String) {
             AndroidUtilities.runOnUIThread {
@@ -43,8 +43,8 @@ class BulletinHelper(private val translator: Translator) {
         BulletinHelper.show(icon, message)
 
     fun showTranslated(key: String, icon: String? = null) =
-        show(icon, translator.translate(key))
+        show(icon, Translator.translate(key))
 
     fun showTranslated(key: String, replacements: Map<String, String>, icon: String? = null) =
-        show(icon, translator.translate(key, replacements))
+        show(icon, Translator.translate(key, replacements))
 }

@@ -1,12 +1,11 @@
 package ru.n08i40k.streaks.override
 
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.constants.TrustedSources
+import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
-import java.util.concurrent.ConcurrentHashMap
 
 object PluginBadges {
     val TRUSTED_IDS = mapOf(
@@ -54,12 +53,11 @@ object PluginBadges {
             }
             .apply { isAccessible = true }
 
-        val translator = Plugin.getInstance().translator
         // Используется DEVELOPER, ибо у дефолтного есть кнопка "Подробнее", которая может ввести в заблуждение
         val profileStatus = ProfileStatus.enumConstants!![1]
 
         TRUSTED_IDS.forEach { (id, text) ->
-            val badge = BadgeDTO_ctor.newInstance(Emoji.DEFAULT_BADGE, translator.translate(text))
+            val badge = BadgeDTO_ctor.newInstance(Emoji.DEFAULT_BADGE, Translator.translate(text))
 
             val info = if (isClientVersionBelow("12.2.10"))
                 BadgeInfo_ctor.newInstance(badge, profileStatus)

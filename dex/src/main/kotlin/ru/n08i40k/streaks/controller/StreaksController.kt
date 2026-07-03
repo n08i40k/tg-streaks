@@ -51,7 +51,6 @@ import kotlin.comparisons.compareBy
 @OptIn(DelicateCoroutinesApi::class)
 class StreaksController(
     private val db: PluginDatabase,
-    private val logger: Logger,
     resourcesProvider: ResourcesProvider,
     private val alertNotificationHelper: StreakAlertNotificationHelper,
     private val serviceMessagesController: ServiceMessagesController,
@@ -177,7 +176,7 @@ class StreaksController(
             manualReviveDao.deleteByRelation(ownerUserId, peerUserId)
         }
 
-        logger.info("Removed streak for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
+        Logger.info("Removed streak for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
 
         restoreUser(accountId, peerUserId)
     }
@@ -483,7 +482,7 @@ class StreaksController(
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
     ) {
         if (!ignoreLock && !rebuildLock.compareAndSet(false, true)) {
-            logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
+            Logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
             return
         }
 
@@ -502,7 +501,7 @@ class StreaksController(
                 val checkedDay = currentDay
                 val action =
                     fetchStreakActionForDay(accountId, peerUser, checkedDay, effectiveRevives, false)
-                logger.info("[StreakRebuild] $action at ${currentDay.fmt()} for $accountId:$peerUserId")
+                Logger.info("[StreakRebuild] $action at ${currentDay.fmt()} for $accountId:$peerUserId")
 
                 val progress = RebuildProgress(
                     peerUser = peerUser,
@@ -528,7 +527,7 @@ class StreaksController(
                                     true
                                 ) == Action.REVIVE
                             ) {
-                                logger.info("[StreakRebuild] First-day-revive at ${currentDay.fmt()} for $accountId:$peerUserId")
+                                Logger.info("[StreakRebuild] First-day-revive at ${currentDay.fmt()} for $accountId:$peerUserId")
                                 effectiveRevives.add(checkedDay)
                                 currentDay = checkedDay.minusDays(2)
                                 continue
@@ -547,7 +546,7 @@ class StreaksController(
                                 true
                             )
 
-                            logger.info(
+                            Logger.info(
                                 "[StreakRebuild] Checking if next day was revive. $action at ${
                                     currentDay.next().fmt()
                                 } for $accountId:$peerUserId"
@@ -582,7 +581,7 @@ class StreaksController(
             val rebuildTo = if (startDayIsFrozen) startDay.prev() else startDay
 
             if (sendServiceMessages)
-                logger.info("Rebuild service messages policy is unexpectedly enabled")
+                Logger.info("Rebuild service messages policy is unexpectedly enabled")
 
             db.withTransaction {
                 dao.deleteByRelation(ownerUserId, peerUserId)
@@ -608,7 +607,7 @@ class StreaksController(
         } catch (_: InvalidPeerException) {
             removeInvalidPeerStreak(accountId, peerUser.id)
         } catch (e: Throwable) {
-            logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
+            Logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         } finally {
             if (!ignoreLock)
                 rebuildLock.set(false)
@@ -621,7 +620,7 @@ class StreaksController(
         onProgressUpdate: (index: Int, total: Int, peerUser: TLRPC.User, progress: RebuildProgress) -> Unit
     ): RebuildAllResult {
         if (!rebuildLock.compareAndSet(false, true)) {
-            logger.info("Unable to rebuild all peers for $accountId because another rebuild is already running")
+            Logger.info("Unable to rebuild all peers for $accountId because another rebuild is already running")
             return RebuildAllResult(0, emptyList())
         }
 
