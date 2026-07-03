@@ -1,9 +1,3 @@
-@file:Suppress(
-    "MISSING_DEPENDENCY_SUPERCLASS",
-    "MISSING_DEPENDENCY_SUPERCLASS_WARNING",
-    "PLATFORM_CLASS_MAPPED_TO_KOTLIN",
-)
-
 package ru.n08i40k.streaks.override
 
 import android.content.Context
@@ -268,7 +262,5 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     }
 
     // idk what is this
-    @Suppress("EmptyMethod", "unused")
-    override fun setLastVisible(p0: Boolean) {
-    }
+    override fun setLastVisible(p0: Boolean) = Unit
 }

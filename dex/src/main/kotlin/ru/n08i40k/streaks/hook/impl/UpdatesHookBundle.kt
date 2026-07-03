@@ -1,9 +1,3 @@
-@file:Suppress(
-    "MISSING_DEPENDENCY_SUPERCLASS",
-    "MISSING_DEPENDENCY_SUPERCLASS_WARNING",
-    "PLATFORM_CLASS_MAPPED_TO_KOTLIN",
-)
-
 package ru.n08i40k.streaks.hook.impl
 
 import org.telegram.messenger.AndroidUtilities
@@ -47,7 +41,6 @@ class UpdatesHookBundle : HookBundle() {
             }
         }
 
-        @Suppress("IMPOSSIBLE_IS_CHECK_WARNING", "KotlinConstantConditions")
         return when (updates) {
             is TLRPC.TL_updateShortMessage -> {
                 listOf(

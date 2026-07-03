@@ -1,5 +1,3 @@
-@file:Suppress("MISSING_DEPENDENCY_SUPERCLASS_WARNING")
-
 package ru.n08i40k.streaks.util
 
 import org.telegram.messenger.MessagesStorage
@@ -26,7 +24,7 @@ suspend fun fetchPeerUsers(
                     if (it <= 0)
                         return@mapNotNull null
 
-                    (TLRPC.TL_inputUser() as TLRPC.InputUser).apply {
+                    TLRPC.TL_inputUser().apply {
                         user_id = it
                         access_hash = messagesController.getUserSync(it)?.access_hash
                             ?: return@mapNotNull null

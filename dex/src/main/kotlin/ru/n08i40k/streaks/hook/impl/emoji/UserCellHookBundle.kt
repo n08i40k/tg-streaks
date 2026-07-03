@@ -1,9 +1,3 @@
-@file:Suppress(
-    "MISSING_DEPENDENCY_SUPERCLASS",
-    "MISSING_DEPENDENCY_SUPERCLASS_WARNING",
-    "PLATFORM_CLASS_MAPPED_TO_KOTLIN",
-)
-
 package ru.n08i40k.streaks.hook.impl.emoji
 
 import org.telegram.tgnet.TLRPC
@@ -30,9 +24,8 @@ class UserCellHookBundle : HookBundle() {
             val thisObject = param.thisObject as UserCell
             val thisClass = UserCell::class.java
 
-            val currentUser =
-                getFieldValue<Object>(thisClass, thisObject, "currentObject") as? TLRPC.User
-                    ?: return@after
+            val currentUser = getFieldValue<TLRPC.User>(thisClass, thisObject, "currentObject")
+                ?: return@after
 
             val nameTextView =
                 getFieldValue<SimpleTextView>(thisClass, thisObject, "nameTextView")!!

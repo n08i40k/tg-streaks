@@ -1,5 +1,3 @@
-@file:Suppress("MISSING_DEPENDENCY_SUPERCLASS")
-
 package ru.n08i40k.streaks.chat_history_fetcher
 
 import org.telegram.messenger.MessagesController

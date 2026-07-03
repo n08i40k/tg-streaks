@@ -1,9 +1,3 @@
-@file:Suppress(
-    "MISSING_DEPENDENCY_SUPERCLASS",
-    "MISSING_DEPENDENCY_SUPERCLASS_WARNING",
-    "PLATFORM_CLASS_MAPPED_TO_KOTLIN",
-)
-
 package ru.n08i40k.streaks.override
 
 import android.graphics.Canvas
@@ -42,8 +36,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             val pseudoOriginal = SwapAnimatedEmojiDrawable(null, 0)
 
             cloneFields(
-                drawable as Object,
-                pseudoOriginal as Object,
+                drawable,
+                pseudoOriginal,
                 SwapAnimatedEmojiDrawable::class.java
             )
 
@@ -373,7 +367,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         null,
         0
     ) {
-        cloneFields(base as Object, this as Object, SwapAnimatedEmojiDrawable::class.java)
+        cloneFields(base, this, SwapAnimatedEmojiDrawable::class.java)
         this.canDrawBadge = canDrawBadge
         this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 

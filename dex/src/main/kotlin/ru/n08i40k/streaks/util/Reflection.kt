@@ -1,18 +1,16 @@
-@file:Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN", "unused")
-
 package ru.n08i40k.streaks.util
 
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 
 fun cloneFields(
-    src: Object,
-    dest: Object,
+    src: Any,
+    dest: Any,
     klass: Class<*>
 ) {
     var c: Class<*>? = klass
 
-    while (c != null && c != Object::class.java) {
+    while (c != null && c != Any::class.java) {
         for (f in c.declaredFields) {
             if (Modifier.isStatic(f.modifiers)) continue
 

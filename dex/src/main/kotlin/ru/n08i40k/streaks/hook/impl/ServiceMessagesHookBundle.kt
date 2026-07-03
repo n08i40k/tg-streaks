@@ -1,9 +1,3 @@
-@file:Suppress(
-    "MISSING_DEPENDENCY_SUPERCLASS",
-    "MISSING_DEPENDENCY_SUPERCLASS_WARNING",
-    "PLATFORM_CLASS_MAPPED_TO_KOTLIN",
-)
-
 package ru.n08i40k.streaks.hook.impl
 
 import android.graphics.Bitmap
@@ -32,9 +26,7 @@ class ServiceMessagesHookBundle : HookBundle() {
         before: InstallHook,
         after: InstallHook
     ) {
-        // каким блять хуем я не могу кастануть child в parent?
         // это кстати хук MessageObject для полной замены вида сервисных сообщений
-        @Suppress("CAST_NEVER_SUCCEEDS")
         before(
             MessageObject::class.java.getDeclaredConstructor(
                 Int::class.java,
@@ -66,11 +58,11 @@ class ServiceMessagesHookBundle : HookBundle() {
                 if (message.message != ServiceMessage.CREATE_TEXT)
                     return@streakCreate null
 
-                TLRPC.TL_messageActionCustomAction().apply {
-                    val messageText =
-                        Translator.translate(TranslationKey.Service.Streak.STARTED_TEXT)
-                    (this as TLRPC.MessageAction).message = messageText
-                } as TLRPC.MessageAction
+                TLRPC.TL_messageActionCustomAction()
+                    .apply {
+                        this.message =
+                            Translator.translate(TranslationKey.Service.Streak.STARTED_TEXT)
+                    }
             }
 
             val tryStreakUpgrade = streakUpgrade@{
@@ -82,28 +74,28 @@ class ServiceMessagesHookBundle : HookBundle() {
                     ?.takeIf { it > 0 }
                     ?: return@streakUpgrade null
 
-                TLRPC.TL_messageActionCustomAction().apply {
-                    val messageText = Translator.translate(
-                        TranslationKey.Service.Streak.LEVEL_UP_TEXT,
-                        mapOf("days" to days.toString())
-                    )
-
-                    (this as TLRPC.MessageAction).message = messageText
-                } as TLRPC.MessageAction
+                TLRPC.TL_messageActionCustomAction()
+                    .apply {
+                        this.message = Translator.translate(
+                            TranslationKey.Service.Streak.LEVEL_UP_TEXT,
+                            mapOf("days" to days.toString())
+                        )
+                    }
             }
 
             val tryStreakDeath = streakDeath@{
                 if (message.message != ServiceMessage.DEATH_TEXT)
                     return@streakDeath null
 
-                TLRPC.TL_messageActionPrizeStars().apply {
-                    boost_peer = message.peer_id
-                    flags = 0
-                    giveaway_msg_id = 0
-                    stars = 0
-                    transaction_id = ServiceMessage.DEATH_TEXT
-                    unclaimed = false
-                } as TLRPC.MessageAction
+                TLRPC.TL_messageActionPrizeStars()
+                    .apply {
+                        boost_peer = message.peer_id
+                        flags = 0
+                        giveaway_msg_id = 0
+                        stars = 0
+                        transaction_id = ServiceMessage.DEATH_TEXT
+                        unclaimed = false
+                    }
             }
 
             val tryStreakRestore = streakRestore@{
@@ -113,30 +105,28 @@ class ServiceMessagesHookBundle : HookBundle() {
                 val peerId = message.peer_id?.user_id
                 val fromId = message.from_id?.user_id
 
-                val byPeer =
-                    peerId != null && fromId != null && peerId > 0 && fromId == peerId
+                val byPeer = peerId != null
+                        && fromId != null
+                        && peerId > 0
+                        && fromId == peerId
 
-                val messageText =
-                    if (!byPeer) {
-                        Translator.translate(TranslationKey.Service.Streak.RESTORED_SELF)
-                    } else {
-                        val peerName =
-                            peerId
-                                .takeIf { it > 0 }
-                                ?.let { MessagesController.getInstance(currentAccount).getUser(it) }
-                                ?.let { UserObject.getUserName(it) }
-                                ?.takeIf { it.isNotBlank() }
-                                ?: "Unknown"
+                val messageText = if (byPeer) {
+                    val peerName = peerId
+                        .let { MessagesController.getInstance(currentAccount).getUser(it) }
+                        ?.let { UserObject.getUserName(it) }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Unknown"
 
-                        Translator.translate(
-                            TranslationKey.Service.Streak.RESTORED_PEER,
-                            mapOf("name" to peerName)
-                        )
-                    }
+                    Translator.translate(
+                        TranslationKey.Service.Streak.RESTORED_PEER,
+                        mapOf("name" to peerName)
+                    )
+                } else {
+                    Translator.translate(TranslationKey.Service.Streak.RESTORED_SELF)
+                }
 
-                TLRPC.TL_messageActionCustomAction().apply {
-                    (this as TLRPC.MessageAction).message = messageText
-                } as TLRPC.MessageAction
+                TLRPC.TL_messageActionCustomAction()
+                    .apply { this.message = messageText }
             }
 
             val tryPetInvite = petInvite@{
@@ -144,20 +134,21 @@ class ServiceMessagesHookBundle : HookBundle() {
                     return@petInvite null
 
                 if (message.out) {
-                    TLRPC.TL_messageActionCustomAction().apply {
-                        val messageText =
-                            Translator.translate(TranslationKey.Service.Pet.Invite.SENT_SELF)
-                        (this as TLRPC.MessageAction).message = messageText
-                    } as TLRPC.MessageAction
+                    TLRPC.TL_messageActionCustomAction()
+                        .apply {
+                            this.message =
+                                Translator.translate(TranslationKey.Service.Pet.Invite.SENT_SELF)
+                        }
                 } else {
-                    TLRPC.TL_messageActionPrizeStars().apply {
-                        boost_peer = message.peer_id
-                        flags = 0
-                        giveaway_msg_id = 0
-                        stars = 0
-                        transaction_id = ServiceMessage.PET_INVITE_TEXT
-                        unclaimed = false
-                    } as TLRPC.MessageAction
+                    TLRPC.TL_messageActionPrizeStars()
+                        .apply {
+                            boost_peer = message.peer_id
+                            flags = 0
+                            giveaway_msg_id = 0
+                            stars = 0
+                            transaction_id = ServiceMessage.PET_INVITE_TEXT
+                            unclaimed = false
+                        }
                 }
             }
 
@@ -168,30 +159,28 @@ class ServiceMessagesHookBundle : HookBundle() {
                 val peerId = message.peer_id?.user_id
                 val fromId = message.from_id?.user_id
 
-                val byPeer =
-                    peerId != null && fromId != null && peerId > 0 && fromId == peerId
+                val byPeer = peerId != null
+                        && fromId != null
+                        && peerId > 0
+                        && fromId == peerId
 
-                val messageText =
-                    if (!byPeer) {
-                        Translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_SELF)
-                    } else {
-                        val peerName =
-                            peerId
-                                .takeIf { it > 0 }
-                                ?.let { MessagesController.getInstance(currentAccount).getUser(it) }
-                                ?.let { UserObject.getUserName(it) }
-                                ?.takeIf { it.isNotBlank() }
-                                ?: "Unknown"
+                val messageText = if (byPeer) {
+                    val peerName = peerId
+                        .let { MessagesController.getInstance(currentAccount).getUser(it) }
+                        ?.let { UserObject.getUserName(it) }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Unknown"
 
-                        Translator.translate(
-                            TranslationKey.Service.Pet.Invite.ACCEPTED_PEER,
-                            mapOf("name" to peerName)
-                        )
-                    }
+                    Translator.translate(
+                        TranslationKey.Service.Pet.Invite.ACCEPTED_PEER,
+                        mapOf("name" to peerName)
+                    )
+                } else {
+                    Translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_SELF)
+                }
 
-                TLRPC.TL_messageActionCustomAction().apply {
-                    (this as TLRPC.MessageAction).message = messageText
-                } as TLRPC.MessageAction
+                TLRPC.TL_messageActionCustomAction()
+                    .apply { this.message = messageText }
             }
 
             val tryPetSetName = petSetName@{
@@ -204,35 +193,33 @@ class ServiceMessagesHookBundle : HookBundle() {
                 val peerId = message.peer_id?.user_id
                 val fromId = message.from_id?.user_id
 
-                val byPeer =
-                    peerId != null && fromId != null && peerId > 0 && fromId == peerId
+                val byPeer = peerId != null
+                        && fromId != null
+                        && peerId > 0
+                        && fromId == peerId
 
-                val messageText =
-                    if (!byPeer) {
-                        Translator.translate(
-                            TranslationKey.Service.Pet.Rename.SELF,
-                            mapOf("petName" to name)
+                val messageText = if (byPeer) {
+                    val peerName = peerId
+                        .let { MessagesController.getInstance(currentAccount).getUser(it) }
+                        ?.let { UserObject.getUserName(it) }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Unknown"
+
+                    Translator.translate(
+                        TranslationKey.Service.Pet.Rename.PEER, mapOf(
+                            "peerName" to peerName,
+                            "petName" to name,
                         )
-                    } else {
-                        val peerName =
-                            peerId
-                                .takeIf { it > 0 }
-                                ?.let { MessagesController.getInstance(currentAccount).getUser(it) }
-                                ?.let { UserObject.getUserName(it) }
-                                ?.takeIf { it.isNotBlank() }
-                                ?: "Unknown"
+                    )
+                } else {
+                    Translator.translate(
+                        TranslationKey.Service.Pet.Rename.SELF,
+                        mapOf("petName" to name)
+                    )
+                }
 
-                        Translator.translate(
-                            TranslationKey.Service.Pet.Rename.PEER, mapOf(
-                                "peerName" to peerName,
-                                "petName" to name,
-                            )
-                        )
-                    }
-
-                TLRPC.TL_messageActionCustomAction().apply {
-                    (this as TLRPC.MessageAction).message = messageText
-                } as TLRPC.MessageAction
+                TLRPC.TL_messageActionCustomAction()
+                    .apply { this.message = messageText }
             }
 
             val action = tryStreakCreate()
@@ -244,16 +231,16 @@ class ServiceMessagesHookBundle : HookBundle() {
                 ?: tryPetSetName()
                 ?: return@before
 
-            param.args[1] = TLRPC.TL_messageService().apply {
-                cloneFields(message as Object, this as Object, TLRPC.Message::class.java)
+            param.args[1] = TLRPC.TL_messageService()
+                .apply {
+                    cloneFields(message, this, TLRPC.Message::class.java)
 
-                (this as TLRPC.Message).action = action
-                (this as TLRPC.Message).message = null
-            }
+                    this.action = action
+                    this.message = null
+                }
         }
 
         // Текст короткого сообщения в списке чатов
-        @Suppress("CAST_NEVER_SUCCEEDS")
         after(
             MessageObject::class.java.getDeclaredMethod(
                 "updateMessageText",
@@ -268,7 +255,6 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = thisObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
 
-
             thisObject.messageText = when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT ->
                     Translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
@@ -281,7 +267,6 @@ class ServiceMessagesHookBundle : HookBundle() {
         }
 
         // Callback для кнопки у сервисного сообщения основанного на gift
-        @Suppress("CAST_NEVER_SUCCEEDS")
         before(
             ChatActionCell::class.java.getDeclaredMethod(
                 "openStarsGiftTransaction",
@@ -375,7 +360,6 @@ class ServiceMessagesHookBundle : HookBundle() {
         }
 
         // Текст у сервисных сообщений основанных на gift
-        @Suppress("CAST_NEVER_SUCCEEDS")
         before(
             ChatActionCell::class.java.getDeclaredMethod(
                 "createGiftPremiumLayouts",
@@ -400,7 +384,6 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@before
-
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
@@ -430,7 +413,6 @@ class ServiceMessagesHookBundle : HookBundle() {
         }
 
         // "Новый" ui у gift
-        @Suppress("CAST_NEVER_SUCCEEDS")
         after(
             ChatActionCell::class.java.getDeclaredMethod(
                 "isNewStyleButtonLayout",
@@ -452,7 +434,6 @@ class ServiceMessagesHookBundle : HookBundle() {
         }
 
         // Фикс размеров gift
-        @Suppress("CAST_NEVER_SUCCEEDS")
         after(
             ChatActionCell::class.java.getDeclaredMethod(
                 "getImageSize",
@@ -475,7 +456,6 @@ class ServiceMessagesHookBundle : HookBundle() {
         }
 
         // Удаление анимации у gift
-        @Suppress("CAST_NEVER_SUCCEEDS")
         after(
             ChatActionCell::class.java.getDeclaredMethod(
                 "setMessageObject",
