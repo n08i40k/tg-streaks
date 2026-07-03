@@ -6,6 +6,7 @@ kotlin = "2.2.0"
 kotlinxCoroutinesCore = "1.10.2"
 roomRuntime = "2.8.4"
 recyclerview = "1.4.0"
+lifecycle = "2.6.2"
 
 [libraries]
 aliuhook = { module = "com.aliucord:Aliuhook", version.ref = "aliuhook" }
@@ -16,3 +17,4 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomRuntime" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
+androidx-lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }

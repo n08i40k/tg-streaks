@@ -6,8 +6,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import org.gradle.api.Project
-import org.gradle.api.file.DuplicatesStrategy
-import org.gradle.api.tasks.Sync
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.coreLibraryDesugaring
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -22,7 +20,16 @@ private val MIN_SDK = 26
 private val TARGET_SDK = 36
 private val BUILD_TOOLS_VERSION = "36.1.0"
 private val PROGUARD_RULES_FILE = "proguard-rules.pro"
-private val TELEGRAM_JAR_PATH = "libs/Telegram.jar"
+// Host API compile classpath: InnerClasses-repaired copy of the raw
+// libs/Telegram.jar, produced offline by tools/FixTelegramJar.java. Regenerate
+// and re-commit it whenever the host jar is refreshed.
+private val TELEGRAM_COMPILE_JAR_PATH = "libs/Telegram-compile.jar"
+
+// Host-provided packages the plugin references at runtime and that therefore must
+// NOT be relocated (see RELOCATION_EXCLUDED_PREFIXES). This is a *runtime* concern
+// and is intentionally narrower than the compile jar, which includes almost all
+// host classes for supertype resolution (see tools/FixTelegramJar.java). Add a
+// package here only when the plugin actually references its classes directly.
 private val TELEGRAM_COMPILE_PACKAGE_PREFIXES =
     listOf(
         "org/telegram/",
@@ -273,27 +280,6 @@ kotlin {
     }
 }
 
-val unpackTelegramCompileClasspath by tasks.registering(Sync::class) {
-    val outputDir = layout.buildDirectory.dir("intermediates/telegram-compile-host-java/classes")
-
-    from(zipTree(TELEGRAM_JAR_PATH))
-    into(outputDir)
-    includeEmptyDirs = false
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    TELEGRAM_COMPILE_PACKAGE_PREFIXES.forEach { include("${it}**/*.class") }
-}
-
-val telegramCompileClasspathJar by tasks.registering(Jar::class) {
-    dependsOn(unpackTelegramCompileClasspath)
-    archiveBaseName.set("Telegram-compile")
-    archiveVersion.set("host-api-java")
-    destinationDirectory.set(layout.buildDirectory.dir("generated/compile-jars"))
-    includeEmptyDirs = false
-
-    // Keep Telegram API classes only; strip bundled runtime/platform namespaces first.
-    from(layout.buildDirectory.dir("intermediates/telegram-compile-host-java/classes"))
-}
-
 val embed by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -303,12 +289,13 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     compileOnly(libs.androidx.recyclerview)
+    compileOnly(libs.androidx.lifecycle.viewmodel)
     ksp(libs.androidx.room.compiler)
 
     compileOnly(libs.aliuhook)
     compileOnly(libs.jetbrains.kotlin.stdlib)
     compileOnly(libs.kotlinx.coroutines.core)
-    compileOnly(files(telegramCompileClasspathJar))
+    compileOnly(files(TELEGRAM_COMPILE_JAR_PATH))
     add(embed.name, libs.jetbrains.kotlin.stdlib)
     add(embed.name, libs.kotlinx.coroutines.core)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
