@@ -277,6 +277,7 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_11)
         freeCompilerArgs.add("-Xmetadata-version=2.2.0")
         freeCompilerArgs.add("-Xdont-warn-on-error-suppression")
+        optIn.add("kotlin.time.ExperimentalTime")
     }
 }
 
@@ -288,6 +289,7 @@ val embed by configurations.creating {
 dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    implementation(libs.kotlinx.datetime)
     compileOnly(libs.androidx.recyclerview)
     compileOnly(libs.androidx.lifecycle.viewmodel)
     ksp(libs.androidx.room.compiler)

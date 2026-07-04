@@ -65,7 +65,6 @@ import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
 import java.lang.reflect.Member
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 typealias LogReceiver = ValueCallback<String>
@@ -84,7 +83,6 @@ class Plugin {
         fun getInstance(): Plugin = INSTANCE!!
 
         @JvmStatic
-        @OptIn(ExperimentalTime::class)
         fun getBuildDate(): String =
             Instant.fromEpochMilliseconds(BuildConfig.BUILD_TIME.toLong()).toString()
 
