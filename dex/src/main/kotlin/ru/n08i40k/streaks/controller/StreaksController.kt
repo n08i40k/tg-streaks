@@ -16,13 +16,14 @@ import ru.n08i40k.streaks.chat_history_fetcher.CachedChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
 import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakActivityCache
 import ru.n08i40k.streaks.data.StreakActivityStatus
 import ru.n08i40k.streaks.data.StreakManualRevive
-import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakRevive
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.extension.PeerType
 import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.getPeerType
@@ -32,10 +33,9 @@ import ru.n08i40k.streaks.extension.isPeerValidOrBot
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
+import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
-import ru.n08i40k.streaks.exception.InvalidPeerException
-import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
@@ -138,7 +138,7 @@ class StreaksController(
                 .mapTo(this) { it.day }
         }
 
-    private suspend fun loadRebuildRevives(
+    private suspend fun loadReviveDates(
         ownerUserId: Long,
         peerUserId: Long,
     ): MutableSet<LocalDate> =
@@ -168,15 +168,14 @@ class StreaksController(
 
     private suspend fun removeInvalidPeerStreak(accountId: Int, peerUserId: Long) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
         db.withTransaction {
             dao.deleteByRelation(ownerUserId, peerUserId)
             activityCacheDao.deleteByRelation(accountId, peerUserId)
             manualReviveDao.deleteByRelation(ownerUserId, peerUserId)
         }
 
-        Logger.info("Removed streak for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
-
-        restoreUser(accountId, peerUserId)
+        Logger.info("Removed streak for invalid peer $accountId:$peerUserId")
     }
 
     private fun applyPatchedUserState(peerUser: TLRPC.User): Boolean {
@@ -312,23 +311,25 @@ class StreaksController(
         accountId: Int,
         streak: Streak,
         revives: Set<LocalDate>,
-    ) {
-        val deadStreak = streak.copy(deathNotified = true, warningNotified = false)
+    ) = with(streak) {
+        val deadStreak = copy(deathNotified = true, warningNotified = false)
 
         db.withTransaction {
             dao.update(deadStreak)
 
-            revives.forEach {
-                reviveDao.insertAll(StreakRevive(streak.ownerUserId, streak.peerUserId, it))
-            }
+            reviveDao.insertAll(revives.map { StreakRevive(ownerUserId, peerUserId, it) })
         }
 
-        if (isVisibleLength(streak.length) && !streak.deathNotified) {
-            serviceMessagesController.sendDeath(accountId, streak.peerUserId)
-            val peerName = MessagesController.getInstance(accountId).getUser(streak.peerUserId)?.label
-                ?: streak.peerUserId.toString()
-            alertNotificationHelper.cancelNearDeath(streak.peerUserId)
-            alertNotificationHelper.showDeath(streak.peerUserId, peerName, streak.length)
+        if (isVisibleLength(length) && !deathNotified) {
+            serviceMessagesController.sendDeath(accountId, peerUserId)
+
+            val peerName = MessagesController.getInstance(accountId)
+                .getUser(peerUserId)
+                ?.label
+                ?: peerUserId.toString()
+
+            alertNotificationHelper.cancelNearDeath(peerUserId)
+            alertNotificationHelper.showDeath(peerUserId, peerName, length)
         }
     }
 
@@ -474,7 +475,6 @@ class StreaksController(
     suspend fun rebuild(
         accountId: Int,
         peerUser: TLRPC.User,
-        revives: Set<LocalDate>? = null,
         ignoreLock: Boolean = false,
         sendServiceMessages: Boolean = false,
         onProgressUpdate: (progress: RebuildProgress) -> Unit,
@@ -488,7 +488,7 @@ class StreaksController(
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
             val peerUserId = peerUser.id
 
-            val effectiveRevives = revives?.toMutableSet() ?: loadRebuildRevives(ownerUserId, peerUserId)
+            val revives = loadReviveDates(ownerUserId, peerUserId)
 
             val startDay = LocalDate.now()
             var currentDay = LocalDate.now()
@@ -498,7 +498,13 @@ class StreaksController(
             while (true) {
                 val checkedDay = currentDay
                 val action =
-                    fetchStreakActionForDay(accountId, peerUser, checkedDay, effectiveRevives, false)
+                    fetchStreakActionForDay(
+                        accountId,
+                        peerUser,
+                        checkedDay,
+                        revives,
+                        false
+                    )
                 Logger.info("[StreakRebuild] $action at ${currentDay.fmt()} for $accountId:$peerUserId")
 
                 val progress = RebuildProgress(
@@ -521,12 +527,12 @@ class StreaksController(
                                     accountId,
                                     peerUser,
                                     checkedDay,
-                                    effectiveRevives,
+                                    revives,
                                     true
                                 ) == Action.REVIVE
                             ) {
                                 Logger.info("[StreakRebuild] First-day-revive at ${currentDay.fmt()} for $accountId:$peerUserId")
-                                effectiveRevives.add(checkedDay)
+                                revives.add(checkedDay)
                                 currentDay = checkedDay.minusDays(2)
                                 continue
                             }
@@ -540,7 +546,7 @@ class StreaksController(
                                 accountId,
                                 peerUser,
                                 checkedDay.next(),
-                                effectiveRevives,
+                                revives,
                                 true
                             )
 
@@ -551,7 +557,7 @@ class StreaksController(
                             )
 
                             if (action == Action.REVIVE) {
-                                effectiveRevives.add(checkedDay.next())
+                                revives.add(checkedDay.next())
                                 currentDay = checkedDay.prev()
                                 continue
                             }
@@ -563,7 +569,7 @@ class StreaksController(
 
                     Action.REVIVE -> {
                         // Добавляем reviveNow, что бы след индексация была быстрее
-                        effectiveRevives.add(checkedDay)
+                        revives.add(checkedDay)
                         // Скипаем текущий и предыдущий день, так как сегодня reviveNow, а вчера 100% сдох
                         currentDay = checkedDay.minusDays(2)
                     }
@@ -582,25 +588,18 @@ class StreaksController(
                 Logger.info("Rebuild service messages policy is unexpectedly enabled")
 
             db.withTransaction {
-                dao.deleteByRelation(ownerUserId, peerUserId)
-
-                dao.insertAll(
+                dao.insertOrReplace(
                     Streak(
                         ownerUserId,
                         peerUserId,
                         rebuildFrom,
                         rebuildTo,
                         rebuildTo,
-                        effectiveRevives.size
+                        revives.size
                     )
                 )
 
-                // revives are children of streak on db side,
-                // so we need to insert already existing values too
-                effectiveRevives.forEach {
-                    val record = StreakRevive(ownerUserId, peerUserId, it)
-                    reviveDao.insertAll(record)
-                }
+                reviveDao.insertAll(revives.map { StreakRevive(ownerUserId, peerUserId, it) })
             }
         } catch (_: InvalidPeerException) {
             removeInvalidPeerStreak(accountId, peerUser.id)
@@ -626,10 +625,9 @@ class StreaksController(
             val peers = collectEligiblePrivateUsers(accountId)
 
             for ((index, peerUser) in peers.withIndex()) {
-                rebuild(accountId, peerUser, null, true, sendServiceMessages) {
+                rebuild(accountId, peerUser, true, sendServiceMessages) {
                     onProgressUpdate(index, peers.size, peerUser, it)
                 }
-
             }
 
             return RebuildAllResult(
@@ -777,7 +775,7 @@ class StreaksController(
                 )
             )
 
-            revives.forEach { reviveDao.insertAll(StreakRevive(ownerUserId, peerUserId, it)) }
+            reviveDao.insertAll(revives.map { StreakRevive(ownerUserId, peerUserId, it) })
         }
 
         val currentStreak = get(accountId, peerUserId) ?: return
@@ -868,7 +866,7 @@ class StreaksController(
                 0
             )
 
-            dao.insertAll(streak)
+            dao.insert(streak)
 
             if (sendServiceMessages && isVisibleLength(streak.length))
                 serviceMessagesController.sendCreation(accountId, peerUserId)
@@ -1181,7 +1179,7 @@ class StreaksController(
 
         db.withTransaction {
             dao.deleteByRelation(ownerUserId, peerUserId)
-            dao.insertAll(streak)
+            dao.insert(streak)
         }
 
         streakPopupController.enqueueCreated(accountId, peerUserId, streak.length, streak.level)
@@ -1234,7 +1232,7 @@ class StreaksController(
 
         db.withTransaction {
             dao.deleteByRelation(ownerUserId, peerUserId)
-            dao.insertAll(streak)
+            dao.insert(streak)
         }
 
         return streak.length
@@ -1259,7 +1257,7 @@ class StreaksController(
 
         db.withTransaction {
             dao.deleteByRelation(ownerUserId, peerUserId)
-            dao.insertAll(streak)
+            dao.insert(streak)
         }
 
         serviceMessagesController.sendDeath(accountId, peerUserId)
@@ -1269,10 +1267,9 @@ class StreaksController(
 
     suspend fun debugDeleteStreak(accountId: Int, peerUserId: Long): Boolean {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val streak = dao.findByRelation(ownerUserId, peerUserId) ?: return false
 
         db.withTransaction {
-            dao.delete(streak)
+            dao.deleteByRelation(ownerUserId, peerUserId)
             activityCacheDao.deleteByRelation(accountId, peerUserId)
             manualReviveDao.deleteByRelation(ownerUserId, peerUserId)
         }
@@ -1313,13 +1310,7 @@ class StreaksController(
                 )
             )
 
-            reviveDao.insertAll(
-                StreakRevive(
-                    streak.ownerUserId,
-                    streak.peerUserId,
-                    now
-                )
-            )
+            reviveDao.insert(StreakRevive(streak.ownerUserId, streak.peerUserId, now))
         }
 
         val revivedStreak = get(accountId, peerUserId)
@@ -1399,17 +1390,8 @@ class StreaksController(
             ArrayList(streaks.map { it.peerUserId })
         ) ?: return
 
-        val invalidStreaks = streaks.filterNot { isPeerValidOrBot(peerUsers[it.peerUserId]) }
-
-        if (invalidStreaks.isEmpty())
-            return
-
-        db.withTransaction {
-            invalidStreaks.forEach {
-                dao.delete(it)
-                activityCacheDao.deleteByRelation(accountId, it.peerUserId)
-                manualReviveDao.deleteByRelation(ownerUserId, it.peerUserId)
-            }
-        }
+        streaks
+            .filterNot { isPeerValidOrBot(peerUsers[it.peerUserId]) }
+            .forEach { removeInvalidPeerStreak(accountId, it.peerUserId) }
     }
 }

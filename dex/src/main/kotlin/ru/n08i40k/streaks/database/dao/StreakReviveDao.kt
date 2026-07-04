@@ -16,7 +16,10 @@ interface StreakReviveDao {
     suspend fun findByRelation(ownerUserId: Long, peerUserId: Long): List<StreakRevive>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertAll(vararg records: StreakRevive)
+    suspend fun insert(record: StreakRevive)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(records: Collection<StreakRevive>)
 
     @Query("SELECT EXISTS(SELECT * FROM streak_revive WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId AND revived_at = :day)")
     suspend fun isRevived(ownerUserId: Long, peerUserId: Long, day: LocalDate): Boolean

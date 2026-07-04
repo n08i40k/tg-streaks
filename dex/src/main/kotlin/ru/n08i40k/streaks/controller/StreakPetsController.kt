@@ -186,7 +186,7 @@ class StreakPetsController(
 
         val points = tasks.sumOf { if (it.isCompleted) it.type.points else 0 }
 
-        dao.insertAll(
+        dao.insert(
             StreakPet(
                 ownerUserId,
                 peerUserId,
@@ -599,7 +599,7 @@ class StreakPetsController(
         )
 
         db.withTransaction {
-            dao.insertAll(streakPet)
+            dao.insert(streakPet)
 
             var currentDay = at
 
