@@ -2,18 +2,18 @@ package ru.n08i40k.streaks.chat_history_fetcher
 
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
-import ru.n08i40k.streaks.extension.label
 import org.telegram.tgnet.TLRPC
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.extension.RequestOutcome
 import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.isPeerIdInvalid
+import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
-import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.RuntimeGuard
 import java.time.LocalDate
 
@@ -31,14 +31,16 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         retryDelayMs: Long,
         reason: String,
     ) {
-        val plugin = Plugin.getInstance()
-        val peerName = MessagesController.getInstance(accountId).getUser(peerUserId)?.label
+        val peerName = MessagesController
+            .getInstance(accountId)
+            .getUser(peerUserId)
+            ?.label
             ?: peerUserId.toString()
 
         RuntimeGuard.pauseAwareDelay(retryDelayMs, reason) { remainingMs, totalMs ->
-            plugin.rebuildNotificationHelper.showRateLimitCountdown(peerName, remainingMs, totalMs)
+            RebuildNotificationHelper.showRateLimitCountdown(peerName, remainingMs, totalMs)
         }
-        plugin.rebuildNotificationHelper.cancelRateLimitNotification()
+        RebuildNotificationHelper.cancelRateLimitNotification()
     }
 
     private suspend fun requestHistory(

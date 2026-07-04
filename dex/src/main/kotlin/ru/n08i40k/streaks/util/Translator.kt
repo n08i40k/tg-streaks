@@ -1,11 +1,12 @@
 package ru.n08i40k.streaks.util
 
 import ru.n08i40k.streaks.TranslationResolver
+import ru.n08i40k.streaks.event.eject.EjectNotifier
 
-object Translator {
+object Translator : EjectNotifier.Delegate() {
     @Volatile private var resolver: TranslationResolver? = null
 
-    fun setResolver(resolver: TranslationResolver?) {
+    fun setResolver(resolver: TranslationResolver) {
         this.resolver = resolver
     }
 
@@ -19,5 +20,9 @@ object Translator {
         }
 
         return value
+    }
+
+    override fun onEject() {
+        resolver = null
     }
 }

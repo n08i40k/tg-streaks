@@ -15,7 +15,9 @@ import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.override.FixupCalendarActivity
+import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.Translator
 
 class ChatContextMenuActions(private val plugin: Plugin) {
@@ -75,7 +77,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 return@add
             }
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "rebuild streak-pet for $accountId:$peerUserId"
             ) {
@@ -96,10 +98,10 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 val peerName = peerUser.label
 
                 streakPetsController.rebuild(accountId, peerUser) { progress ->
-                    rebuildNotificationHelper.updateSinglePetProgress(peerName, progress.daysChecked)
+                    RebuildNotificationHelper.updateSinglePetProgress(peerName, progress.daysChecked)
                 }
 
-                rebuildNotificationHelper.completeSinglePet(peerName)
+                RebuildNotificationHelper.completeSinglePet(peerName)
             }
 
             Logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
@@ -134,7 +136,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             validatePrivatePeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "try to create streak-pet for $accountId:$peerUserId"
             ) {
@@ -167,7 +169,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                             .setNegativeButton(
                                 Translator.translate(TranslationKey.Dialog.CreatePet.CANCEL)
                             ) { _, _ ->
-                                accountTaskRunnerRegistry.enqueue(
+                                AccountTaskExecutor.enqueue(
                                     accountId,
                                     "create streak-pet for $accountId:$peerUserId"
                                 ) {
@@ -216,7 +218,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
             bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_SEARCHING_START_MESSAGE)
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "go to streak start for $accountId:$peerUserId"
             ) {
@@ -296,7 +298,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = validatePrivatePeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "revive streak for $accountId:$peerUserId"
             ) {
@@ -357,7 +359,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = validateDebugPeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "create debug streak for $accountId:$peerUserId"
             ) {
@@ -378,7 +380,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = validateDebugPeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "upgrade debug streak for $accountId:$peerUserId"
             ) {
@@ -418,7 +420,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = validateDebugPeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "freeze debug streak for $accountId:$peerUserId"
             ) {
@@ -439,7 +441,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = validateDebugPeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "kill debug streak for $accountId:$peerUserId"
             ) {
@@ -460,7 +462,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = validateDebugPeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "delete debug streak for $accountId:$peerUserId"
             ) {
@@ -485,7 +487,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = validateDebugPeer(accountId, peerUserId)
                 ?: return@add
 
-            accountTaskRunnerRegistry.enqueue(
+            AccountTaskExecutor.enqueue(
                 accountId,
                 "delete debug streak for $accountId:$peerUserId"
             ) {

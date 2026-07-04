@@ -5,6 +5,7 @@ import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
+import ru.n08i40k.streaks.util.AccountTaskExecutor
 
 class AccountSwitchHookBundle : HookBundle() {
     override fun inject(
@@ -19,7 +20,7 @@ class AccountSwitchHookBundle : HookBundle() {
             val plugin = Plugin.getInstance()
             val accountId = UserConfig.selectedAccount
 
-            plugin.accountTaskRunnerRegistry.stopAll(accountId)
+            AccountTaskExecutor.stopAll(accountId)
             plugin.enqueueAccountInitializationTasks(accountId, "account switch")
         }
     }

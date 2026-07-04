@@ -4,7 +4,9 @@ import org.telegram.messenger.UserConfig
 import ru.n08i40k.streaks.constants.SettingsActionButton
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.extension.label
+import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.RebuildNotificationHelper
 
 class SettingsMenuActions(private val plugin: Plugin) {
     fun register() = with(plugin) {
@@ -27,11 +29,11 @@ class SettingsMenuActions(private val plugin: Plugin) {
                 return@add
             }
 
-            accountTaskRunnerRegistry.enqueue(accountId, "rebuild all streaks for $accountId") {
+            AccountTaskExecutor.enqueue(accountId, "rebuild all streaks for $accountId") {
                 try {
                     val result =
                         streaksController.rebuildAll(accountId) { index, total, _, progress ->
-                            rebuildNotificationHelper.updateAllStreakProgress(
+                            RebuildNotificationHelper.updateAllStreakProgress(
                                 index,
                                 total,
                                 progress.peerUser.label,
@@ -40,10 +42,10 @@ class SettingsMenuActions(private val plugin: Plugin) {
                         }
 
                     syncPeersUi(result.uiSyncTargets)
-                    rebuildNotificationHelper.completeAllStreaks(result.totalChats)
+                    RebuildNotificationHelper.completeAllStreaks(result.totalChats)
                 } catch (e: Throwable) {
                     Logger.fatal("Failed to rebuild all private chats for account $accountId", e)
-                    rebuildNotificationHelper.cancelAllProgress()
+                    RebuildNotificationHelper.cancelAllProgress()
                     bulletinHelper.showTranslated(TranslationKey.Status.Error.REBUILD_FAILED_CHECK_LOGS)
                 }
             }

@@ -4,20 +4,18 @@ import org.telegram.tgnet.TLObject
 import java.lang.reflect.Method
 
 object BadgesCompat {
-    private var controllerGetBadgeMethod: Method? = null
-    private var controllerInstance: Any? = null
+    data class ReflectionData(
+        // BadgesController
+        val badgesController: Any,
 
-    private var badgeGetDocumentIdMethod: Method? = null
+        // BadgesController::getDocumentId()
+        val getBadge: Method,
 
-    private var initException: Throwable? = null
+        // BadgeDTO::getDocumentId()
+        val getDocumentId: Method
+    )
 
-    init {
-        try {
-            init()
-        } catch (e: Throwable) {
-            initException = e
-        }
-    }
+    private var reflectionData: ReflectionData? = null
 
     fun init() {
         // Starting from 12.8.0 BadgesController is unobfuscated again
@@ -27,34 +25,33 @@ object BadgesCompat {
         val controllerClass = Class.forName("com.exteragram.messenger.badges.BadgesController")
         val badgeClass = Class.forName("com.exteragram.messenger.api.dto.BadgeDTO")
 
-        controllerGetBadgeMethod = controllerClass
-            .getDeclaredMethod("getBadge", TLObject::class.java)
+        reflectionData = ReflectionData(
+            badgesController = controllerClass
+                .getDeclaredField("INSTANCE")
+                .get(null)
+                ?: throw NullPointerException("Failed to get badges controller instance"),
 
-        controllerInstance = controllerClass
-            .getDeclaredField("INSTANCE")
-            .get(null)
-            ?: throw NullPointerException("Failed to get badges controller instance")
+            getBadge = controllerClass
+                .getDeclaredMethod("getBadge", TLObject::class.java),
 
-        badgeGetDocumentIdMethod = badgeClass
-            .getDeclaredMethod("getDocumentId")
+            getDocumentId = badgeClass
+                .getDeclaredMethod("getDocumentId")
+        )
+
     }
 
     fun getDocumentId(obj: TLObject): Long? {
-        if (controllerInstance == null)
-            return null
+        return with(reflectionData ?: return null) {
+            val badge = getBadge.invoke(badgesController, obj)
+                ?: return null
 
-        val badge = controllerGetBadgeMethod!!.invoke(controllerInstance, obj)
-            ?: return null
+            val documentId = getDocumentId.invoke(badge)
+                ?: run {
+                    reflectionData = null
+                    return@with null
+                }
 
-        val documentId = badgeGetDocumentIdMethod!!.invoke(badge)
-            ?: return null
-
-        return documentId as Long
-    }
-
-    fun takeException(): Throwable? {
-        val ex = initException ?: return null
-        initException = null
-        return ex
+            return documentId as Long
+        }
     }
 }

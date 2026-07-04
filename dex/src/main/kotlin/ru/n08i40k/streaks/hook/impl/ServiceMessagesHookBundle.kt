@@ -16,6 +16,7 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.StreakPetsController
+import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getFieldValue
@@ -286,7 +287,6 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             val plugin = Plugin.getInstance()
 
-            val accountTaskRunnerRegistry = plugin.accountTaskRunnerRegistry
             val streaksController = plugin.streaksController
             val bulletinHelper = plugin.bulletinHelper
             val serviceMessagesController = plugin.serviceMessagesController
@@ -294,7 +294,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
-                    accountTaskRunnerRegistry.enqueue(
+                    AccountTaskExecutor.enqueue(
                         accountId,
                         "try to revive streak from notification"
                     ) {
@@ -323,7 +323,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                 }
 
                 ServiceMessage.PET_INVITE_TEXT -> {
-                    accountTaskRunnerRegistry.enqueue(
+                    AccountTaskExecutor.enqueue(
                         accountId,
                         "try to accept streak-pet invitation from notification"
                     ) {

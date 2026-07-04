@@ -7,6 +7,7 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.util.AccountTaskExecutor
 
 class StreakPetUiManager(private val plugin: Plugin) {
     companion object {
@@ -105,7 +106,7 @@ class StreakPetUiManager(private val plugin: Plugin) {
                     uiState,
                     plugin.resourcesProvider,
                     onRenameRequested = { newName ->
-                        plugin.accountTaskRunnerRegistry.enqueue(
+                        AccountTaskExecutor.enqueue(
                             accountId,
                             "rename pet for $accountId:$peerUserId"
                         ) {

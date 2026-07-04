@@ -9,6 +9,7 @@ import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
+import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.TLCompat
 import ru.n08i40k.streaks.util.getFieldValue
 import java.time.Instant
@@ -105,7 +106,7 @@ class UpdatesHookBundle : HookBundle() {
             if (accountId != UserConfig.selectedAccount || entries.isEmpty())
                 return@apply
 
-            accountTaskRunnerRegistry.enqueue(accountId, "handle updates for $accountId") {
+            AccountTaskExecutor.enqueue(accountId, "handle updates for $accountId") {
                 var changed = false
 
                 for ((peerUserId, at, out, messageId, message) in entries) {

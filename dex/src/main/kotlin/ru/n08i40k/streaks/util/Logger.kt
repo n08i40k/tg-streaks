@@ -2,23 +2,23 @@ package ru.n08i40k.streaks.util
 
 import ru.n08i40k.streaks.LogReceiver
 import ru.n08i40k.streaks.Plugin
+import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.format
 import ru.n08i40k.streaks.ui.CrashBottomSheet
 
-object Logger {
-    @Volatile private var receiver: LogReceiver? = null
-    @Volatile private var suppressFatal = false
+object Logger : EjectNotifier.Delegate(1000) {
+    @Volatile
+    private var receiver: LogReceiver? = null
+
+    @Volatile
+    private var suppressFatal = false
 
     fun info(message: String) {
         receiver?.onReceiveValue(message)
     }
 
-    fun setReceiver(receiver: LogReceiver?) {
+    fun setReceiver(receiver: LogReceiver) {
         this.receiver = receiver
-    }
-
-    fun setFatalSuppression(value: Boolean) {
-        suppressFatal = value
     }
 
     fun fatal(message: String, exception: Throwable, preventEject: Boolean = false) {
@@ -34,5 +34,10 @@ object Logger {
             if (!preventEject)
                 Plugin.eject()
         }
+    }
+
+    override fun onEject() {
+        suppressFatal = true
+        receiver = null
     }
 }

@@ -31,6 +31,7 @@ import ru.n08i40k.streaks.database.MIGRATION_6_7
 import ru.n08i40k.streaks.database.MIGRATION_7_8
 import ru.n08i40k.streaks.database.MIGRATION_8_9
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.hook.HookBundle
@@ -55,7 +56,7 @@ import ru.n08i40k.streaks.registry.StreakLevelRegistry
 import ru.n08i40k.streaks.registry.StreakPetLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.StreakPetUiManager
-import ru.n08i40k.streaks.util.AccountTaskRunnerRegistry
+import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
@@ -103,8 +104,6 @@ class Plugin {
             VERSION = version
 
             Logger.setReceiver(logReceiver)
-            Logger.setFatalSuppression(false)
-
             Translator.setResolver(translationResolver)
 
             try {
@@ -185,8 +184,6 @@ class Plugin {
                 try {
                     INSTANCE?.onEject()
                     INSTANCE = null
-                    Logger.setReceiver(null)
-                    Translator.setResolver(null)
                 } catch (e: Throwable) {
                     Logger.fatal("Failed to eject plugin", e, true)
                 }
@@ -203,12 +200,10 @@ class Plugin {
     private val db: PluginDatabase
     internal val databaseBackupManager: DatabaseBackupManager
     private val taskQueue: TaskQueue
-    val accountTaskRunnerRegistry: AccountTaskRunnerRegistry
 
     // helpers
     val resourcesProvider: ResourcesProvider
     val bulletinHelper: BulletinHelper
-    val rebuildNotificationHelper: RebuildNotificationHelper
     val alertNotificationHelper: StreakAlertNotificationHelper
 
     // callback registries
@@ -235,12 +230,10 @@ class Plugin {
     constructor(resourcesProvider: ResourcesProvider) {
         this.resourcesProvider = resourcesProvider
         this.bulletinHelper = BulletinHelper()
-        this.rebuildNotificationHelper = RebuildNotificationHelper()
         this.alertNotificationHelper = StreakAlertNotificationHelper()
 
         // background work
         this.taskQueue = TaskQueue()
-        this.accountTaskRunnerRegistry = AccountTaskRunnerRegistry()
 
         // database
         this.db = Room.databaseBuilder(
@@ -269,7 +262,7 @@ class Plugin {
         taskQueue.enqueueTask(name, callback)
 
     fun enqueueAccountInitializationTasks(accountId: Int, reason: String) {
-        accountTaskRunnerRegistry.enqueue(
+        AccountTaskExecutor.enqueue(
             accountId,
             "prune invalid streaks and pets for account $accountId ($reason)"
         ) {
@@ -277,28 +270,28 @@ class Plugin {
             streakPetsController.pruneInvalid(accountId)
         }
 
-        accountTaskRunnerRegistry.enqueue(
+        AccountTaskExecutor.enqueue(
             accountId,
             "patch user's emoji statuses for account $accountId ($reason)"
         ) {
             streaksController.patchUsers(accountId)
         }
 
-        accountTaskRunnerRegistry.enqueue(
+        AccountTaskExecutor.enqueue(
             accountId,
             "check for updates and update UI for account $accountId ($reason)"
         ) {
-            rebuildNotificationHelper.beginCheckNotification()
+            RebuildNotificationHelper.beginCheckNotification()
 
             val syncTargets = streaksController.checkAllForUpdates(
                 accountId
             ) { index, total, peerName, daysChecked, totalDays ->
-                rebuildNotificationHelper.updateCheckProgress(
+                RebuildNotificationHelper.updateCheckProgress(
                     index, total, peerName, daysChecked, totalDays
                 )
             }
 
-            rebuildNotificationHelper.cancelCheckProgress()
+            RebuildNotificationHelper.cancelCheckProgress()
 
             syncPeersUi(syncTargets)
             streakPetsController.checkAllForUpdates(accountId)
@@ -307,7 +300,7 @@ class Plugin {
     }
 
     private fun enqueueAutoBackupLoopStart(reason: String) {
-        accountTaskRunnerRegistry.enqueue(
+        AccountTaskExecutor.enqueue(
             UserConfig.selectedAccount,
             "start automatic database backup loop (${reason})"
         ) {
@@ -330,10 +323,9 @@ class Plugin {
     private fun onInject() {
         PluginBadges.add()
 
-        BadgesCompat.takeException()?.let {
-            Logger.fatal("Failed to init BadgesCompat", it)
-            return
-        }
+        BadgesCompat.init()
+
+        RebuildNotificationHelper.createChannel()
 
         taskQueue.startWorker(backgroundScope)
 
@@ -357,17 +349,13 @@ class Plugin {
     }
 
     private fun onEject() {
-        Logger.setFatalSuppression(true)
-
         PluginBadges.remove()
 
         taskQueue.stopWorker()
-        accountTaskRunnerRegistry.stopAll()
 
         backgroundScope.cancel()
 
         petUiManager.dismissAll()
-        rebuildNotificationHelper.cancelAll()
 
         try {
             hooks.forEach { it.unhook() }
@@ -396,7 +384,7 @@ class Plugin {
             Logger.fatal("Failed to close database on eject", e)
         }
 
-        Logger.info("Ejected!")
+        EjectNotifier.fire()
     }
 
     suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
@@ -430,14 +418,14 @@ class Plugin {
             return
         }
 
-        accountTaskRunnerRegistry.enqueue(
+        AccountTaskExecutor.enqueue(
             accountId,
             "rebuild streak for $accountId:$peerUserId"
         ) {
             val peerName = peerUser.label
 
             streaksController.rebuild(accountId, peerUser) { progress ->
-                rebuildNotificationHelper.updateSingleStreakProgress(peerName, progress.daysChecked)
+                RebuildNotificationHelper.updateSingleStreakProgress(peerName, progress.daysChecked)
             }
 
             syncPeerUi(accountId, peerUserId)
@@ -445,13 +433,13 @@ class Plugin {
             val rebuiltStreak = streaksController.get(accountId, peerUserId)
 
             if (rebuiltStreak != null) {
-                rebuildNotificationHelper.completeSingleStreak(
+                RebuildNotificationHelper.completeSingleStreak(
                     peerName,
                     rebuiltStreak.length,
                     rebuiltStreak.revivesCount,
                 )
             } else {
-                rebuildNotificationHelper.cancelSingleProgress()
+                RebuildNotificationHelper.cancelSingleProgress()
             }
 
             if (onComplete != null) {

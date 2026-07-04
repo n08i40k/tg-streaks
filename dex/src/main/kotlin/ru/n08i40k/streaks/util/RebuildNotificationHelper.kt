@@ -5,15 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import org.telegram.messenger.ApplicationLoader
 import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.event.eject.EjectNotifier
 
-class RebuildNotificationHelper {
-    companion object {
-        private const val CHANNEL_ID = "tg_streaks_rebuild"
-        private const val NOTIFICATION_ID_SINGLE = 7001
-        private const val NOTIFICATION_ID_ALL = 7002
-        private const val NOTIFICATION_ID_COMPLETE = 7003
-        private const val NOTIFICATION_ID_CHECK = 7004
-    }
+object RebuildNotificationHelper : EjectNotifier.Delegate() {
+    private const val CHANNEL_ID = "tg_streaks_rebuild"
+    private const val NOTIFICATION_ID_SINGLE = 7001
+    private const val NOTIFICATION_ID_ALL = 7002
+    private const val NOTIFICATION_ID_COMPLETE = 7003
+    private const val NOTIFICATION_ID_CHECK = 7004
 
     // tracks which notification to overwrite during rate-limit pauses
     private var rateLimitTargetId: Int = NOTIFICATION_ID_SINGLE
@@ -22,11 +21,7 @@ class RebuildNotificationHelper {
         get() = ApplicationLoader.applicationContext
             .getSystemService(NotificationManager::class.java)
 
-    init {
-        createChannel()
-    }
-
-    private fun createChannel() {
+    fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             Translator.translate(TranslationKey.Rebuild.Notification.CHANNEL_NAME),
@@ -35,6 +30,7 @@ class RebuildNotificationHelper {
             setSound(null, null)
             enableVibration(false)
         }
+
         manager.createNotificationChannel(channel)
     }
 
@@ -210,5 +206,9 @@ class RebuildNotificationHelper {
         manager.cancel(NOTIFICATION_ID_ALL)
         manager.cancel(NOTIFICATION_ID_COMPLETE)
         manager.cancel(NOTIFICATION_ID_CHECK)
+    }
+
+    override fun onEject() {
+        cancelAll()
     }
 }
