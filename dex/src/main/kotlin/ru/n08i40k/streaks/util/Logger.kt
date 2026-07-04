@@ -28,10 +28,11 @@ object Logger {
         receiver?.onReceiveValue(message)
         receiver?.onReceiveValue(formattedException)
 
-        if (!suppressFatal && !preventEject && Plugin.isInjected()) {
+        if (!suppressFatal) {
             CrashBottomSheet.show(message, exception)
 
-            Plugin.eject()
+            if (!preventEject)
+                Plugin.eject()
         }
     }
 }
