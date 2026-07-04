@@ -36,6 +36,14 @@ object Logger : EjectNotifier.Delegate(1000) {
         }
     }
 
+    fun tryOrFatal(action: String, block: () -> Unit): Unit? =
+        try {
+            block()
+        } catch (e: Throwable) {
+            fatal("Failed to $action", e)
+            null
+        }
+
     override fun onEject() {
         suppressFatal = true
         receiver = null

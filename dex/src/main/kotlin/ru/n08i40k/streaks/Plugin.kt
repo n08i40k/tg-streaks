@@ -115,11 +115,10 @@ class Plugin {
                 return
             }
 
-            try {
-                INSTANCE!!.onInject()
-            } catch (e: Throwable) {
-                Logger.fatal("Failed to inject plugin", e)
-            }
+            Logger.tryOrFatal(
+                "Failed to inject plugin",
+                INSTANCE!!::onInject
+            )
         }
 
         @JvmStatic
@@ -178,16 +177,12 @@ class Plugin {
         }
 
         @JvmStatic
-        fun eject() {
-            // do not run on threads that may be destructed
-            AndroidUtilities.runOnUIThread {
-                try {
-                    INSTANCE?.onEject()
-                    INSTANCE = null
-                } catch (e: Throwable) {
-                    Logger.fatal("Failed to eject plugin", e, true)
-                }
+        fun eject() = AndroidUtilities.runOnUIThread {
+            Logger.tryOrFatal("Failed to eject plugin") {
+                INSTANCE?.onEject()
             }
+
+            INSTANCE = null
         }
     }
 
@@ -336,11 +331,10 @@ class Plugin {
     }
 
     private fun onFinalizeInject() {
-        try {
-            hookMethods()
-        } catch (e: Throwable) {
-            Logger.fatal("Failed to hook methods!", e)
-        }
+        Logger.tryOrFatal(
+            "hook methods",
+            ::hookMethods
+        )
 
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
         enqueueAutoBackupLoopStart("plugin inject")
@@ -349,7 +343,10 @@ class Plugin {
     }
 
     private fun onEject() {
-        PluginBadges.remove()
+        Logger.tryOrFatal(
+            "remove plugin badges",
+            PluginBadges::remove
+        )
 
         taskQueue.stopWorker()
 
@@ -357,32 +354,24 @@ class Plugin {
 
         petUiManager.dismissAll()
 
-        try {
-            hooks.forEach { it.unhook() }
-            hooks.clear()
+        hooks.forEach {
+            Logger.tryOrFatal(
+                "unhook method ${it.hookedMethod}",
+                it::unhook
+            )
+        }
+        hooks.clear()
 
             hookBundles.forEach { it.eject() }
             hookBundles.clear()
-        } catch (e: Throwable) {
-            Logger.fatal("Failed to unhook methods!", e)
-        }
-
-        try {
-            streakEmojiRegistry.restoreAll()
-        } catch (e: Throwable) {
-            Logger.fatal("Failed to restore original SwapAnimatedEmojiDrawable!", e)
-        }
+        streakEmojiRegistry.restoreAll()
 
         streaksController.restorePatchedUsers()
 
         chatContextMenuCallbackRegistry.clear()
         settingsActionCallbackRegistry.clear()
 
-        try {
-            db.close()
-        } catch (e: Throwable) {
-            Logger.fatal("Failed to close database on eject", e)
-        }
+        db.close()
 
         EjectNotifier.fire()
     }
@@ -458,14 +447,7 @@ class Plugin {
                 method,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        try {
-                            callback(param)
-                        } catch (e: Throwable) {
-                            Logger.fatal(
-                                "An error occurred in $method before-call hook!",
-                                e
-                            )
-                        }
+                        Logger.tryOrFatal("run $method before-call hook") { callback(param) }
                     }
                 }
             )
@@ -476,14 +458,7 @@ class Plugin {
                 method,
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
-                        try {
-                            callback(param)
-                        } catch (e: Throwable) {
-                            Logger.fatal(
-                                "An error occurred in $method after-call hook!",
-                                e
-                            )
-                        }
+                        Logger.tryOrFatal("run $method after-call hook") { callback(param) }
                     }
                 }
             )

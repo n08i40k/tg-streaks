@@ -25,10 +25,8 @@ class ChatContextMenuActions(private val plugin: Plugin) {
     fun register() = with(plugin) {
         fun add(key: String, callback: (Long) -> Unit) {
             chatContextMenuCallbackRegistry.register(key) {
-                try {
+                Logger.tryOrFatal("handle context menu entry touch") {
                     callback(it)
-                } catch (e: Throwable) {
-                    Logger.fatal("An error occurred while handling context menu entry touch", e)
                 }
             }
         }
@@ -222,50 +220,24 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 accountId,
                 "go to streak start for $accountId:$peerUserId"
             ) {
-                try {
-                    val streak = streaksController.get(accountId, peerUserId)
+                val streak = streaksController.get(accountId, peerUserId)
 
-                    if (streak == null) {
-                        bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
-                        return@enqueue
+                if (streak == null) {
+                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
+                    return@enqueue
+                }
+
+                val jumpTs = streak.createdAt.toEpochSecondSystem().toInt()
+                val messageId = streaksController.findStartMessageId(accountId, peerUserId)
+
+                AndroidUtilities.runOnUIThread {
+                    if (messageId != null && messageId > 0) {
+                        chatActivity.scrollToMessageId(messageId, 0, true, 0, true, 0)
+                        bulletinHelper.showTranslated(TranslationKey.Status.Success.STREAK_JUMP_TO_START_COMPLETED)
+                    } else {
+                        chatActivity.jumpToDate(jumpTs)
+                        bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_START_MESSAGE_NOT_FOUND)
                     }
-
-                    val jumpTs = streak.createdAt.toEpochSecondSystem().toInt()
-                    val messageId = streaksController.findStartMessageId(accountId, peerUserId)
-
-                    AndroidUtilities.runOnUIThread {
-                        try {
-                            if (messageId != null && messageId > 0) {
-                                try {
-                                    chatActivity.scrollToMessageId(messageId, 0, true, 0, true, 0)
-                                    bulletinHelper.showTranslated(
-                                        TranslationKey.Status.Success.STREAK_JUMP_TO_START_COMPLETED
-                                    )
-                                    return@runOnUIThread
-                                } catch (e: Throwable) {
-                                    Logger.info(
-                                        "[Context Menu] Go-to-streak-start scroll failed for $peerUserId: ${e.message}"
-                                    )
-                                }
-                            }
-
-                            chatActivity.jumpToDate(jumpTs)
-                            bulletinHelper.showTranslated(
-                                TranslationKey.Status.Info.STREAK_START_MESSAGE_NOT_FOUND
-                            )
-                        } catch (e: Throwable) {
-                            Logger.fatal(
-                                "Go-to-streak-start failed for peer $peerUserId",
-                                e
-                            )
-                            bulletinHelper.showTranslated(
-                                TranslationKey.Status.Error.STREAK_JUMP_TO_START_FAILED
-                            )
-                        }
-                    }
-                } catch (e: Throwable) {
-                    Logger.fatal("Go-to-streak-start lookup failed for peer $peerUserId", e)
-                    bulletinHelper.showTranslated(TranslationKey.Status.Error.STREAK_JUMP_TO_START_FAILED)
                 }
             }
 

@@ -190,7 +190,7 @@ class StreakPopupController(
         val context = resolvePopupContext() ?: return false
 
         AndroidUtilities.runOnUIThread {
-            try {
+            val result = Logger.tryOrFatal("show streak popup") {
                 val dialog = Dialog(context)
                 dialog.requestWindowFeature(1)
                 dialog.setCancelable(true)
@@ -329,10 +329,9 @@ class StreakPopupController(
                     },
                     POPUP_AUTO_DISMISS_MS
                 )
-            } catch (e: Throwable) {
-                Logger.fatal("Failed to show streak popup", e)
-                onDismiss()
             }
+
+            if (result == null) onDismiss()
         }
 
         return true

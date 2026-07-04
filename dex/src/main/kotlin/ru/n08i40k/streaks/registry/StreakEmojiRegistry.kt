@@ -6,6 +6,7 @@ import org.telegram.ui.ActionBar.INavigationLayout
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.override.StreakEmoji
+import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import java.util.concurrent.ConcurrentHashMap
@@ -16,7 +17,12 @@ class StreakEmojiRegistry {
     fun add(data: StreakEmoji.EjectData) = elements.add(data)
 
     fun restoreAll() {
-        elements.forEach { it.restore() }
+        elements.forEach {
+            Logger.tryOrFatal("restore original streak emoji") {
+                it.restore()
+            }
+        }
+
         elements.clear()
     }
 

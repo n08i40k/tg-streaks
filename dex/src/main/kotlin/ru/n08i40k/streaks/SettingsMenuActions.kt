@@ -12,11 +12,7 @@ class SettingsMenuActions(private val plugin: Plugin) {
     fun register() = with(plugin) {
         fun add(key: String, callback: () -> Unit) {
             settingsActionCallbackRegistry.register(key) {
-                try {
-                    callback()
-                } catch (e: Throwable) {
-                    Logger.fatal("An error occurred while handling settings action", e)
-                }
+                Logger.tryOrFatal("handle settings action touch") { callback() }
             }
         }
 
@@ -30,40 +26,30 @@ class SettingsMenuActions(private val plugin: Plugin) {
             }
 
             AccountTaskExecutor.enqueue(accountId, "rebuild all streaks for $accountId") {
-                try {
-                    val result =
-                        streaksController.rebuildAll(accountId) { index, total, _, progress ->
-                            RebuildNotificationHelper.updateAllStreakProgress(
-                                index,
-                                total,
-                                progress.peerUser.label,
-                                progress.daysChecked,
-                            )
-                        }
+                val result =
+                    streaksController.rebuildAll(accountId) { index, total, _, progress ->
+                        RebuildNotificationHelper.updateAllStreakProgress(
+                            index,
+                            total,
+                            progress.peerUser.label,
+                            progress.daysChecked,
+                        )
+                    }
 
-                    syncPeersUi(result.uiSyncTargets)
-                    RebuildNotificationHelper.completeAllStreaks(result.totalChats)
-                } catch (e: Throwable) {
-                    Logger.fatal("Failed to rebuild all private chats for account $accountId", e)
-                    RebuildNotificationHelper.cancelAllProgress()
-                    bulletinHelper.showTranslated(TranslationKey.Status.Error.REBUILD_FAILED_CHECK_LOGS)
-                }
+                syncPeersUi(result.uiSyncTargets)
+                RebuildNotificationHelper.completeAllStreaks(result.totalChats)
             }
         }
 
         add(SettingsActionButton.EXPORT_BACKUP_NOW) {
             enqueueTask("export database backup") {
-                try {
-                    val backup = databaseBackupManager.exportNow()
-                    bulletinHelper.showTranslated(
-                        TranslationKey.Status.Success.BACKUP_EXPORTED,
-                        mapOf("name" to backup.name),
-                        "msg_save"
-                    )
-                } catch (e: Throwable) {
-                    Logger.fatal("Failed to export database backup", e)
-                    bulletinHelper.showTranslated(TranslationKey.Status.Error.BACKUP_EXPORT_FAILED)
-                }
+                val backup = databaseBackupManager.exportNow()
+
+                bulletinHelper.showTranslated(
+                    TranslationKey.Status.Success.BACKUP_EXPORTED,
+                    mapOf("name" to backup.name),
+                    "msg_save"
+                )
             }
         }
 

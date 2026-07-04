@@ -92,9 +92,6 @@ object TranslationKey {
     object Status {
         object Error {
             const val CHAT_OPEN_CONTEXT_FAILED = "status.error.chat.open_context_failed"
-            const val STREAK_JUMP_TO_START_FAILED = "status.error.streak.jump_to_start_failed"
-            const val BACKUP_EXPORT_FAILED = "status.error.backup.export_failed"
-            const val REBUILD_FAILED_CHECK_LOGS = "status.error.rebuild.failed_check_logs"
         }
 
         object Success {
