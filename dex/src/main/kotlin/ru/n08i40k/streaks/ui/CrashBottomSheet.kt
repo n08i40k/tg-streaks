@@ -37,6 +37,7 @@ import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.constants.TrustedSources
 import ru.n08i40k.streaks.extension.RequestOutcome
+import ru.n08i40k.streaks.extension.format
 import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.util.AnimatedEmojiView
 import ru.n08i40k.streaks.util.MessageSender
@@ -332,8 +333,7 @@ class CrashBottomSheet(
 
                     addView(TextView(context).apply {
                         setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
-                        text =
-                            exception.formatForDisplay().split("\n").take(10).joinToString("\n")
+                        text = exception.format().split("\n").take(10).joinToString("\n")
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                         setTextColor(secondaryColor)
                         typeface = Typeface.MONOSPACE
@@ -486,27 +486,8 @@ class CrashBottomSheet(
         val plugins =
             "Plugins:\n```\n${pluginsList.joinToString("\n")}\n```"
 
-        val trace = "```\n${exception.formatForDisplay()}\n```"
+        val trace = "```\n${exception.format()}\n```"
 
         return "$header\n\n${plugins}\n\nStack-trace:\n$trace"
-    }
-
-    private fun Throwable.formatForDisplay(): String {
-        val sb = StringBuilder()
-        var current: Throwable? = this
-        var depth = 0
-
-        while (current != null) {
-            if (depth > 0) sb.append("\nCaused by: ")
-            sb.append(current.toString())
-            if (current.stackTrace.isNotEmpty()) {
-                sb.append('\n')
-                sb.append(current.stackTrace.joinToString("\n") { "\tat $it" })
-            }
-            current = current.cause
-            depth++
-        }
-
-        return sb.toString()
     }
 }
