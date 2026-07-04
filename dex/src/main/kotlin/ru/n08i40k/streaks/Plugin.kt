@@ -34,7 +34,6 @@ import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
-import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.PremiumPreviewBottomSheetHookBundle
@@ -207,7 +206,6 @@ class Plugin {
 
     // eject data
     private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
-    private val hookBundles: ArrayList<HookBundle> = arrayListOf()
 
     val streakEmojiRegistry = StreakEmojiRegistry()
 
@@ -362,8 +360,6 @@ class Plugin {
         }
         hooks.clear()
 
-            hookBundles.forEach { it.eject() }
-            hookBundles.clear()
         streakEmojiRegistry.restoreAll()
 
         streaksController.restorePatchedUsers()
@@ -464,24 +460,22 @@ class Plugin {
             )
         }
 
-        hookBundles.addAll(
-            listOf(
-                ChatAvatarContainerHookBundle(),
-                ChatMessageCellHookBundle(),
-                DialogCellHookBundle(),
-                ProfileActivityHookBundle(),
-                ProfileSearchCellHookBundle(),
-                StatusBadgeComponentHookBundle(),
-                UserCellHookBundle(),
-                AccountSwitchHookBundle(),
-                UserPutHookBundle(),
-                PetFabHookBundle(),
-                PremiumPreviewBottomSheetHookBundle(),
-                ServiceMessagesHookBundle(),
-                UpdatesHookBundle()
-            )
+        val bundles = listOf(
+            ChatAvatarContainerHookBundle(),
+            ChatMessageCellHookBundle(),
+            DialogCellHookBundle(),
+            ProfileActivityHookBundle(),
+            ProfileSearchCellHookBundle(),
+            StatusBadgeComponentHookBundle(),
+            UserCellHookBundle(),
+            AccountSwitchHookBundle(),
+            UserPutHookBundle(),
+            PetFabHookBundle(),
+            PremiumPreviewBottomSheetHookBundle(),
+            ServiceMessagesHookBundle(),
+            UpdatesHookBundle()
         )
 
-        hookBundles.forEach { it.inject(::before, ::after) }
+        bundles.forEach { it.inject(::before, ::after) }
     }
 }
