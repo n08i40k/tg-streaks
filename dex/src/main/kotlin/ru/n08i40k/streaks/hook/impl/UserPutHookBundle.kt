@@ -7,6 +7,8 @@ import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
+import ru.n08i40k.streaks.util.UserPatcher
+import ru.n08i40k.streaks.util.UserPatcher.isPatched
 import ru.n08i40k.streaks.util.getFieldValue
 
 class UserPutHookBundle : HookBundle() {
@@ -28,14 +30,17 @@ class UserPutHookBundle : HookBundle() {
             val user = param.args[0] as? TLRPC.User
                 ?: return@before
 
+            if (user.isPatched())
+                return@before
+
             val accountId =
                 getFieldValue<Int>(BaseController::class.java, messagesController, "currentAccount")
                     ?: return@before
 
-            Plugin.getInstance().apply {
+            with(Plugin.getInstance()) {
                 backgroundScope.launch {
-                    if (streaksController.patchUser(accountId, user))
-                        messagesController.putUser(user, false, true)
+                    if (streaksController.getViewData(accountId, user.id) != null)
+                        UserPatcher.patchUser(accountId, user)
                 }
             }
         }

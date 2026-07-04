@@ -19,6 +19,7 @@ import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.Translator
+import ru.n08i40k.streaks.util.UserPatcher
 
 class ChatContextMenuActions(private val plugin: Plugin) {
     @OptIn(DelicateCoroutinesApi::class)
@@ -96,7 +97,10 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 val peerName = peerUser.label
 
                 streakPetsController.rebuild(accountId, peerUser) { progress ->
-                    RebuildNotificationHelper.updateSinglePetProgress(peerName, progress.daysChecked)
+                    RebuildNotificationHelper.updateSinglePetProgress(
+                        peerName,
+                        progress.daysChecked
+                    )
                 }
 
                 RebuildNotificationHelper.completeSinglePet(peerName)
@@ -267,7 +271,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
         add(ChatContextMenuButton.REVIVE) { peerUserId ->
             val accountId = UserConfig.selectedAccount
 
-            val peerUser = validatePrivatePeer(accountId, peerUserId)
+            validatePrivatePeer(accountId, peerUserId)
                 ?: return@add
 
             AccountTaskExecutor.enqueue(
@@ -296,8 +300,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     return@enqueue
                 }
 
-                if (streaksController.patchUser(accountId, peerUser))
-                    MessagesController.getInstance(accountId).putUser(peerUser, false, true)
+                UserPatcher.patchUser(accountId, peerUserId)
 
                 streakEmojiRegistry.refreshByPeerUserId(peerUserId)
                 AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }

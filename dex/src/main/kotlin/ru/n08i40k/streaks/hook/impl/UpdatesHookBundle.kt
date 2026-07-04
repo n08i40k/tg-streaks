@@ -11,6 +11,7 @@ import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.TLCompat
+import ru.n08i40k.streaks.util.UserPatcher
 import ru.n08i40k.streaks.util.getFieldValue
 import java.time.Instant
 import java.time.LocalDate
@@ -126,7 +127,7 @@ class UpdatesHookBundle : HookBundle() {
 
                     if (result.changed) {
                         changed = true
-                        streaksController.syncUserState(accountId, peerUserId)
+                        UserPatcher.patchUser(accountId, peerUserId)
 
                         AndroidUtilities.runOnUIThread {
                             streakEmojiRegistry.refreshByPeerUserId(peerUserId)

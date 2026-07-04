@@ -34,6 +34,7 @@ import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
+import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.PremiumPreviewBottomSheetHookBundle
@@ -63,6 +64,7 @@ import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.Translator
+import ru.n08i40k.streaks.util.UserPatcher
 import java.lang.reflect.Member
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Instant
@@ -267,7 +269,20 @@ class Plugin {
             accountId,
             "patch user's emoji statuses for account $accountId ($reason)"
         ) {
-            streaksController.patchUsers(accountId)
+            val accounts = userConfigAuthorizedIds
+                .associateBy { UserConfig.getInstance(it).clientUserId }
+
+            val perAccountPeerIds = hashMapOf<Int, ArrayList<Long>>()
+
+            for (streak in streaksController.getAllVisible()) {
+                val accountId = accounts[streak.ownerUserId] ?: continue
+
+                perAccountPeerIds
+                    .computeIfAbsent(accountId) { arrayListOf() }
+                    .add(streak.peerUserId)
+            }
+
+            perAccountPeerIds.forEach(UserPatcher::patchUsers)
         }
 
         AccountTaskExecutor.enqueue(
@@ -362,8 +377,6 @@ class Plugin {
 
         streakEmojiRegistry.restoreAll()
 
-        streaksController.restorePatchedUsers()
-
         chatContextMenuCallbackRegistry.clear()
         settingsActionCallbackRegistry.clear()
 
@@ -372,8 +385,8 @@ class Plugin {
         EjectNotifier.fire()
     }
 
-    suspend fun syncPeerUi(accountId: Int, peerUserId: Long) {
-        streaksController.syncUserState(accountId, peerUserId)
+    fun syncPeerUi(accountId: Int, peerUserId: Long) {
+        UserPatcher.patchUser(accountId, peerUserId)
 
         AndroidUtilities.runOnUIThread {
             streakEmojiRegistry.refreshByPeerUserId(peerUserId)
@@ -381,10 +394,10 @@ class Plugin {
         }
     }
 
-    internal suspend fun syncPeersUi(targets: Iterable<StreaksController.UiSyncTarget>) {
+    internal fun syncPeersUi(targets: Iterable<StreaksController.UiSyncTarget>) {
         val syncTargets = targets.distinct()
 
-        syncTargets.forEach { streaksController.syncUserState(it.accountId, it.peerUserId) }
+        syncTargets.forEach { UserPatcher.patchUser(it.accountId, it.peerUserId) }
 
         AndroidUtilities.runOnUIThread {
             streakEmojiRegistry.refreshAll()

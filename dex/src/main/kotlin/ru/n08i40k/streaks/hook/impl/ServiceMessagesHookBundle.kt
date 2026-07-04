@@ -335,7 +335,6 @@ class ServiceMessagesHookBundle : HookBundle() {
 
                         when (streakPetsController.create(accountId, peerUserId)) {
                             is StreakPetsController.CreateResult.Created -> {
-                                plugin.syncPeerUi(accountId, peerUserId)
                                 plugin.petUiManager.refreshFabForOpenChat()
 
                                 bulletinHelper.showTranslated(

@@ -7,7 +7,6 @@ import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
-import org.telegram.messenger.UserObject
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
@@ -35,16 +34,13 @@ import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
-import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.fetchPeerUsers
 import java.time.LocalDate
-import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.comparisons.compareBy
 
 @OptIn(DelicateCoroutinesApi::class)
 class StreaksController(
@@ -107,13 +103,7 @@ class StreaksController(
         LimitReached,
     }
 
-    private data class OriginalUserState(
-        val premium: Boolean,
-        val emojiStatus: TLRPC.EmojiStatus?,
-    )
-
     private val rebuildLock = AtomicBoolean(false)
-    private val originalUserStates = LinkedHashMap<Long, OriginalUserState>()
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
     private val remoteFetcher: ChatHistoryFetcher = RemoteChatHistoryFetcher()
@@ -176,30 +166,6 @@ class StreaksController(
         }
 
         Logger.info("Removed streak for invalid peer $accountId:$peerUserId")
-    }
-
-    private fun applyPatchedUserState(peerUser: TLRPC.User): Boolean {
-        val currentEmojiStatusDocumentId =
-            UserObject.getEmojiStatusDocumentId(peerUser.emoji_status)
-        val isCurrentEmojiStatusPatched = currentEmojiStatusDocumentId != null &&
-                Plugin.getInstance()
-                    .streakLevelRegistry
-                    .levels()
-                    .any { it.documentId == currentEmojiStatusDocumentId }
-
-        if (!isCurrentEmojiStatusPatched) {
-            originalUserStates.putIfAbsent(
-                peerUser.id,
-                OriginalUserState(
-                    premium = peerUser.premium,
-                    emojiStatus = peerUser.emoji_status
-                )
-            )
-        }
-
-        val wasPremium = peerUser.premium
-        peerUser.premium = true
-        return !wasPremium
     }
 
     fun isRebuildRunning(): Boolean =
@@ -736,7 +702,11 @@ class StreaksController(
                             alertNotificationHelper.cancelNearDeath(peerUserId)
                             if (isVisibleLength(streakBeforeDeath.length) && !streakBeforeDeath.deathNotified) {
                                 val peerName = peerUser.label
-                                alertNotificationHelper.showDeath(peerUserId, peerName, streakBeforeDeath.length)
+                                alertNotificationHelper.showDeath(
+                                    peerUserId,
+                                    peerName,
+                                    streakBeforeDeath.length
+                                )
                             }
                             kill(accountId, peerUserId)
                         }
@@ -759,7 +729,8 @@ class StreaksController(
             )
         }
 
-        val lastActiveDay = minOf(updateFromOwnerAt, updateFromPeerAt, compareBy { it.toEpochDay() })
+        val lastActiveDay =
+            minOf(updateFromOwnerAt, updateFromPeerAt, compareBy { it.toEpochDay() })
         val deathEpochSeconds = lastActiveDay.plusDays(2).toEpochSecondSystem()
         val timeUntilDeathSeconds = deathEpochSeconds - System.currentTimeMillis() / 1000L
         val isInWarningWindow = timeUntilDeathSeconds in 1..(8 * 3600)
@@ -1054,6 +1025,9 @@ class StreaksController(
     suspend fun get(accountId: Int, peerUserId: Long): Streak? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
+    suspend fun getAllVisible(): List<Streak> = dao.getAll()
+        .filterNot { it.dead || !isVisibleLength(it.length) }
+
     suspend fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? {
         val streak =
             dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
@@ -1163,13 +1137,6 @@ class StreaksController(
         }
 
         return firstId.takeIf { it > 0 }
-    }
-
-
-    suspend fun syncUserState(accountId: Int, peerUserId: Long) {
-        if (getViewData(accountId, peerUserId) == null) {
-            restoreUser(accountId, peerUserId)
-        }
     }
 
     suspend fun debugSetThreeDayStreak(accountId: Int, peerUserId: Long): Int {
@@ -1328,57 +1295,6 @@ class StreaksController(
         )
 
         return true
-    }
-
-    suspend fun patchUser(accountId: Int, peerUser: TLRPC.User): Boolean {
-        if (originalUserStates.containsKey(peerUser.id)) {
-            val wasPremium = peerUser.premium
-            peerUser.premium = true
-            return !wasPremium
-        }
-
-        getViewData(accountId, peerUser.id) ?: return false
-        return applyPatchedUserState(peerUser)
-    }
-
-    suspend fun patchUsers(accountId: Int) {
-        val messagesController = MessagesController.getInstance(accountId)
-        val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
-
-        for (streak in streaks) {
-            val peerUser = messagesController.getUser(streak.peerUserId) ?: continue
-
-            applyPatchedUserState(peerUser)
-        }
-    }
-
-    private fun restoreUser(accountId: Int, userId: Long) {
-        val messagesController = MessagesController.getInstance(accountId)
-        val originalState = originalUserStates.remove(userId) ?: return
-        val user = messagesController.getUser(userId) ?: return
-
-        user.premium = originalState.premium
-        user.emoji_status = originalState.emojiStatus
-
-        messagesController.putUser(user, false, true)
-    }
-
-    fun restorePatchedUsers() {
-        val states = originalUserStates.toMap()
-
-        for (accountId in userConfigAuthorizedIds) {
-            val messagesController = MessagesController.getInstance(accountId)
-
-            for ((userId, originalState) in states) {
-                val user = messagesController.getUser(userId) ?: continue
-
-                user.premium = originalState.premium
-                user.emoji_status = originalState.emojiStatus
-
-                messagesController.putUser(user, false, true)
-                originalUserStates.remove(userId)
-            }
-        }
     }
 
     suspend fun pruneInvalid(accountId: Int) {
