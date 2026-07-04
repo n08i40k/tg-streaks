@@ -83,8 +83,9 @@ class Plugin {
         fun getInstance(): Plugin = INSTANCE!!
 
         @JvmStatic
-        fun getBuildDate(): String =
-            Instant.fromEpochMilliseconds(BuildConfig.BUILD_TIME.toLong()).toString()
+        fun getBuildDate(): String = Instant
+            .fromEpochMilliseconds(BuildConfig.BUILD_TIME.toLong())
+            .toString()
 
         @JvmStatic
         fun getVersion(): String? = VERSION
@@ -123,19 +124,13 @@ class Plugin {
         }
 
         @JvmStatic
-        fun invokeChatContextMenuCallback(key: String, id: Long) {
-            if (INSTANCE == null)
-                throw NullPointerException("Plugin is not injected")
-
-            INSTANCE!!.chatContextMenuCallbackRegistry.get(key).accept(id)
+        fun invokeChatContextMenuCallback(key: String, id: Long) = with(INSTANCE!!) {
+            chatContextMenuCallbackRegistry.get(key).accept(id)
         }
 
         @JvmStatic
-        fun invokeSettingsActionCallback(key: String) {
-            if (INSTANCE == null)
-                throw NullPointerException("Plugin is not injected")
-
-            INSTANCE!!.settingsActionCallbackRegistry.get(key).run()
+        fun invokeSettingsActionCallback(key: String) = with(INSTANCE!!) {
+            settingsActionCallbackRegistry.get(key).run()
         }
 
         @JvmStatic
@@ -144,10 +139,8 @@ class Plugin {
             color: Color,
             documentId: Long,
             popupResourceName: String,
-        ) {
-            INSTANCE?.streakLevelRegistry?.register(
-                StreakLevel(length, color, documentId, popupResourceName)
-            )
+        ) = with(INSTANCE!!) {
+            streakLevelRegistry.register(StreakLevel(length, color, documentId, popupResourceName))
         }
 
         @JvmStatic
@@ -160,8 +153,8 @@ class Plugin {
             petEnd: String,
             accent: String,
             accentSecondary: String,
-        ) {
-            INSTANCE?.streakPetLevelRegistry?.register(
+        ) = with(INSTANCE!!) {
+            streakPetLevelRegistry.register(
                 StreakPetLevel(
                     maxPoints = maxPoints,
                     imageResourcePath = imageResourcePath,
@@ -176,13 +169,13 @@ class Plugin {
         }
 
         @JvmStatic
-        fun finalizeInject() {
-            INSTANCE?.onFinalizeInject()
+        fun finalizeInject() = with(INSTANCE!!) {
+            onFinalizeInject()
         }
 
         @JvmStatic
-        fun setPetFabSizeDp(sizeDp: Int) {
-            INSTANCE?.petUiManager?.setFabSizeDp(sizeDp)
+        fun setPetFabSizeDp(sizeDp: Int) = with(INSTANCE!!) {
+            petUiManager.setFabSizeDp(sizeDp)
         }
 
         @JvmStatic
