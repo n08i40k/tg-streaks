@@ -18,10 +18,9 @@ import org.telegram.ui.CalendarActivity
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.data.StreakActivityStatus
-import ru.n08i40k.streaks.util.Translator
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.setFieldValue
 import java.time.LocalDate
@@ -261,14 +260,14 @@ class FixupCalendarActivity : CalendarActivity {
                     is StreaksController.CalendarTapDecision.Ignore -> Unit
                     is StreaksController.CalendarTapDecision.LimitReached ->
                         showInfoOnlyDialog(
-                            TranslationKey.Dialog.CalendarFix.LIMIT_REACHED_TITLE,
-                            TranslationKey.Dialog.CalendarFix.LIMIT_REACHED_MESSAGE,
+                            Strings.dialog_calendar_fix_limit_reached_title(),
+                            Strings.dialog_calendar_fix_limit_reached_message(),
                         )
 
                     is StreaksController.CalendarTapDecision.WarnTapNextDay ->
                         showInfoOnlyDialog(
-                            TranslationKey.Dialog.CalendarFix.WARNING_NEXT_DAY_TITLE,
-                            TranslationKey.Dialog.CalendarFix.WARNING_NEXT_DAY_MESSAGE,
+                            Strings.dialog_calendar_fix_warning_next_day_title(),
+                            Strings.dialog_calendar_fix_warning_next_day_message(),
                         )
 
                     is StreaksController.CalendarTapDecision.OfferManualRevive ->
@@ -286,20 +285,20 @@ class FixupCalendarActivity : CalendarActivity {
         val messageKey =
             when (reason) {
                 StreaksController.CalendarTapDecision.Reason.FIRST_LIVE_DAY_AFTER_UNRESTORED_GAP ->
-                    TranslationKey.Dialog.CalendarFix.MANUAL_REVIVE_MESSAGE_GAP
+                    Strings.dialog_calendar_fix_manual_revive_message_gap
 
                 StreaksController.CalendarTapDecision.Reason.DEAD_CHAIN_RESTORE ->
-                    TranslationKey.Dialog.CalendarFix.MANUAL_REVIVE_MESSAGE_DEAD_CHAIN
+                    Strings.dialog_calendar_fix_manual_revive_message_dead_chain
             }
 
         showDialog(
             AlertDialog.Builder(context)
-                .setTitle(t(TranslationKey.Dialog.CalendarFix.MANUAL_REVIVE_TITLE))
-                .setMessage(t(messageKey))
-                .setPositiveButton(t(TranslationKey.Dialog.CalendarFix.CONFIRM)) { _, _ ->
+                .setTitle(Strings.dialog_calendar_fix_manual_revive_title())
+                .setMessage(messageKey())
+                .setPositiveButton(Strings.dialog_calendar_fix_confirm()) { _, _ ->
                     persistManualRevive(day)
                 }
-                .setNegativeButton(t(TranslationKey.Dialog.CalendarFix.CANCEL), null)
+                .setNegativeButton(Strings.dialog_calendar_fix_cancel(), null)
                 .create()
         )
     }
@@ -323,8 +322,8 @@ class FixupCalendarActivity : CalendarActivity {
 
                     StreaksController.AddManualCalendarReviveResult.LimitReached ->
                         showInfoOnlyDialog(
-                            TranslationKey.Dialog.CalendarFix.LIMIT_REACHED_TITLE,
-                            TranslationKey.Dialog.CalendarFix.LIMIT_REACHED_MESSAGE,
+                            Strings.dialog_calendar_fix_limit_reached_title(),
+                            Strings.dialog_calendar_fix_limit_reached_message(),
                         )
                 }
             }
@@ -336,9 +335,9 @@ class FixupCalendarActivity : CalendarActivity {
 
         showDialog(
             AlertDialog.Builder(context)
-                .setTitle(t(TranslationKey.Dialog.CalendarFix.REBUILD_TITLE))
-                .setMessage(t(TranslationKey.Dialog.CalendarFix.REBUILD_MESSAGE))
-                .setPositiveButton(t(TranslationKey.Dialog.CalendarFix.REBUILD_NOW)) { _, _ ->
+                .setTitle(Strings.dialog_calendar_fix_rebuild_title())
+                .setMessage(Strings.dialog_calendar_fix_rebuild_message())
+                .setPositiveButton(Strings.dialog_calendar_fix_rebuild_now()) { _, _ ->
                     Plugin.getInstance().enqueueRebuildForPeer(
                         UserConfig.selectedAccount,
                         peerUserId,
@@ -346,22 +345,22 @@ class FixupCalendarActivity : CalendarActivity {
                         reloadSnapshot()
                     }
                 }
-                .setNegativeButton(t(TranslationKey.Dialog.CalendarFix.LATER), null)
+                .setNegativeButton(Strings.dialog_calendar_fix_later(), null)
                 .create()
         )
     }
 
     private fun showInfoOnlyDialog(
-        titleKey: String,
-        messageKey: String,
+        title: String,
+        message: String,
     ) {
         val context = context ?: parentActivity ?: return
 
         showDialog(
             AlertDialog.Builder(context)
-                .setTitle(t(titleKey))
-                .setMessage(t(messageKey))
-                .setPositiveButton(t(TranslationKey.Dialog.CalendarFix.OK), null)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(Strings.dialog_calendar_fix_ok(), null)
                 .create()
         )
     }
@@ -561,9 +560,6 @@ class FixupCalendarActivity : CalendarActivity {
 
         return value
     }
-
-    private fun t(key: String): String =
-        Translator.translate(key)
 
     private inner class DayMessagesSparseArray(
         private val monthKey: Int,

@@ -26,14 +26,13 @@ import org.telegram.messenger.ImageLocation
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
-import ru.n08i40k.streaks.util.Translator
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -246,24 +245,23 @@ class StreakPetDialog(
         objectJson.put(
             "texts",
             JSONObject().apply {
-                put("streakDays", t(TranslationKey.Sheet.Pet.STREAK_DAYS))
-                put("locked", t(TranslationKey.Sheet.Pet.LOCKED))
-                put("lockedSubtext", t(TranslationKey.Sheet.Pet.LOCKED_DESCRIPTION))
-                put("tasksTitle", t(TranslationKey.Sheet.Pet.TASKS_TITLE))
-                put("badgesTitle", t(TranslationKey.Sheet.Pet.BADGES_TITLE))
-                put("progressYou", t(TranslationKey.Sheet.Pet.PROGRESS_YOU))
-                put("progressPeer", t(TranslationKey.Sheet.Pet.PROGRESS_PARTNER))
-                put("renameTitle", t(TranslationKey.Sheet.Pet.RENAME_TITLE))
-                put("renameHint", t(TranslationKey.Sheet.Pet.RENAME_PLACEHOLDER))
-                put("renameSave", t(TranslationKey.Sheet.Pet.RENAME_SAVE))
-                put("renameCancel", t(TranslationKey.Sheet.Pet.RENAME_CANCEL))
-                put("maxLevel", t(TranslationKey.Sheet.Pet.MAX_LEVEL))
+                put("streakDays", Strings.sheet_pet_streak_days())
+                put("locked", Strings.sheet_pet_locked())
+                put("lockedSubtext", Strings.sheet_pet_locked_description())
+                put("tasksTitle", Strings.sheet_pet_tasks_title())
+                put("badgesTitle", Strings.sheet_pet_badges_title())
+                put("progressYou", Strings.sheet_pet_progress_you())
+                put("progressPeer", Strings.sheet_pet_progress_partner())
+                put("renameTitle", Strings.sheet_pet_rename_title())
+                put("renameHint", Strings.sheet_pet_rename_placeholder())
+                put("renameSave", Strings.sheet_pet_rename_save())
+                put("renameCancel", Strings.sheet_pet_rename_cancel())
+                put("maxLevel", Strings.sheet_pet_max_level())
                 put(
                     "pointsToEvolution",
-                    Translator.translate(
-                        TranslationKey.Sheet.Pet.POINTS_TO_NEXT_STAGE,
-                        mapOf("count" to "{count}")
-                    )
+                    // "{count}" is a JS-side template placeholder, substituted with the
+                        // real count in the webview later — not resolved here.
+                        Strings.sheet_pet_points_to_next_stage("{count}")
                 )
             }
         )
@@ -315,7 +313,7 @@ class StreakPetDialog(
     private fun StreakPetTask.toTaskUi(): TaskUi {
         return when (val payload = payload) {
             is StreakPetTaskPayload.ExchangeOneMessage -> TaskUi(
-                title = t(TranslationKey.Sheet.Pet.TASK_EXCHANGE_ONE_MESSAGE),
+                title = Strings.sheet_pet_tasks_exchange_one_message(),
                 reward = type.points,
                 target = 1,
                 ownerProgress = if (payload.fromOwnerMessageId != null) 1 else 0,
@@ -324,7 +322,7 @@ class StreakPetDialog(
             )
 
             is StreakPetTaskPayload.SendFourMessagesEach -> TaskUi(
-                title = t(TranslationKey.Sheet.Pet.TASK_SEND_FOUR_MESSAGES_EACH),
+                title = Strings.sheet_pet_tasks_send_four_messages_each(),
                 reward = type.points,
                 target = 4,
                 ownerProgress = payload.fromOwnerMessagesCount,
@@ -333,7 +331,7 @@ class StreakPetDialog(
             )
 
             is StreakPetTaskPayload.SendTenMessagesEach -> TaskUi(
-                title = t(TranslationKey.Sheet.Pet.TASK_SEND_TEN_MESSAGES_EACH),
+                title = Strings.sheet_pet_tasks_send_ten_messages_each(),
                 reward = type.points,
                 target = 10,
                 ownerProgress = payload.fromOwnerMessagesCount,
@@ -415,7 +413,6 @@ class StreakPetDialog(
         }
     }
 
-    private fun t(key: String): String = Translator.translate(key)
 
     private fun buildHtml(safeTopPx: Int): String =
         StreakPetUiResources.loadSheetHtml(resourcesProvider, safeTopPx)

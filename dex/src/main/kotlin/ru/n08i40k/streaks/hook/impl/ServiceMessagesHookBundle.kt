@@ -14,10 +14,10 @@ import org.telegram.messenger.UserObject
 import org.telegram.ui.Cells.ChatActionCell
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.util.AccountTaskExecutor
-import ru.n08i40k.streaks.util.Translator
+import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getFieldValue
 import java.util.AbstractMap
@@ -60,10 +60,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                     return@streakCreate null
 
                 TLRPC.TL_messageActionCustomAction()
-                    .apply {
-                        this.message =
-                            Translator.translate(TranslationKey.Service.Streak.STARTED_TEXT)
-                    }
+                    .apply { this.message = Strings.service_streak_started_text() }
             }
 
             val tryStreakUpgrade = streakUpgrade@{
@@ -76,12 +73,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                     ?: return@streakUpgrade null
 
                 TLRPC.TL_messageActionCustomAction()
-                    .apply {
-                        this.message = Translator.translate(
-                            TranslationKey.Service.Streak.LEVEL_UP_TEXT,
-                            mapOf("days" to days.toString())
-                        )
-                    }
+                    .apply { this.message = Strings.service_streak_level_up_text(days) }
             }
 
             val tryStreakDeath = streakDeath@{
@@ -118,12 +110,9 @@ class ServiceMessagesHookBundle : HookBundle() {
                         ?.takeIf { it.isNotBlank() }
                         ?: "Unknown"
 
-                    Translator.translate(
-                        TranslationKey.Service.Streak.RESTORED_PEER,
-                        mapOf("name" to peerName)
-                    )
+                    Strings.service_streak_restored_peer(peerName)
                 } else {
-                    Translator.translate(TranslationKey.Service.Streak.RESTORED_SELF)
+                    Strings.service_streak_restored_self()
                 }
 
                 TLRPC.TL_messageActionCustomAction()
@@ -136,10 +125,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
                 if (message.out) {
                     TLRPC.TL_messageActionCustomAction()
-                        .apply {
-                            this.message =
-                                Translator.translate(TranslationKey.Service.Pet.Invite.SENT_SELF)
-                        }
+                        .apply { this.message = Strings.service_pet_invite_sent_self() }
                 } else {
                     TLRPC.TL_messageActionPrizeStars()
                         .apply {
@@ -172,12 +158,9 @@ class ServiceMessagesHookBundle : HookBundle() {
                         ?.takeIf { it.isNotBlank() }
                         ?: "Unknown"
 
-                    Translator.translate(
-                        TranslationKey.Service.Pet.Invite.ACCEPTED_PEER,
-                        mapOf("name" to peerName)
-                    )
+                    Strings.service_pet_invite_accepted_peer(peerName)
                 } else {
-                    Translator.translate(TranslationKey.Service.Pet.Invite.ACCEPTED_SELF)
+                    Strings.service_pet_invite_accepted_self()
                 }
 
                 TLRPC.TL_messageActionCustomAction()
@@ -206,17 +189,9 @@ class ServiceMessagesHookBundle : HookBundle() {
                         ?.takeIf { it.isNotBlank() }
                         ?: "Unknown"
 
-                    Translator.translate(
-                        TranslationKey.Service.Pet.Rename.PEER, mapOf(
-                            "peerName" to peerName,
-                            "petName" to name,
-                        )
-                    )
+                    Strings.service_pet_rename_peer(peerName, name)
                 } else {
-                    Translator.translate(
-                        TranslationKey.Service.Pet.Rename.SELF,
-                        mapOf("petName" to name)
-                    )
+                    Strings.service_pet_rename_self(name)
                 }
 
                 TLRPC.TL_messageActionCustomAction()
@@ -257,12 +232,8 @@ class ServiceMessagesHookBundle : HookBundle() {
                 ?: return@after
 
             thisObject.messageText = when (prizeStars.transaction_id) {
-                ServiceMessage.DEATH_TEXT ->
-                    Translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
-
-                ServiceMessage.PET_INVITE_TEXT ->
-                    Translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
-
+                ServiceMessage.DEATH_TEXT -> Strings.service_streak_ended_title()
+                ServiceMessage.PET_INVITE_TEXT -> Strings.service_pet_invite_title()
                 else -> return@after
             }
         }
@@ -288,7 +259,6 @@ class ServiceMessagesHookBundle : HookBundle() {
             val plugin = Plugin.getInstance()
 
             val streaksController = plugin.streaksController
-            val bulletinHelper = plugin.bulletinHelper
             val serviceMessagesController = plugin.serviceMessagesController
             val streakPetsController = plugin.streakPetsController
 
@@ -298,26 +268,18 @@ class ServiceMessagesHookBundle : HookBundle() {
                         accountId,
                         "try to revive streak from notification"
                     ) {
-                        val streak = streaksController.get(accountId, peerUserId)
+                        when (val streak = streaksController.get(accountId, peerUserId)) {
+                            null ->
+                                BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
 
-                        if (streak == null) {
-                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
-                            return@enqueue
-                        }
+                            else if !streak.dead ->
+                                BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
 
-                        if (!streak.dead) {
-                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_ENDED_YET)
-                            return@enqueue
-                        }
+                            else if !streak.canRevive ->
+                                BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
 
-                        if (!streak.canRevive) {
-                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
-                            return@enqueue
-                        }
-
-                        if (!streaksController.reviveNow(accountId, peerUserId)) {
-                            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
-                            return@enqueue
+                            else if !streaksController.reviveNow(accountId, peerUserId) ->
+                                BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
                         }
                     }
                 }
@@ -328,26 +290,20 @@ class ServiceMessagesHookBundle : HookBundle() {
                         "try to accept streak-pet invitation from notification"
                     ) {
                         streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
-                        serviceMessagesController.sendPetInviteAccepted(
-                            accountId,
-                            peerUserId
-                        )
+                        serviceMessagesController.sendPetInviteAccepted(accountId, peerUserId)
 
                         when (streakPetsController.create(accountId, peerUserId)) {
                             is StreakPetsController.CreateResult.Created -> {
                                 plugin.petUiManager.refreshFabForOpenChat()
 
-                                bulletinHelper.showTranslated(
-                                    TranslationKey.Status.Success.PET_CREATED,
+                                BulletinHelper.show(
+                                    Strings.status_success_pet_created(),
                                     "msg_reactions"
                                 )
                             }
 
-                            is StreakPetsController.CreateResult.AlreadyExists -> {
-                                bulletinHelper.showTranslated(
-                                    TranslationKey.Status.Info.PET_ALREADY_EXISTS_FOR_CHAT
-                                )
-                            }
+                            is StreakPetsController.CreateResult.AlreadyExists ->
+                                BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
                         }
                     }
                 }
@@ -386,25 +342,25 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
-                    param.args[0] = Translator.translate(TranslationKey.Service.Streak.ENDED_TITLE)
+                    param.args[0] = Strings.service_streak_ended_title()
                     param.args[1] =
-                        Translator.translate(TranslationKey.Service.Streak.ENDED_SUBTITLE)
-                    param.args[3] = Translator.translate(TranslationKey.Service.Streak.ENDED_HINT)
+                        Strings.service_streak_ended_subtitle()
+                    param.args[3] = Strings.service_streak_ended_hint()
                     param.args[5] =
-                        Translator.translate(TranslationKey.Service.Streak.ENDED_ACTION)
+                        Strings.service_streak_ended_action()
                     param.args[9] = false
                     param.args[10] = true
                 }
 
                 ServiceMessage.PET_INVITE_TEXT -> {
                     param.args[0] =
-                        Translator.translate(TranslationKey.Service.Pet.Invite.TITLE)
+                        Strings.service_pet_invite_title()
                     param.args[1] =
-                        Translator.translate(TranslationKey.Service.Pet.Invite.DESCRIPTION)
+                        Strings.service_pet_invite_description()
                     param.args[3] =
-                        Translator.translate(TranslationKey.Service.Pet.Invite.HINT)
+                        Strings.service_pet_invite_hint()
                     param.args[5] =
-                        Translator.translate(TranslationKey.Service.Pet.Invite.ACTION)
+                        Strings.service_pet_invite_action()
                     param.args[9] = false
                     param.args[10] = true
                 }

@@ -9,16 +9,16 @@ import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.override.FixupCalendarActivity
 import ru.n08i40k.streaks.util.AccountTaskExecutor
+import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
-import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.UserPatcher
 
 class ChatContextMenuActions(private val plugin: Plugin) {
@@ -36,7 +36,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
             if (!isPeerValid(peerUser)) {
-                bulletinHelper.showTranslated(TranslationKey.Status.Info.DEBUG_PRIVATE_USERS_ONLY)
+                BulletinHelper.show(Strings.status_info_debug_private_users_only())
                 return null
             }
 
@@ -47,7 +47,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
             if (!isPeerValid(peerUser)) {
-                bulletinHelper.showTranslated(TranslationKey.Status.Info.CHAT_PRIVATE_USERS_ONLY)
+                BulletinHelper.show(Strings.status_info_chat_private_users_only())
                 return null
             }
 
@@ -72,7 +72,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 ?: return@add
 
             if (streakPetsController.isRebuildRunning()) {
-                bulletinHelper.showTranslated(TranslationKey.Status.Info.REBUILD_ALREADY_RUNNING)
+                BulletinHelper.show(Strings.status_info_rebuild_already_running())
                 return@add
             }
 
@@ -83,14 +83,14 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 val streakPet = streakPetsController.get(accountId, peerUserId)
 
                 if (streakPet == null) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_NOT_CREATED_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
                     return@enqueue
                 }
 
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
                     return@enqueue
                 }
 
@@ -118,13 +118,13 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val petFabEnabled = petUiManager.toggleFabEnabled()
 
             if (petFabEnabled) {
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.PET_BUTTON_ENABLED,
+                BulletinHelper.show(
+                    Strings.status_success_pet_button_enabled(),
                     "msg_reactions"
                 )
             } else {
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.PET_BUTTON_DISABLED,
+                BulletinHelper.show(
+                    Strings.status_success_pet_button_disabled(),
                     "msg_reactions"
                 )
             }
@@ -143,23 +143,23 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 "try to create streak-pet for $accountId:$peerUserId"
             ) {
                 if (streakPetsController.get(accountId, peerUserId) != null) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_ALREADY_EXISTS_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
                     return@enqueue
                 }
 
                 AndroidUtilities.runOnUIThread {
                     val fragment = LaunchActivity.getSafeLastFragment()
                     if (fragment == null) {
-                        bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
+                        BulletinHelper.show(Strings.status_error_chat_open_context_failed())
                         return@runOnUIThread
                     }
 
                     fragment.showDialog(
                         AlertDialog.Builder(fragment.context)
-                            .setTitle(Translator.translate(TranslationKey.Dialog.CreatePet.TITLE))
-                            .setMessage(Translator.translate(TranslationKey.Dialog.CreatePet.MESSAGE))
+                            .setTitle(Strings.dialog_create_pet_title())
+                            .setMessage(Strings.dialog_create_pet_message())
                             .setPositiveButton(
-                                Translator.translate(TranslationKey.Dialog.CreatePet.CONFIRM)
+                                Strings.dialog_create_pet_confirm()
                             ) { _, _ ->
                                 streaksController.setServiceMessagesEnabled(
                                     accountId,
@@ -169,7 +169,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                                 serviceMessagesController.sendPetInvite(accountId, peerUserId)
                             }
                             .setNegativeButton(
-                                Translator.translate(TranslationKey.Dialog.CreatePet.CANCEL)
+                                Strings.dialog_create_pet_cancel()
                             ) { _, _ ->
                                 AccountTaskExecutor.enqueue(
                                     accountId,
@@ -178,16 +178,14 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                                     when (streakPetsController.create(accountId, peerUserId)) {
                                         is StreakPetsController.CreateResult.Created -> {
                                             petUiManager.refreshFabForOpenChat()
-                                            bulletinHelper.showTranslated(
-                                                TranslationKey.Status.Success.PET_CREATED,
+                                            BulletinHelper.show(
+                                                Strings.status_success_pet_created(),
                                                 "msg_reactions"
                                             )
                                         }
 
                                         is StreakPetsController.CreateResult.AlreadyExists -> {
-                                            bulletinHelper.showTranslated(
-                                                TranslationKey.Status.Info.PET_ALREADY_EXISTS_FOR_CHAT
-                                            )
+                                            BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
                                         }
                                     }
                                 }
@@ -205,7 +203,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
             if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                bulletinHelper.showTranslated(TranslationKey.Status.Info.CHAT_PRIVATE_USERS_ONLY)
+                BulletinHelper.show(Strings.status_info_chat_private_users_only())
                 return@add
             }
 
@@ -213,12 +211,12 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 ?.takeIf { it.dialogId == peerUserId }
 
             if (chatActivity == null) {
-                bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
+                BulletinHelper.show(Strings.status_error_chat_open_context_failed())
                 Logger.info("[Context Menu] Go-to-streak-start failed: no chat context for $peerUserId")
                 return@add
             }
 
-            bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_SEARCHING_START_MESSAGE)
+            BulletinHelper.show(Strings.status_info_streak_searching_start_message())
 
             AccountTaskExecutor.enqueue(
                 accountId,
@@ -227,7 +225,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
                     return@enqueue
                 }
 
@@ -237,10 +235,10 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 AndroidUtilities.runOnUIThread {
                     if (messageId != null && messageId > 0) {
                         chatActivity.scrollToMessageId(messageId, 0, true, 0, true, 0)
-                        bulletinHelper.showTranslated(TranslationKey.Status.Success.STREAK_JUMP_TO_START_COMPLETED)
+                        BulletinHelper.show(Strings.status_success_streak_jump_to_start_completed())
                     } else {
                         chatActivity.jumpToDate(jumpTs)
-                        bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_START_MESSAGE_NOT_FOUND)
+                        BulletinHelper.show(Strings.status_info_streak_start_message_not_found())
                     }
                 }
             }
@@ -256,12 +254,11 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
             val enabled = streaksController.toggleServiceMessages(accountId, peerUserId)
 
-            bulletinHelper.showTranslated(
-                if (enabled) {
-                    TranslationKey.Status.Success.CHAT_LEVEL_MESSAGES_ENABLED
-                } else {
-                    TranslationKey.Status.Success.CHAT_LEVEL_MESSAGES_DISABLED
-                },
+            BulletinHelper.show(
+                if (enabled)
+                    Strings.status_success_chat_level_messages_enabled()
+                else
+                    Strings.status_success_chat_level_messages_disabled(),
                 "msg_reactions"
             )
 
@@ -281,22 +278,22 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
                     return@enqueue
                 }
 
                 if (!streak.dead) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_ENDED_YET)
+                    BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
                     return@enqueue
                 }
 
                 if (!streak.canRevive) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
+                    BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
                     return@enqueue
                 }
 
                 if (!streaksController.reviveNow(accountId, peerUserId)) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_RESTORE_UNAVAILABLE)
+                    BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
                     return@enqueue
                 }
 
@@ -304,8 +301,8 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
                 streakEmojiRegistry.refreshByPeerUserId(peerUserId)
                 AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.STREAK_RESTORED,
+                BulletinHelper.show(
+                    Strings.status_success_streak_restored(),
                     "msg_reactions"
                 )
             }
@@ -314,7 +311,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
         add(ChatContextMenuButton.REVIVE_EXACT) { _ ->
             val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
                 ?: run {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED)
+                    BulletinHelper.show(Strings.status_error_chat_open_context_failed())
                     return@add
                 }
 
@@ -340,8 +337,8 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             ) {
                 streaksController.debugSetThreeDayStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.DEBUG_STREAK_SET_TO_3_DAYS,
+                BulletinHelper.show(
+                    Strings.status_success_debug_streak_set_to_3_days(),
                     "msg_reactions"
                 )
             }
@@ -362,7 +359,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 val streak = streaksController.get(accountId, peerUserId)
 
                 if (streak == null) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
                     return@enqueue
                 }
 
@@ -371,7 +368,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     .firstOrNull { level -> level.length > streak.level.length }
 
                 if (nextLevel == null) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.DEBUG_STREAK_ALREADY_MAX)
+                    BulletinHelper.show(Strings.status_info_debug_streak_already_max())
                     return@enqueue
                 }
 
@@ -379,9 +376,8 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     ?: return@enqueue
 
                 syncPeerUi(accountId, peerUserId)
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.DEBUG_STREAK_UPGRADED,
-                    mapOf("days" to newLength.toString()),
+                BulletinHelper.show(
+                    Strings.status_success_debug_streak_upgraded(newLength),
                     "msg_reactions"
                 )
             }
@@ -401,8 +397,8 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             ) {
                 streaksController.debugFreezeStreak(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.DEBUG_STREAK_FROZEN,
+                BulletinHelper.show(
+                    Strings.status_success_debug_streak_frozen(),
                     "msg_reactions"
                 )
             }
@@ -422,8 +418,8 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             ) {
                 streaksController.debugMarkDead(accountId, peerUserId)
                 syncPeerUi(accountId, peerUserId)
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.DEBUG_STREAK_MARKED_DEAD,
+                BulletinHelper.show(
+                    Strings.status_success_debug_streak_marked_dead(),
                     "msg_reactions"
                 )
             }
@@ -442,13 +438,13 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 "delete debug streak for $accountId:$peerUserId"
             ) {
                 if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.STREAK_NOT_FOUND_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
                     return@enqueue
                 }
 
                 syncPeerUi(accountId, peerUserId)
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.DEBUG_STREAK_DELETED,
+                BulletinHelper.show(
+                    Strings.status_success_debug_streak_deleted(),
                     "msg_reactions"
                 )
             }
@@ -467,16 +463,14 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 "delete debug streak for $accountId:$peerUserId"
             ) {
                 if (!streakPetsController.delete(accountId, peerUserId)) {
-                    bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_NOT_CREATED_FOR_CHAT)
+                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
                     return@enqueue
                 }
 
                 AndroidUtilities.runOnUIThread { petUiManager.dismissAll() }
                 syncPeerUi(accountId, peerUserId)
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.DEBUG_PET_DELETED,
-                    "msg_reactions"
-                )
+
+                BulletinHelper.show(Strings.status_success_debug_pet_deleted(), "msg_reactions")
             }
 
             Logger.info("[Context Menu] Debug-delete-pet clicked on ${peerUser.id}")

@@ -1,17 +1,16 @@
 package ru.n08i40k.streaks.override
 
 import ru.n08i40k.streaks.constants.Emoji
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.constants.TrustedSources
-import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
 
 object PluginBadges {
     val TRUSTED_IDS = mapOf(
-        Pair(TrustedSources.LEAD.id, TranslationKey.Badge.ME),          // me
-        Pair(TrustedSources.CHANNEL.id, TranslationKey.Badge.CHANNEL),  // channel
-        Pair(TrustedSources.CHAT.id, TranslationKey.Badge.CHAT)         // channel chat
+        Pair(TrustedSources.LEAD.id, Strings.badge_me_text),          // me
+        Pair(TrustedSources.CHANNEL.id, Strings.badge_channel_text),  // channel
+        Pair(TrustedSources.CHAT.id, Strings.badge_chat_text)         // channel chat
     )
 
     @Suppress("LocalVariableName")
@@ -57,7 +56,7 @@ object PluginBadges {
         val profileStatus = ProfileStatus.enumConstants!![1]
 
         TRUSTED_IDS.forEach { (id, text) ->
-            val badge = BadgeDTO_ctor.newInstance(Emoji.DEFAULT_BADGE, Translator.translate(text))
+            val badge = BadgeDTO_ctor.newInstance(Emoji.DEFAULT_BADGE, text())
 
             val info = if (isClientVersionBelow("12.2.10"))
                 BadgeInfo_ctor.newInstance(badge, profileStatus)

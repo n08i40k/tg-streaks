@@ -6,10 +6,11 @@ import org.telegram.messenger.UserConfig
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AccountTaskExecutor
+import ru.n08i40k.streaks.util.BulletinHelper
 
-class StreakPetUiManager(private val plugin: Plugin) {
+class StreakPetUiManager {
     companion object {
         private const val DEFAULT_PET_FAB_SIZE_DP = 80
         private const val PET_FAB_OPEN_DELAY_MS = 220L
@@ -70,21 +71,18 @@ class StreakPetUiManager(private val plugin: Plugin) {
         return fabEnabled
     }
 
-    fun openDialog(accountId: Int, peerUserId: Long) {
-        plugin.backgroundScope.launch {
-            val uiState = plugin.streakPetsController.getViewStateSnapshot(accountId, peerUserId)
-
-            if (uiState == null) {
-                plugin.bulletinHelper.showTranslated(TranslationKey.Status.Info.PET_NOT_CREATED_FOR_CHAT)
-                return@launch
-            }
+    fun openDialog(accountId: Int, peerUserId: Long) = with(Plugin.getInstance()) {
+        backgroundScope.launch {
+            val uiState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
+                ?: run {
+                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
+                    return@launch
+                }
 
             AndroidUtilities.runOnUIThread {
                 val fragment = LaunchActivity.getSafeLastFragment()
                 if (fragment == null) {
-                    plugin.bulletinHelper.showTranslated(
-                        TranslationKey.Status.Error.CHAT_OPEN_CONTEXT_FAILED
-                    )
+                    BulletinHelper.show(Strings.status_error_chat_open_context_failed())
                     return@runOnUIThread
                 }
 
@@ -99,32 +97,27 @@ class StreakPetUiManager(private val plugin: Plugin) {
                 dismissDialog()
                 dismissFab()
 
+                val onRenameRequested: (String) -> Unit = { newName ->
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "rename pet for $accountId:$peerUserId"
+                    ) {
+                        if (!streakPetsController.rename(accountId, peerUserId, newName))
+                            return@enqueue
+
+                        serviceMessagesController.sendPetSetName(accountId, peerUserId, newName)
+                        refreshOpenedDialog(accountId, peerUserId)
+                    }
+                }
+
                 val dialog = StreakPetDialog(
                     fragment,
                     accountId,
                     peerUserId,
                     uiState,
-                    plugin.resourcesProvider,
-                    onRenameRequested = { newName ->
-                        AccountTaskExecutor.enqueue(
-                            accountId,
-                            "rename pet for $accountId:$peerUserId"
-                        ) {
-                            if (!plugin.streakPetsController.rename(accountId, peerUserId, newName)) {
-                                return@enqueue
-                            }
-
-                            plugin.serviceMessagesController.sendPetSetName(
-                                accountId,
-                                peerUserId,
-                                newName
-                            )
-                            refreshOpenedDialog(accountId, peerUserId)
-                        }
-                    },
-                    onDismissed = {
-                        refreshFabForOpenChat()
-                    }
+                    resourcesProvider,
+                    onRenameRequested = onRenameRequested,
+                    onDismissed = ::refreshFabForOpenChat
                 )
 
                 trackDialog(dialog)
@@ -133,16 +126,16 @@ class StreakPetUiManager(private val plugin: Plugin) {
         }
     }
 
-    fun refreshFabForOpenChat() {
+    fun refreshFabForOpenChat() = with(Plugin.getInstance()) {
         if (!fabEnabled) {
             AndroidUtilities.runOnUIThread { dismissFab() }
-            return
+            return@with
         }
 
         val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
             ?: run {
                 AndroidUtilities.runOnUIThread { dismissFab() }
-                return
+                return@with
             }
 
         val accountId = UserConfig.selectedAccount
@@ -153,8 +146,8 @@ class StreakPetUiManager(private val plugin: Plugin) {
             return
         }
 
-        plugin.backgroundScope.launch {
-            val uiState = plugin.streakPetsController.getViewStateSnapshot(accountId, peerUserId)
+        backgroundScope.launch {
+            val uiState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             AndroidUtilities.runOnUIThread {
                 if (!fabEnabled) {
@@ -192,7 +185,7 @@ class StreakPetUiManager(private val plugin: Plugin) {
                     accountId,
                     peerUserId,
                     uiState,
-                    plugin.resourcesProvider,
+                    resourcesProvider,
                     fabSizeDp,
                 ) {
                     dismissFab()
@@ -222,13 +215,12 @@ class StreakPetUiManager(private val plugin: Plugin) {
         }
     }
 
-    private fun refreshOpenedDialog(accountId: Int, peerUserId: Long) {
-        if (openedDialog?.matches(accountId, peerUserId) != true) {
-            return
-        }
+    private fun refreshOpenedDialog(accountId: Int, peerUserId: Long) = with(Plugin.getInstance()) {
+        if (openedDialog?.matches(accountId, peerUserId) != true)
+            return@with
 
-        plugin.backgroundScope.launch {
-            val refreshedState = plugin.streakPetsController.getViewStateSnapshot(accountId, peerUserId)
+        backgroundScope.launch {
+            val refreshedState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             AndroidUtilities.runOnUIThread {
                 val dialog = openedDialog

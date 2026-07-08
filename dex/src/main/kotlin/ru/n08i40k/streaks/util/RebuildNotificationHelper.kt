@@ -1,10 +1,11 @@
 package ru.n08i40k.streaks.util
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import org.telegram.messenger.ApplicationLoader
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 
 object RebuildNotificationHelper : EjectNotifier.Delegate() {
@@ -24,7 +25,7 @@ object RebuildNotificationHelper : EjectNotifier.Delegate() {
     fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            Translator.translate(TranslationKey.Rebuild.Notification.CHANNEL_NAME),
+            Strings.rebuild_notification_channel_name(),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
             setSound(null, null)
@@ -34,10 +35,12 @@ object RebuildNotificationHelper : EjectNotifier.Delegate() {
         manager.createNotificationChannel(channel)
     }
 
+    @SuppressLint("DiscouragedApi")
     private fun smallIconResId(): Int {
         val context = ApplicationLoader.applicationContext
         val res = context.resources
         val packageName = context.packageName
+
         return res.getIdentifier("notification", "drawable", packageName)
             .takeIf { it != 0 }
             ?: res.getIdentifier("msg_retry", "drawable", packageName)
@@ -81,25 +84,15 @@ object RebuildNotificationHelper : EjectNotifier.Delegate() {
 
     fun updateSingleStreakProgress(peerName: String, daysChecked: Int) {
         rateLimitTargetId = NOTIFICATION_ID_SINGLE
-        val title = Translator.translate(TranslationKey.Rebuild.Notification.STREAK_SINGLE_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Rebuild.Notification.PROGRESS_TEXT,
-            mapOf("peer_name" to peerName, "days_checked" to daysChecked.toString())
-        )
+        val title = Strings.rebuild_notification_streak_single_title()
+        val text = Strings.rebuild_notification_progress_text(daysChecked, peerName)
         notify(NOTIFICATION_ID_SINGLE, progressNotification(title, text, 0, 0, true))
     }
 
     fun completeSingleStreak(peerName: String, days: Int, revives: Int) {
         manager.cancel(NOTIFICATION_ID_SINGLE)
-        val title = Translator.translate(TranslationKey.Rebuild.Notification.DONE_STREAK_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Rebuild.Streak.SUMMARY_CHAT,
-            mapOf(
-                "peer_name" to peerName,
-                "days" to days.toString(),
-                "revives" to revives.toString()
-            )
-        )
+        val title = Strings.rebuild_notification_done_streak_title()
+        val text = Strings.rebuild_streak_summary_chat(days, peerName, revives)
         notify(NOTIFICATION_ID_COMPLETE, doneNotification(title, text))
     }
 
@@ -109,26 +102,20 @@ object RebuildNotificationHelper : EjectNotifier.Delegate() {
 
     fun updateAllStreakProgress(index: Int, total: Int, peerName: String, daysChecked: Int) {
         rateLimitTargetId = NOTIFICATION_ID_ALL
-        val title = Translator.translate(TranslationKey.Rebuild.Notification.STREAK_ALL_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Rebuild.Notification.ALL_GLOBAL_TEXT,
-            mapOf(
-                "checked_chats" to (index + 1).toString(),
-                "total_chats" to total.toString(),
-                "peer_name" to peerName,
-                "days_checked" to daysChecked.toString(),
-            )
+        val title = Strings.rebuild_notification_streak_all_title()
+        val text = Strings.rebuild_notification_all_global_text(
+            index + 1,
+            daysChecked,
+            peerName,
+            total,
         )
         notify(NOTIFICATION_ID_ALL, progressNotification(title, text, index + 1, total, false))
     }
 
     fun completeAllStreaks(totalChats: Int) {
         manager.cancel(NOTIFICATION_ID_ALL)
-        val title = Translator.translate(TranslationKey.Rebuild.Notification.DONE_ALL_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Rebuild.Streak.SUMMARY_ALL_CHATS,
-            mapOf("checked" to totalChats.toString())
-        )
+        val title = Strings.rebuild_notification_done_all_title()
+        val text = Strings.rebuild_streak_summary_all_chats(totalChats)
         notify(NOTIFICATION_ID_COMPLETE, doneNotification(title, text))
     }
 
@@ -138,17 +125,14 @@ object RebuildNotificationHelper : EjectNotifier.Delegate() {
 
     fun updateSinglePetProgress(peerName: String, daysChecked: Int) {
         rateLimitTargetId = NOTIFICATION_ID_SINGLE
-        val title = Translator.translate(TranslationKey.Rebuild.Notification.PET_SINGLE_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Rebuild.Notification.PROGRESS_TEXT,
-            mapOf("peer_name" to peerName, "days_checked" to daysChecked.toString())
-        )
+        val title = Strings.rebuild_notification_pet_single_title()
+        val text = Strings.rebuild_notification_progress_text(daysChecked, peerName)
         notify(NOTIFICATION_ID_SINGLE, progressNotification(title, text, 0, 0, true))
     }
 
     fun completeSinglePet(peerName: String) {
         manager.cancel(NOTIFICATION_ID_SINGLE)
-        val title = Translator.translate(TranslationKey.Rebuild.Notification.DONE_PET_TITLE)
+        val title = Strings.rebuild_notification_done_pet_title()
         notify(NOTIFICATION_ID_COMPLETE, doneNotification(title, peerName))
     }
 
@@ -156,11 +140,8 @@ object RebuildNotificationHelper : EjectNotifier.Delegate() {
         val totalSec = (totalMs / 1000L).coerceAtLeast(1L).toInt()
         val remainingSec = (remainingMs / 1000L).toInt()
         val progressDone = (totalSec - remainingSec).coerceIn(0, totalSec)
-        val title = Translator.translate(TranslationKey.Rebuild.Notification.RATE_LIMIT_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Rebuild.Notification.RATE_LIMIT_TEXT,
-            mapOf("peer_name" to peerName, "seconds" to remainingSec.toString())
-        )
+        val title = Strings.rebuild_notification_rate_limit_title()
+        val text = Strings.rebuild_notification_rate_limit_text(peerName, remainingSec)
         notify(rateLimitTargetId, progressNotification(title, text, progressDone, totalSec, false))
     }
 
@@ -176,16 +157,13 @@ object RebuildNotificationHelper : EjectNotifier.Delegate() {
         totalDays: Int,
     ) {
         rateLimitTargetId = NOTIFICATION_ID_CHECK
-        val title = Translator.translate(TranslationKey.Check.Notification.TITLE)
-        val text = Translator.translate(
-            TranslationKey.Check.Notification.TEXT,
-            mapOf(
-                "checked_chats" to (index + 1).toString(),
-                "total_chats" to total.toString(),
-                "peer_name" to peerName,
-                "days_checked" to daysChecked.toString(),
-                "total_days" to totalDays.toString(),
-            )
+        val title = Strings.check_notification_title()
+        val text = Strings.check_notification_text(
+            index + 1,
+            daysChecked,
+            peerName,
+            total,
+            totalDays,
         )
         notify(
             NOTIFICATION_ID_CHECK,

@@ -34,14 +34,13 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.constants.TrustedSources
 import ru.n08i40k.streaks.extension.RequestOutcome
 import ru.n08i40k.streaks.extension.format
 import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.util.AnimatedEmojiView
 import ru.n08i40k.streaks.util.MessageSender
-import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.getClientName
 import ru.n08i40k.streaks.util.getClientVersionFull
 import ru.n08i40k.streaks.util.getClientVersionName
@@ -271,7 +270,7 @@ class CrashBottomSheet(
                 )
 
                 addView(TextView(context).apply {
-                    text = Translator.translate(TranslationKey.Sheet.Crash.TITLE)
+                    text = Strings.sheet_crash_title()
                         .let {
                             GradientSpan.fromString(
                                 it,
@@ -296,7 +295,7 @@ class CrashBottomSheet(
 
                 addView(TextView(context).apply {
                     setPadding(0, 0, 0, dp(8f))
-                    text = Translator.translate(TranslationKey.Sheet.Crash.PARAGRAPH_REASON)
+                    text = Strings.sheet_crash_paragraph_reason()
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                     setTextColor(secondaryColor)
                     typeface = Typeface.DEFAULT_BOLD
@@ -317,7 +316,7 @@ class CrashBottomSheet(
 
                 addView(TextView(context).apply {
                     setPadding(0, 0, 0, dp(8f))
-                    text = Translator.translate(TranslationKey.Sheet.Crash.PARAGRAPH_STACK_TRACE)
+                    text = Strings.sheet_crash_paragraph_stack_trace()
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                     setTextColor(secondaryColor)
                     typeface = Typeface.DEFAULT_BOLD
@@ -349,7 +348,7 @@ class CrashBottomSheet(
 
                 addView(TextView(context).apply {
                     setPadding(0, 0, 0, dp(8f))
-                    text = Translator.translate(TranslationKey.Sheet.Crash.PARAGRAPH_PLUGINS)
+                    text = Strings.sheet_crash_paragraph_plugins()
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                     setTextColor(secondaryColor)
                     typeface = Typeface.DEFAULT_BOLD
@@ -386,10 +385,7 @@ class CrashBottomSheet(
                 gravity = Gravity.CENTER_VERTICAL
 
                 addCard(
-                    Translator.translate(
-                        TranslationKey.Sheet.Crash.INFO_CLIENT_VERSION,
-                        mapOf("client_name" to getClientName())
-                    ),
+                    Strings.sheet_crash_info_client_version(getClientName()),
                     getClientVersionFull()
                 )
 
@@ -398,7 +394,7 @@ class CrashBottomSheet(
                 })
 
                 addCard(
-                    Translator.translate(TranslationKey.Sheet.Crash.INFO_PLUGIN_VERSION),
+                    Strings.sheet_crash_info_plugin_version(),
                     Plugin.getVersion() ?: "unknown"
                 )
             })
@@ -413,7 +409,7 @@ class CrashBottomSheet(
                 orientation = LinearLayout.HORIZONTAL
 
                 addButton(
-                    Translator.translate(TranslationKey.Sheet.Crash.BUTTON_DISMISS),
+                    Strings.sheet_crash_button_dismiss(),
                     secondaryColor
                 ) { dismiss() }
 
@@ -421,7 +417,7 @@ class CrashBottomSheet(
                     layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
                 })
 
-                addButton(Translator.translate(TranslationKey.Sheet.Crash.BUTTON_COPY), textColor) {
+                addButton(Strings.sheet_crash_button_copy(), textColor) {
                     AndroidUtilities.addToClipboard(buildReportText())
                 }
 
@@ -430,7 +426,7 @@ class CrashBottomSheet(
                 })
 
                 addButton(
-                    Translator.translate(TranslationKey.Sheet.Crash.BUTTON_SEND),
+                    Strings.sheet_crash_button_send(),
                     buttonColor
                 ) {
                     sendCrashReport()

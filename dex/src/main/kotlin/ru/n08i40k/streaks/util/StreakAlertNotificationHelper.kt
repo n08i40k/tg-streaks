@@ -1,10 +1,11 @@
 package ru.n08i40k.streaks.util
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import org.telegram.messenger.ApplicationLoader
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 
 class StreakAlertNotificationHelper {
     companion object {
@@ -22,16 +23,18 @@ class StreakAlertNotificationHelper {
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            Translator.translate(TranslationKey.Alert.Notification.CHANNEL_NAME),
+            Strings.alert_notification_channel_name(),
             NotificationManager.IMPORTANCE_DEFAULT
         )
         manager.createNotificationChannel(channel)
     }
 
+    @SuppressLint("DiscouragedApi")
     private fun smallIconResId(): Int {
         val context = ApplicationLoader.applicationContext
         val res = context.resources
         val packageName = context.packageName
+
         return res.getIdentifier("notification", "drawable", packageName)
             .takeIf { it != 0 }
             ?: res.getIdentifier("msg_retry", "drawable", packageName)
@@ -53,19 +56,19 @@ class StreakAlertNotificationHelper {
         }
     }
 
-    fun showNearDeath(peerUserId: Long, peerName: String, streakLength: Int, timeUntilDeathSeconds: Long) {
+    fun showNearDeath(
+        peerUserId: Long,
+        peerName: String,
+        streakLength: Int,
+        timeUntilDeathSeconds: Long
+    ) {
         val hours = timeUntilDeathSeconds / 3600
         val minutes = (timeUntilDeathSeconds % 3600) / 60
         val timeStr = if (hours > 0) "${hours}ч ${minutes}м" else "${minutes}м"
-        val title = Translator.translate(TranslationKey.Alert.Notification.NEAR_DEATH_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Alert.Notification.NEAR_DEATH_TEXT,
-            mapOf(
-                "peer_name" to peerName,
-                "days" to streakLength.toString(),
-                "time" to timeStr,
-            )
-        )
+
+        val title = Strings.alert_notification_near_death_title()
+        val text = Strings.alert_notification_near_death_text(streakLength, peerName, timeStr)
+
         val notification = Notification.Builder(ApplicationLoader.applicationContext, CHANNEL_ID)
             .setSmallIcon(smallIconResId())
             .setContentTitle(title)
@@ -74,18 +77,14 @@ class StreakAlertNotificationHelper {
             .setShowWhen(true)
             .setCategory(Notification.CATEGORY_REMINDER)
             .build()
+
         notify(nearDeathNotificationId(peerUserId), notification)
     }
 
     fun showDeath(peerUserId: Long, peerName: String, streakLength: Int) {
-        val title = Translator.translate(TranslationKey.Alert.Notification.DEATH_TITLE)
-        val text = Translator.translate(
-            TranslationKey.Alert.Notification.DEATH_TEXT,
-            mapOf(
-                "peer_name" to peerName,
-                "days" to streakLength.toString(),
-            )
-        )
+        val title = Strings.alert_notification_death_title()
+        val text = Strings.alert_notification_death_text(streakLength, peerName)
+
         val notification = Notification.Builder(ApplicationLoader.applicationContext, CHANNEL_ID)
             .setSmallIcon(smallIconResId())
             .setContentTitle(title)
@@ -94,6 +93,7 @@ class StreakAlertNotificationHelper {
             .setShowWhen(true)
             .setCategory(Notification.CATEGORY_REMINDER)
             .build()
+
         notify(deathNotificationId(peerUserId), notification)
     }
 

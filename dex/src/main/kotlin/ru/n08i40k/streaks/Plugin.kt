@@ -3,6 +3,10 @@ package ru.n08i40k.streaks
 import android.graphics.Color
 import android.webkit.ValueCallback
 import androidx.room.Room
+import de.comahe.i18n4k.config.I18n4kConfigDefault
+import de.comahe.i18n4k.createLocale
+import de.comahe.i18n4k.i18n4k
+import de.comahe.i18n4k.messages.formatter.MessageFormatterDefault
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import kotlinx.coroutines.CancellationException
@@ -14,9 +18,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
+import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
-import ru.n08i40k.streaks.constants.TranslationKey
 import ru.n08i40k.streaks.controller.ServiceMessagesController
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreaksController
@@ -34,6 +38,7 @@ import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
+import ru.n08i40k.streaks.extension.resolveLanguageCode
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
@@ -48,6 +53,8 @@ import ru.n08i40k.streaks.hook.impl.emoji.ProfileActivityHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.ProfileSearchCellHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.StatusBadgeComponentHookBundle
 import ru.n08i40k.streaks.hook.impl.emoji.UserCellHookBundle
+import ru.n08i40k.streaks.i18n.MessagePluralFormatter
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.override.PluginBadges
 import ru.n08i40k.streaks.registry.LockableActionRegistry
 import ru.n08i40k.streaks.registry.LockableCallbackRegistry
@@ -63,14 +70,12 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
-import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.UserPatcher
 import java.lang.reflect.Member
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Instant
 
 typealias LogReceiver = ValueCallback<String>
-typealias TranslationResolver = java.util.function.Function<String, String?>
 
 class Plugin {
     @Suppress("unused")
@@ -96,7 +101,6 @@ class Plugin {
         fun inject(
             version: String,
             logReceiver: LogReceiver,
-            translationResolver: TranslationResolver,
             resourcesRootPath: String,
         ) {
             if (INSTANCE != null)
@@ -105,7 +109,15 @@ class Plugin {
             VERSION = version
 
             Logger.setReceiver(logReceiver)
-            Translator.setResolver(translationResolver)
+
+            i18n4k = I18n4kConfigDefault().apply {
+                locale = createLocale(
+                    LocaleController
+                        .getInstance()
+                        .resolveLanguageCode()
+                )
+            }
+            MessageFormatterDefault.registerMessageValueFormatters(MessagePluralFormatter)
 
             try {
                 INSTANCE = Plugin(ResourcesProvider(resourcesRootPath))
@@ -199,7 +211,6 @@ class Plugin {
 
     // helpers
     val resourcesProvider: ResourcesProvider
-    val bulletinHelper: BulletinHelper
     val alertNotificationHelper: StreakAlertNotificationHelper
 
     // callback registries
@@ -224,7 +235,6 @@ class Plugin {
 
     constructor(resourcesProvider: ResourcesProvider) {
         this.resourcesProvider = resourcesProvider
-        this.bulletinHelper = BulletinHelper()
         this.alertNotificationHelper = StreakAlertNotificationHelper()
 
         // background work
@@ -250,7 +260,7 @@ class Plugin {
             this.serviceMessagesController
         )
         this.streakPetsController = StreakPetsController(this.db, this.streaksController)
-        this.petUiManager = StreakPetUiManager(this)
+        this.petUiManager = StreakPetUiManager()
     }
 
     fun enqueueTask(name: String, callback: suspend () -> Unit) =
@@ -412,7 +422,7 @@ class Plugin {
         val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
         if (peerUser == null || !isPeerValid(peerUser)) {
-            bulletinHelper.showTranslated(TranslationKey.Status.Info.CHAT_PRIVATE_USERS_ONLY)
+            BulletinHelper.show(Strings.status_info_chat_private_users_only())
             return
         }
 

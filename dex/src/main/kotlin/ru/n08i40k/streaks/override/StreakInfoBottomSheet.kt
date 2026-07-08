@@ -17,10 +17,9 @@ import org.telegram.ui.Components.Premium.GLIcon.GLIconTextureView
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.Components.Premium.StarParticlesView
 import org.telegram.ui.PremiumPreviewFragment
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.util.AnimatedEmojiView
-import ru.n08i40k.streaks.util.Translator
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.setFieldValue
@@ -73,18 +72,6 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
 
     private val streakViewData: StreakViewData
 
-    private fun t(key: String): String = Translator.translate(key)
-
-    @Suppress("SameParameterValue")
-    private fun tf(key: String, vararg replacements: Pair<String, Any?>): String {
-        var text = t(key)
-        replacements.forEach { (name, value) ->
-            text = text.replace("{$name}", value?.toString() ?: "")
-        }
-        return text
-    }
-
-
     constructor(
         base: PremiumPreviewBottomSheet,
         user: TLRPC.User,
@@ -110,8 +97,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_filled_data_messages,
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_HOW_TITLE),
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_HOW_DESCRIPTION)
+                Strings.sheet_streak_info_feature_how_title(),
+                Strings.sheet_streak_info_feature_how_description()
             )
         )
 
@@ -119,8 +106,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_filled_unlockedrecord,
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_LEVELS_TITLE),
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_LEVELS_DESCRIPTION)
+                Strings.sheet_streak_info_feature_levels_title(),
+                Strings.sheet_streak_info_feature_levels_description()
             )
         )
 
@@ -128,8 +115,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_reactions_filled,
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_KEEP_TITLE),
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_KEEP_DESCRIPTION)
+                Strings.sheet_streak_info_feature_keep_title(),
+                Strings.sheet_streak_info_feature_keep_description()
             )
         )
 
@@ -137,8 +124,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             PremiumPreviewFragment.PremiumFeatureData(
                 0,
                 R.drawable.msg_filled_datausage,
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_FIX_DURATION_TITLE),
-                t(TranslationKey.Sheet.StreakInfo.FEATURE_FIX_DURATION_DESCRIPTION)
+                Strings.sheet_streak_info_feature_fix_duration_title(),
+                Strings.sheet_streak_info_feature_fix_duration_description()
             )
         )
 
@@ -177,9 +164,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         )?.visibility = View.GONE
     }
 
-    override fun getTitle(): CharSequence {
-        return t(TranslationKey.Sheet.StreakInfo.DIALOG_TITLE)
-    }
+    override fun getTitle(): CharSequence =
+        Strings.sheet_streak_info_dialog_title()
 
     override fun onContainerDraw(canvas: Canvas?) {
         super.onContainerDraw(canvas)
@@ -198,10 +184,9 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             return
 
         val title = AndroidUtilities.replaceTags(
-            tf(
-                TranslationKey.Sheet.StreakInfo.HEADER_TITLE,
-                "name" to user.first_name,
-                "days" to streakViewData.length
+            Strings.sheet_streak_info_header_title(
+                streakViewData.length,
+                user.first_name,
             )
         )
 
@@ -209,7 +194,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         this.titleView[1].text = title
 
         this.subtitleView.text =
-            AndroidUtilities.replaceTags(t(TranslationKey.Sheet.StreakInfo.HEADER_DESCRIPTION))
+            AndroidUtilities.replaceTags(Strings.sheet_streak_info_header_description())
 
         if (viewType != 0)
             return

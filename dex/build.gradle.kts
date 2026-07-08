@@ -199,6 +199,12 @@ plugins {
     id("com.android.library") version "9.0.1"
     id("com.google.devtools.ksp") version "2.3.5"
     id("dev.reformator.stacktracedecoroutinator") version "2.6.1"
+    id("de.comahe.i18n4k") version "0.11.2"
+}
+
+i18n4k {
+    packageName = "ru.n08i40k.streaks.i18n"
+    sourceCodeLocales = listOf("en", "ru")
 }
 
 configure<DecoroutinatorPluginExtension> {
@@ -297,9 +303,12 @@ dependencies {
     compileOnly(libs.aliuhook)
     compileOnly(libs.jetbrains.kotlin.stdlib)
     compileOnly(libs.kotlinx.coroutines.core)
+    compileOnly(libs.i18n4k.core)
+    compileOnly(libs.kotlinx.collections.immutable)
     compileOnly(files(TELEGRAM_COMPILE_JAR_PATH))
     add(embed.name, libs.jetbrains.kotlin.stdlib)
     add(embed.name, libs.kotlinx.coroutines.core)
+    add(embed.name, libs.i18n4k.core)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
 

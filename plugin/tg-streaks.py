@@ -24,7 +24,6 @@ from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
 from java.lang import Class, Integer, Long, String
 from java.nio import ByteBuffer  # ty:ignore[unresolved-import]
-from java.util.function import Function
 from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
 from org.telegram.ui.ActionBar import AlertDialog
@@ -125,10 +124,6 @@ I18N_STATUS: dict[str, dict[str, str]] = {
         "en": "Current chat not found",
         "ru": "Текущий чат не найден",
     },
-    "status.error.chat.open_context_failed": {
-        "en": "Chat context unavailable",
-        "ru": "Контекст чата недоступен",
-    },
     "status.error.database.delete_failed": {
         "en": "Database reset failed: {reason}",
         "ru": "Не удалось сбросить базу: {reason}",
@@ -141,203 +136,13 @@ I18N_STATUS: dict[str, dict[str, str]] = {
         "en": "Couldn't restart client",
         "ru": "Не удалось перезапустить клиент",
     },
-    "status.info.chat.private_users_only": {
-        "en": "Only for private chats",
-        "ru": "Только для личных чатов",
-    },
-    "status.info.debug.private_users_only": {
-        "en": "Debug: only for private chats",
-        "ru": "Debug: только для личных чатов",
-    },
-    "status.info.debug.streak_already_max": {
-        "en": "Debug: streak is already maxed",
-        "ru": "Debug: стрик уже максимальный",
-    },
-    "status.info.pet.already_exists_for_chat": {
-        "en": "Streak pet already exists",
-        "ru": "Стрик-пет уже создан",
-    },
-    "status.info.pet.not_created_for_chat": {
-        "en": "No streak pet in this chat yet",
-        "ru": "В этом чате ещё нет стрик-пета",
-    },
-    "status.info.rebuild.already_running": {
-        "en": "Rebuild already running",
-        "ru": "Пересчёт уже идёт",
-    },
-    "status.info.streak.not_ended_yet": {
-        "en": "Streak is still active",
-        "ru": "Стрик ещё активен",
-    },
-    "status.info.streak.not_found_for_chat": {
-        "en": "No streak in this chat",
-        "ru": "В этом чате нет стрика",
-    },
-    "status.info.streak.restore_unavailable": {
-        "en": "Streak can no longer be restored",
-        "ru": "Стрик уже нельзя восстановить",
-    },
-    "status.info.streak.searching_start_message": {
-        "en": "Looking for streak start...",
-        "ru": "Ищу начало стрика...",
-    },
-    "status.info.streak.start_message_not_found": {
-        "en": "Exact message not found, opened streak day",
-        "ru": "Точное сообщение не найдено, открыт день начала",
-    },
-    "status.success.backup.exported": {
-        "en": "Backup saved: {name}",
-        "ru": "Бэкап сохранён: {name}",
-    },
     "status.success.backup.imported": {
         "en": "Backup restored: {name}",
         "ru": "Бэкап восстановлен: {name}",
     },
-    "status.success.chat.level_messages_disabled": {
-        "en": "Service messages off in this chat",
-        "ru": "Сервисные сообщения в чате выключены",
-    },
-    "status.success.chat.level_messages_enabled": {
-        "en": "Service messages on in this chat",
-        "ru": "Сервисные сообщения в чате включены",
-    },
     "status.success.database.reset_started": {
         "en": "Database reset started",
         "ru": "Сброс базы запущен",
-    },
-    "status.success.debug.pet_deleted": {
-        "en": "Debug: streak pet deleted",
-        "ru": "Debug: стрик-пет удалён",
-    },
-    "status.success.debug.streak_deleted": {
-        "en": "Debug: streak deleted",
-        "ru": "Debug: стрик удалён",
-    },
-    "status.success.debug.streak_frozen": {
-        "en": "Debug: streak frozen",
-        "ru": "Debug: стрик заморожен",
-    },
-    "status.success.debug.streak_marked_dead": {
-        "en": "Debug: streak marked as dead",
-        "ru": "Debug: стрик помечен как мёртвый",
-    },
-    "status.success.debug.streak_set_to_3_days": {
-        "en": "Debug: streak set to 3 days",
-        "ru": "Debug: стрик установлен на 3 дня",
-    },
-    "status.success.debug.streak_upgraded": {
-        "en": "Debug: streak upgraded to {days} days",
-        "ru": "Debug: стрик улучшен до {days} дней",
-    },
-    "status.success.pet.created": {
-        "en": "Streak pet created",
-        "ru": "Стрик-пет создан",
-    },
-    "status.success.pet_button.disabled": {
-        "en": "Streak pet button hidden in all chats",
-        "ru": "Кнопка стрик-пета скрыта во всех чатах",
-    },
-    "status.success.pet_button.enabled": {
-        "en": "Streak pet button shown in all chats",
-        "ru": "Кнопка стрик-пета показана во всех чатах",
-    },
-    "status.success.streak.jump_to_start_completed": {
-        "en": "Opened streak start",
-        "ru": "Начало стрика открыто",
-    },
-    "status.success.streak.restored": {
-        "en": "Streak restored",
-        "ru": "Стрик восстановлен",
-    },
-}
-
-I18N_SHEETS: dict[str, dict[str, str]] = {
-    "sheet.crash.button.copy": {"en": "Copy", "ru": "Копировать"},
-    "sheet.crash.button.dismiss": {"en": "Dismiss", "ru": "Закрыть"},
-    "sheet.crash.button.send": {"en": "Send", "ru": "Отправить"},
-    "sheet.crash.info.client_version": {
-        "en": "{client_name} version",
-        "ru": "Версия {client_name}",
-    },
-    "sheet.crash.info.plugin_version": {"en": "Plugin version", "ru": "Версия плагина"},
-    "sheet.crash.paragraph.plugins": {"en": "plugins", "ru": "плагины"},
-    "sheet.crash.paragraph.reason": {"en": "reason", "ru": "причина"},
-    "sheet.crash.paragraph.stack_trace": {"en": "stack-trace", "ru": "стек-трейс"},
-    "sheet.crash.title": {
-        "en": "%g[Streaks] plugin has been crashed :(",
-        "ru": "Плагин %g[Streaks] крашнулся :(",
-    },
-    "sheet.pet.badges.title": {"en": "Streak badges", "ru": "Бейджи стрика"},
-    "sheet.pet.locked": {"en": "Locked", "ru": "Заблокировано"},
-    "sheet.pet.locked.description": {
-        "en": "Open the previous form first",
-        "ru": "Сначала откройте прошлую форму",
-    },
-    "sheet.pet.max_level": {"en": "Max", "ru": "Макс."},
-    "sheet.pet.points_to_next_stage": {
-        "en": "{count} points to evolve",
-        "ru": "{count} очков до эволюции",
-    },
-    "sheet.pet.progress.partner": {"en": "Partner", "ru": "Партнёр"},
-    "sheet.pet.progress.you": {"en": "You", "ru": "Вы"},
-    "sheet.pet.rename.cancel": {"en": "Cancel", "ru": "Отмена"},
-    "sheet.pet.rename.placeholder": {"en": "New name", "ru": "Новое имя"},
-    "sheet.pet.rename.save": {"en": "Save", "ru": "Сохранить"},
-    "sheet.pet.rename.title": {
-        "en": "Rename streak pet",
-        "ru": "Переименовать стрик-пета",
-    },
-    "sheet.pet.streak_days": {"en": "Streak days", "ru": "Дни стрика"},
-    "sheet.pet.tasks.exchange_one_message": {
-        "en": "1 message each",
-        "ru": "По 1 сообщению",
-    },
-    "sheet.pet.tasks.send_four_messages_each": {
-        "en": "4 messages each",
-        "ru": "По 4 сообщения",
-    },
-    "sheet.pet.tasks.send_ten_messages_each": {
-        "en": "10 messages each",
-        "ru": "По 10 сообщений",
-    },
-    "sheet.pet.tasks.title": {"en": "Today's tasks", "ru": "Задания на сегодня"},
-    "sheet.streak_info.dialog_title": {"en": "Streak", "ru": "Стрик"},
-    "sheet.streak_info.feature.fix_duration.description": {
-        "en": 'Use "Streak rebuild" to recount it.',
-        "ru": 'Используйте "Пересчёт стрика", чтобы пересчитать его.',
-    },
-    "sheet.streak_info.feature.fix_duration.title": {
-        "en": "Wrong streak length?",
-        "ru": "Стрик считается неверно?",
-    },
-    "sheet.streak_info.feature.how.description": {
-        "en": "After three days of communication in a row, you will have a streak!\n It improves depending on duration.",
-        "ru": "После трёх дней общения подряд у вас появится стрик!\nОн улучшается в зависимости от длительности.",
-    },
-    "sheet.streak_info.feature.how.title": {
-        "en": "How it works?",
-        "ru": "Как это работает?",
-    },
-    "sheet.streak_info.feature.keep.description": {
-        "en": "If you don't message each other for 24 hours, the streak ends.\nYou get another 24 hours to restore it.",
-        "ru": "Если не писать друг другу 24 часа, стрик прервётся.\nНа восстановление будет ещё 24 часа.",
-    },
-    "sheet.streak_info.feature.keep.title": {
-        "en": "Don't drop it ;)",
-        "ru": "Не забывайте о нём ;)",
-    },
-    "sheet.streak_info.feature.levels.description": {
-        "en": "Levels unlock at 3, 10, 30, 100 and 200+ days.\nA popup appears on level-up.",
-        "ru": "Уровни открываются на 3, 10, 30, 100 и 200+ днях.\nПри повышении появляется попап.",
-    },
-    "sheet.streak_info.feature.levels.title": {"en": "Levels!", "ru": "Уровни!"},
-    "sheet.streak_info.header.description": {
-        "en": "Keep it going **:P**",
-        "ru": "Продолжайте в том же духе **:P**",
-    },
-    "sheet.streak_info.header.title": {
-        "en": "You and {name} are on a {days}-day streak!",
-        "ru": "У вас с {name} стрик уже {days} дней!",
     },
 }
 
@@ -458,54 +263,6 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "ru": "Выбрать с устройства...",
     },
     "dialog.backup_restore.title": {"en": "Choose backup", "ru": "Выберите бэкап"},
-    "dialog.calendar_fix.cancel": {"en": "Cancel", "ru": "Отмена"},
-    "dialog.calendar_fix.confirm": {"en": "Confirm", "ru": "Подтвердить"},
-    "dialog.calendar_fix.later": {"en": "Later", "ru": "Позже"},
-    "dialog.calendar_fix.limit_reached.message": {
-        "en": "You have already used the maximum number of manual calendar restores for this chat.",
-        "ru": "Для этого чата уже использовано максимальное количество ручных восстановлений через календарь.",
-    },
-    "dialog.calendar_fix.limit_reached.title": {
-        "en": "Restore limit reached",
-        "ru": "Лимит восстановлений достигнут",
-    },
-    "dialog.calendar_fix.manual_revive.message_dead_chain": {
-        "en": "This day looks like a restore point in a dead streak chain. Mark it as restored?",
-        "ru": "Этот день выглядит как точка восстановления в мёртвой цепочке стрика. Пометить его как восстановленный?",
-    },
-    "dialog.calendar_fix.manual_revive.message_gap": {
-        "en": "This day looks like a streak restore day. Mark it as restored?",
-        "ru": "Этот день выглядит как день восстановления стрика. Пометить его как восстановленный?",
-    },
-    "dialog.calendar_fix.manual_revive.title": {
-        "en": "Mark restore day?",
-        "ru": "Пометить день восстановлением?",
-    },
-    "dialog.calendar_fix.ok": {"en": "OK", "ru": "Ок"},
-    "dialog.calendar_fix.rebuild.message": {
-        "en": "The restore mark is saved. Rebuild the streak now?",
-        "ru": "Пометка восстановления сохранена. Пересчитать стрик сейчас?",
-    },
-    "dialog.calendar_fix.rebuild.title": {
-        "en": "Rebuild streak?",
-        "ru": "Пересчитать стрик?",
-    },
-    "dialog.calendar_fix.rebuild_now": {"en": "Rebuild", "ru": "Пересчитать"},
-    "dialog.calendar_fix.warning_next_day.message": {
-        "en": "This day looks like the death day. The restore should be placed on the next day.",
-        "ru": "Этот день больше похож на день смерти стрика. Восстановление лучше ставить на следующий день.",
-    },
-    "dialog.calendar_fix.warning_next_day.title": {
-        "en": "Better tap the next day",
-        "ru": "Лучше нажмите на следующий день",
-    },
-    "dialog.create_pet.cancel": {"en": "No", "ru": "Нет"},
-    "dialog.create_pet.confirm": {"en": "Yes", "ru": "Да"},
-    "dialog.create_pet.message": {
-        "en": "Does the other person use the plugin?",
-        "ru": "У собеседника есть плагин?",
-    },
-    "dialog.create_pet.title": {"en": "Streak pet", "ru": "Стрик-пет"},
     "dialog.sha256_mismatch.message": {
         "en": "Checksum of downloaded {filename} does not match.\nThe plugin has been disabled for security.\n\nPlugin version: {version}\nTarget file: {filename}\nHash: {hash} ({expected_hash} expected)",
         "ru": "Контрольная сумма скачанного {filename} не совпадает.\nПлагин отключён в целях безопасности.\n\nВерсия плагина: {version}\nФайл: {filename}\nХеш: {hash} (ожидался {expected_hash})",
@@ -524,83 +281,6 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
     "dialog.update_restart.title": {
         "en": "Restart client?",
         "ru": "Перезапустить клиент?",
-    },
-}
-
-I18N_REBUILD: dict[str, dict[str, str]] = {
-    "alert.notification.channel_name": {
-        "en": "Streak Alerts",
-        "ru": "Оповещения о стриках",
-    },
-    "alert.notification.death.text": {
-        "en": "{peer_name} • {days} d.",
-        "ru": "{peer_name} • {days} д.",
-    },
-    "alert.notification.death.title": {"en": "Streak died", "ru": "Стрик умер"},
-    "alert.notification.near_death.text": {
-        "en": "{peer_name} • {days} d. — {time} left",
-        "ru": "{peer_name} • {days} д. — осталось {time}",
-    },
-    "alert.notification.near_death.title": {
-        "en": "Streak about to die",
-        "ru": "Стрик скоро умрёт",
-    },
-    "check.notification.text": {
-        "en": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked}/{total_days} d.",
-        "ru": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked}/{total_days} д.",
-    },
-    "check.notification.title": {"en": "Checking streaks", "ru": "Обновление стриков"},
-    "rebuild.notification.all.global.text": {
-        "en": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked} d.",
-        "ru": "[{checked_chats}/{total_chats}] {peer_name} • {days_checked} д.",
-    },
-    "rebuild.notification.channel_name": {
-        "en": "Streak Rebuild",
-        "ru": "Пересчёт стрика",
-    },
-    "rebuild.notification.done.all.title": {
-        "en": "Rebuild complete",
-        "ru": "Пересчёт завершён",
-    },
-    "rebuild.notification.done.pet.title": {
-        "en": "Pet rebuilt",
-        "ru": "Пет пересчитан",
-    },
-    "rebuild.notification.done.streak.title": {
-        "en": "Streak rebuilt",
-        "ru": "Стрик пересчитан",
-    },
-    "rebuild.notification.pet.single.title": {
-        "en": "Rebuilding pet",
-        "ru": "Пересчёт пета",
-    },
-    "rebuild.notification.progress.text": {
-        "en": "{peer_name} • {days_checked} d.",
-        "ru": "{peer_name} • {days_checked} д.",
-    },
-    "rebuild.notification.rate_limit.text": {
-        "en": "{peer_name} — retrying in {seconds}s",
-        "ru": "{peer_name} — повтор через {seconds} с.",
-    },
-    "rebuild.notification.rate_limit.title": {
-        "en": "Telegram rate limit",
-        "ru": "Лимит запросов Telegram",
-    },
-    "rebuild.notification.streak.all.title": {
-        "en": "Rebuilding all streaks",
-        "ru": "Пересчёт всех стриков",
-    },
-    "rebuild.notification.streak.single.title": {
-        "en": "Rebuilding streak",
-        "ru": "Пересчёт стрика",
-    },
-    "rebuild.streak.summary.all_chats": {
-        "en": "Rebuilt {checked} private chats",
-        "ru": "Пересчитано {checked} личных чатов",
-    },
-    "rebuild.streak.summary.chat": {
-        "en": "Streak with {peer_name}: {days} d., {revives} revives.",
-        "ru": "Стрик с {peer_name}: {days} д., восстановлений: {revives}.",
     },
 }
 
@@ -633,88 +313,13 @@ I18N_DOWNLOAD: dict[str, dict[str, str]] = {
     },
 }
 
-I18N_SERVICE_MESSAGES: dict[str, dict[str, str]] = {
-    "service.pet.invite.accepted.peer": {
-        "en": "{name} accepted the invite!",
-        "ru": "{name} принял(а) инвайт!",
-    },
-    "service.pet.invite.accepted.self": {
-        "en": "You accepted the invite!",
-        "ru": "Вы приняли инвайт!",
-    },
-    "service.pet.invite.action": {"en": "Accept", "ru": "Принять"},
-    "service.pet.invite.description": {
-        "en": "Shared streak pet for this chat",
-        "ru": "Общий стрик-пет для этого чата",
-    },
-    "service.pet.invite.hint": {
-        "en": "Tap below to accept",
-        "ru": "Нажмите ниже, чтобы принять",
-    },
-    "service.pet.invite.sent.self": {
-        "en": "You sent a streak-pet invite!",
-        "ru": "Вы отправили инвайт в стрик-пета!",
-    },
-    "service.pet.invite.title": {
-        "en": "Join streak pet?",
-        "ru": "Вступить в стрик-пета?",
-    },
-    "service.pet.rename.peer": {
-        "en": "{peerName} named the streak pet {petName}!",
-        "ru": "{peerName} назвал(а) стрик-пета {petName}!",
-    },
-    "service.pet.rename.self": {
-        "en": "You named the streak pet {petName}!",
-        "ru": "Вы назвали стрик-пета {petName}!",
-    },
-    "service.streak.ended.action": {"en": "Restore", "ru": "Восстановить"},
-    "service.streak.ended.hint": {
-        "en": "Tap below to restore it",
-        "ru": "Нажмите ниже, чтобы восстановить",
-    },
-    "service.streak.ended.subtitle": {
-        "en": "You have 24 hours to restore it",
-        "ru": "На восстановление есть 24 часа",
-    },
-    "service.streak.ended.title": {"en": "Streak ended!", "ru": "Стрик прервался!"},
-    "service.streak.level_up.text": {
-        "en": "Streak: {days} days!",
-        "ru": "Стрик: {days} дней!",
-    },
-    "service.streak.restored.peer": {
-        "en": "{name} restored the streak!",
-        "ru": "{name} восстановил(а) стрик!",
-    },
-    "service.streak.restored.self": {
-        "en": "You restored the streak!",
-        "ru": "Вы восстановили стрик!",
-    },
-    "service.streak.started.text": {"en": "Streak started!", "ru": "Стрик начался!"},
-}
-
-I18N_BADGES: dict[str, dict[str, str]] = {
-    "badge.channel.text": {
-        "en": "My official Streaks plugin channel!",
-        "ru": "Мой официальный канал плагина Streaks!",
-    },
-    "badge.chat.text": {
-        "en": "what brings you here?) *anything but a crash*",
-        "ru": "что вас привело сюда?) *только бы не краш*",
-    },
-    "badge.me.text": {"en": "little flames :p", "ru": "огоньки :p"},
-}
-
 I18N_STRINGS: dict[str, dict[str, str]] = {
     **I18N_SETTINGS,
     **I18N_STATUS,
-    **I18N_SHEETS,
     **I18N_MENU,
     **I18N_DIALOGS,
-    **I18N_REBUILD,
     **I18N_UPDATE,
     **I18N_DOWNLOAD,
-    **I18N_SERVICE_MESSAGES,
-    **I18N_BADGES,
 }
 
 
@@ -2196,23 +1801,15 @@ class TgStreaksPlugin(BasePlugin):
                 def onReceiveValue(self, var1):
                     ref.log(str(var1))
 
-            class TranslationResolver(dynamic_proxy(Function)):
-                def apply(self, t: String):
-                    if t is None:
-                        return ""
-                    return ref._t(str(t))
-
             self.jvm_plugin.klass.getDeclaredMethod(
                 String("inject"),
                 String.getClass(),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
-                Function.getClass(),  # ty:ignore[unresolved-attribute]
                 String.getClass(),
             ).invoke(
                 None,  # ty:ignore[invalid-argument-type]
                 String(__version__),
                 Logger(),  # ty:ignore[invalid-argument-type]
-                TranslationResolver(),  # ty:ignore[invalid-argument-type]
                 String(self.resources_bridge.resources_root),
             )
 

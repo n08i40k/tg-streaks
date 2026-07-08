@@ -2,9 +2,10 @@ package ru.n08i40k.streaks
 
 import org.telegram.messenger.UserConfig
 import ru.n08i40k.streaks.constants.SettingsActionButton
-import ru.n08i40k.streaks.constants.TranslationKey
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.util.AccountTaskExecutor
+import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
 
@@ -21,7 +22,7 @@ class SettingsMenuActions(private val plugin: Plugin) {
             val accountId = UserConfig.selectedAccount
 
             if (streaksController.isRebuildRunning()) {
-                bulletinHelper.showTranslated(TranslationKey.Status.Info.REBUILD_ALREADY_RUNNING)
+                BulletinHelper.show(Strings.status_info_rebuild_already_running())
                 return@add
             }
 
@@ -45,9 +46,8 @@ class SettingsMenuActions(private val plugin: Plugin) {
             enqueueTask("export database backup") {
                 val backup = databaseBackupManager.exportNow()
 
-                bulletinHelper.showTranslated(
-                    TranslationKey.Status.Success.BACKUP_EXPORTED,
-                    mapOf("name" to backup.name),
+                BulletinHelper.show(
+                    Strings.status_success_backup_exported(backup.name),
                     "msg_save"
                 )
             }
