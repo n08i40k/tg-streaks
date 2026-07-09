@@ -5,39 +5,13 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
 import android.text.SpannableString
-import android.text.Spanned
 import android.text.style.ReplacementSpan
 
 
 class GradientSpan(private val colors: IntArray) : ReplacementSpan() {
     companion object {
-        val REGEX = Regex("%g\\[([^\\[\\]%]*)]", setOf(RegexOption.MULTILINE))
-
-        fun fromString(text: String, colors: IntArray): SpannableString {
-            val ranges = arrayListOf<IntRange>()
-
-            val spannable = SpannableString(
-                text.replace(REGEX) { match ->
-                    val group = match.groups[1]!!
-                    ranges.add(group.range)
-
-                    group.value
-                }
-            )
-
-            for (i in 0..<ranges.size) {
-                val range = ranges[i]
-
-                spannable.setSpan(
-                    GradientSpan(colors),
-                    range.first - 3 * (i + 1) - i,
-                    range.last - 3 * (i + 1) - i + 1,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-
-            return spannable
-        }
+        fun fromString(text: String, colors: IntArray): SpannableString =
+            buildSpanned(text, listOf(Triple("%g[", "]") { listOf(GradientSpan(colors)) }))
     }
 
     override fun draw(
@@ -66,5 +40,15 @@ class GradientSpan(private val colors: IntArray) : ReplacementSpan() {
         start: Int,
         end: Int,
         fm: Paint.FontMetricsInt?
-    ): Int = paint.measureText(text, start, end).toInt()
+    ): Int {
+        fm?.let {
+            val paintMetrics = paint.fontMetricsInt
+            it.ascent = paintMetrics.ascent
+            it.descent = paintMetrics.descent
+            it.top = paintMetrics.top
+            it.bottom = paintMetrics.bottom
+        }
+
+        return paint.measureText(text, start, end).toInt()
+    }
 }
