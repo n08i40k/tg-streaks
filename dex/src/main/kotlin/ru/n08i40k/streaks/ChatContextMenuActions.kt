@@ -10,14 +10,12 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
 import ru.n08i40k.streaks.extension.isPeerValid
-import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.override.FixupCalendarActivity
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
-import ru.n08i40k.streaks.util.RebuildNotificationHelper
 
 class ChatContextMenuActions(private val plugin: Plugin) {
     @OptIn(DelicateCoroutinesApi::class)
@@ -92,16 +90,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     return@enqueue
                 }
 
-                val peerName = peerUser.label
-
-                streakPetsController.rebuild(accountId, peerUser) { progress ->
-                    RebuildNotificationHelper.updateSinglePetProgress(
-                        peerName,
-                        progress.daysChecked
-                    )
-                }
-
-                RebuildNotificationHelper.completeSinglePet(peerName)
+                streakPetsController.rebuild(accountId, peerUser)
             }
 
             Logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")

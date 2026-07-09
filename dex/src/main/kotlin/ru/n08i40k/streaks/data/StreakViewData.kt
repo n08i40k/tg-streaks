@@ -7,4 +7,13 @@ data class StreakViewData(
     val documentId: Long,
     val accentColor: Color,
     val isJubilee: Boolean
-)
+) {
+    companion object {
+        fun from(streak: Streak) = StreakViewData(
+            streak.length,
+            streak.level.documentId,
+            streak.level.color,
+            streak.length == streak.level.length || streak.length % 100 == 0
+        )
+    }
+}

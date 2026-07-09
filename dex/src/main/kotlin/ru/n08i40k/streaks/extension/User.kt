@@ -7,5 +7,13 @@ val TLRPC.User.label: String
     get() = this.username
         ?.takeIf { it.isNotBlank() }
         ?.let { "@$it" }
-        ?: UserObject.getUserName(this).takeIf { it.isNotBlank() }
+        ?: UserObject.getUserName(this)
+            .takeIf { it.isNotBlank() }
+        ?: this.id.toString()
+
+val TLRPC.User.name: String
+    get() = UserObject.getUserName(this)
+        .takeIf { it.isNotBlank() }
+        ?: this.username
+            ?.takeIf { it.isNotBlank() }
         ?: this.id.toString()

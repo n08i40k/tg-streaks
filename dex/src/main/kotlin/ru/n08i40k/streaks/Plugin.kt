@@ -19,6 +19,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
@@ -78,13 +79,13 @@ import ru.n08i40k.streaks.ui.StreakPetUiManager
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.BulletinHelper
+import ru.n08i40k.streaks.util.CheckNotificationHelper
 import ru.n08i40k.streaks.util.Logger
-import ru.n08i40k.streaks.util.RebuildNotificationHelper
+import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.UserPatcher
 import java.lang.reflect.Member
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Instant
 
 typealias LogReceiver = ValueCallback<String>
@@ -230,7 +231,7 @@ class Plugin {
     internal val settingsActionCallbackRegistry = LockableActionRegistry()
 
     // eject data
-    private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
+    val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
 
     val streakEmojiRegistry = StreakEmojiRegistry()
 
@@ -243,7 +244,6 @@ class Plugin {
     // registries
     val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
     val streakPetLevelRegistry: StreakPetLevelRegistry = StreakPetLevelRegistry()
-    private val isAutoBackupLoopStarted = AtomicBoolean(false)
 
     constructor(resourcesProvider: ResourcesProvider) {
         this.resourcesProvider = resourcesProvider
@@ -457,26 +457,37 @@ class Plugin {
             }
 
             perAccountPeerIds.forEach(UserPatcher::patchUsers)
+
+            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
         }
 
         AccountTaskExecutor.enqueue(
             accountId,
             "check for updates and update UI for account $accountId ($reason)"
         ) {
-            RebuildNotificationHelper.beginCheckNotification()
+            withContext(RateLimitContext { throttlingClock ->
+                if (throttlingClock == null) {
+                    CheckNotificationHelper.cancelRateLimitNotification()
+                    return@RateLimitContext
+                }
 
-            val syncTargets = streaksController.checkAllForUpdates(
-                accountId
-            ) { index, total, peerName, daysChecked, totalDays ->
-                RebuildNotificationHelper.updateCheckProgress(
-                    index, total, peerName, daysChecked, totalDays
+                val (elapsedSec, totalSec) = throttlingClock
+
+                CheckNotificationHelper.showRateLimitCountdown(
+                    remainingMs = (totalSec - elapsedSec) * 1000L,
+                    totalMs = totalSec * 1000L,
                 )
+            }) {
+                streaksController.checkAllForUpdates(
+                    accountId,
+                    CheckNotificationHelper::updateCheckProgress
+                )
+
+                CheckNotificationHelper.cancelCheckProgress()
+
+                streakPetsController.checkAllForUpdates(accountId)
             }
 
-            RebuildNotificationHelper.cancelCheckProgress()
-
-            syncPeersUi(syncTargets)
-            streakPetsController.checkAllForUpdates(accountId)
             streaksController.flushCurrentChatPopup()
         }
     }
@@ -486,7 +497,7 @@ class Plugin {
 
         BadgesCompat.init()
 
-        RebuildNotificationHelper.createChannel()
+        CheckNotificationHelper.createChannel()
 
         subscribeToEvents()
 
@@ -505,30 +516,18 @@ class Plugin {
         )
 
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
-        enqueueAutoBackupLoopStart("plugin inject")
 
-        Logger.info("Inject finalized!")
-    }
-
-    private fun enqueueAutoBackupLoopStart(reason: String) {
-        AccountTaskExecutor.enqueue(
-            UserConfig.selectedAccount,
-            "start automatic database backup loop (${reason})"
-        ) {
-            if (!isAutoBackupLoopStarted.compareAndSet(false, true))
-                return@enqueue
-
-            backgroundScope.launch {
-                try {
-                    databaseBackupManager.runAutoBackupLoop()
-                } catch (_: CancellationException) {
-                    // Suppress error
-                } catch (e: Throwable) {
-                    Logger.fatal("Automatic database backup loop failed", e)
-                    isAutoBackupLoopStarted.set(false)
-                }
+        backgroundScope.launch {
+            try {
+                Logger.info("Starting automating database backup loop...")
+                databaseBackupManager.runAutoBackupLoop()
+            } catch (_: CancellationException) {
+            } catch (e: Throwable) {
+                Logger.fatal("Automatic database backup loop failed", e)
             }
         }
+
+        Logger.info("Inject finalized!")
     }
 
     private fun onEject() {
@@ -561,25 +560,6 @@ class Plugin {
         EjectNotifier.fire()
     }
 
-    fun syncPeerUi(accountId: Int, peerUserId: Long) {
-        UserPatcher.patchUser(accountId, peerUserId)
-
-        AndroidUtilities.runOnUIThread {
-            streakEmojiRegistry.refreshByPeerUserId(peerUserId)
-            streakEmojiRegistry.refreshDialogCells()
-        }
-    }
-
-    internal fun syncPeersUi(targets: Iterable<StreaksController.UiSyncTarget>) {
-        val syncTargets = targets.distinct()
-
-        syncTargets.forEach { UserPatcher.patchUser(it.accountId, it.peerUserId) }
-
-        AndroidUtilities.runOnUIThread {
-            streakEmojiRegistry.refreshAll()
-        }
-    }
-
     fun enqueueRebuildForPeer(
         accountId: Int,
         peerUserId: Long,
@@ -596,25 +576,7 @@ class Plugin {
             accountId,
             "rebuild streak for $accountId:$peerUserId"
         ) {
-            val peerName = peerUser.label
-
-            streaksController.rebuild(accountId, peerUser) { progress ->
-                RebuildNotificationHelper.updateSingleStreakProgress(peerName, progress.daysChecked)
-            }
-
-            syncPeerUi(accountId, peerUserId)
-
-            val rebuiltStreak = streaksController.get(accountId, peerUserId)
-
-            if (rebuiltStreak != null) {
-                RebuildNotificationHelper.completeSingleStreak(
-                    peerName,
-                    rebuiltStreak.length,
-                    rebuiltStreak.revivesCount,
-                )
-            } else {
-                RebuildNotificationHelper.cancelSingleProgress()
-            }
+            streaksController.rebuild(accountId, peerUser)
 
             if (onComplete != null) {
                 AndroidUtilities.runOnUIThread { onComplete() }

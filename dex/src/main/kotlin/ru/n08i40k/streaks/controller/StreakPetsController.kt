@@ -2,6 +2,7 @@ package ru.n08i40k.streaks.controller
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.withContext
+import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
@@ -26,9 +27,10 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.exception.InvalidPeerException
+import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
+import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
-import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.fetchPeerUsers
 import kotlinx.datetime.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
@@ -226,7 +228,7 @@ class StreakPetsController(
     }
 
     // do not call this func if streak pet is not existing
-    // lock and user-facing feedback (notifications) are handled by rebuild;
+    // lock and user-facing feedback (notifications, rebuild sheet) are handled by rebuild;
     // callers must hold rebuildLock before calling this
     private suspend fun rebuildOne(
         accountId: Int,
@@ -253,35 +255,34 @@ class StreakPetsController(
     }
 
     // do not call this func if streak pet is not existing
-    // TODO: this still drives RebuildNotificationHelper directly; will be replaced once
-    // RebuildNotificationHelper itself is reworked in a follow-up commit
-    suspend fun rebuild(
-        accountId: Int,
-        peerUser: TLRPC.User,
-        onProgressUpdate: (progress: RebuildProgress) -> Unit,
-    ) {
+    suspend fun rebuild(accountId: Int, peerUser: TLRPC.User) {
         if (!rebuildLock.compareAndSet(false, true)) {
             Logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
             return
         }
 
         try {
+            val states: MutableList<UserRebuildState> =
+                mutableListOf(UserRebuildState.Pending(peerUser))
+            val sheet = RebuildBottomSheet.launch(RebuildBottomSheet.TYPE_STREAK_PET, states)
+
+            var daysChecked = 0
+
             withContext(RateLimitContext { throttlingClock ->
-                if (throttlingClock == null) {
-                    RebuildNotificationHelper.cancelRateLimitNotification()
-                    return@RateLimitContext
-                }
-
-                val (elapsedSec, totalSec) = throttlingClock
-
-                RebuildNotificationHelper.showRateLimitCountdown(
-                    peerUser.label,
-                    remainingMs = (totalSec - elapsedSec) * 1000L,
-                    totalMs = totalSec * 1000L,
-                )
+                states[0] = UserRebuildState.InProcess(peerUser, daysChecked, throttlingClock)
+                sheet.notifyUserStateChanged(0)
             }) {
-                rebuildOne(accountId, peerUser) { onProgressUpdate(it) }
+                rebuildOne(accountId, peerUser) { progress ->
+                    daysChecked = progress.daysChecked
+                    states[0] = UserRebuildState.InProcess(peerUser, daysChecked, null)
+                    sheet.notifyUserStateChanged(0)
+                }
             }
+
+            val rebuiltPet = get(accountId, peerUser.id)
+            states[0] = UserRebuildState.Done(peerUser, rebuiltPet)
+            sheet.notifyUserStateChanged(0)
+            sheet.let { AndroidUtilities.runOnUIThread(it::showResults) }
         } finally {
             rebuildLock.set(false)
         }

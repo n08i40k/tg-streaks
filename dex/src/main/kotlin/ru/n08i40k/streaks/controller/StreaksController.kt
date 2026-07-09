@@ -5,6 +5,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -41,9 +42,10 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
+import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
-import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.fetchPeerUsers
 import kotlinx.datetime.LocalDate
@@ -59,14 +61,8 @@ class StreaksController(
         private const val MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT = 2
     }
 
-    data class UiSyncTarget(
-        val accountId: Int,
-        val peerUserId: Long,
-    )
-
     data class RebuildAllResult(
         val totalChats: Int,
-        val uiSyncTargets: List<UiSyncTarget>,
     )
 
     data class RebuildProgress(
@@ -422,7 +418,7 @@ class StreaksController(
         }
     }
 
-    // lock and user-facing feedback (notifications) are handled by rebuild/rebuildAll;
+    // lock and user-facing feedback (notifications, rebuild sheet) are handled by rebuildWithFeedback;
     // callers must hold rebuildLock before calling this
     private suspend fun rebuildOne(
         accountId: Int,
@@ -583,71 +579,60 @@ class StreaksController(
         }
     }
 
-    // TODO: this still drives RebuildNotificationHelper directly; will be replaced once
-    // RebuildNotificationHelper itself is reworked in a follow-up commit
-    private suspend fun withRateLimitNotification(
-        peerName: String,
-        block: suspend () -> Unit,
-    ) = withContext(RateLimitContext { throttlingClock ->
-        if (throttlingClock == null) {
-            RebuildNotificationHelper.cancelRateLimitNotification()
-            return@RateLimitContext
-        }
-
-        val (elapsedSec, totalSec) = throttlingClock
-
-        RebuildNotificationHelper.showRateLimitCountdown(
-            peerName,
-            remainingMs = (totalSec - elapsedSec) * 1000L,
-            totalMs = totalSec * 1000L,
-        )
-    }) {
-        block()
-    }
-
-    suspend fun rebuild(
-        accountId: Int,
-        peerUser: TLRPC.User,
-        ignoreLock: Boolean = false,
-        onProgressUpdate: (progress: RebuildProgress) -> Unit,
-    ) {
-        if (!ignoreLock && !rebuildLock.compareAndSet(false, true)) {
-            Logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
-            return
-        }
-
-        try {
-            withRateLimitNotification(peerUser.label) {
-                rebuildOne(accountId, peerUser) { onProgressUpdate(it) }
-            }
-        } finally {
-            if (!ignoreLock)
-                rebuildLock.set(false)
-        }
+    suspend fun rebuild(accountId: Int, peerUser: TLRPC.User) {
+        rebuildWithFeedback(accountId, listOf(peerUser))
     }
 
     suspend fun rebuildAll(
         accountId: Int,
-        onProgressUpdate: (index: Int, total: Int, peerUser: TLRPC.User, progress: RebuildProgress) -> Unit,
+        peers: List<TLRPC.User> = collectEligiblePrivateUsers(accountId),
+    ): RebuildAllResult =
+        rebuildWithFeedback(accountId, peers)
+
+    private suspend fun rebuildWithFeedback(
+        accountId: Int,
+        peers: List<TLRPC.User>,
     ): RebuildAllResult {
+        if (peers.isEmpty())
+            return RebuildAllResult(0)
+
         if (!rebuildLock.compareAndSet(false, true)) {
-            Logger.info("Unable to rebuild all peers for $accountId because another rebuild is already running")
-            return RebuildAllResult(0, emptyList())
+            Logger.info("Unable to rebuild for $accountId because another rebuild is already running")
+            return RebuildAllResult(0)
         }
 
         try {
-            val peers = collectEligiblePrivateUsers(accountId)
+            val states: MutableList<UserRebuildState> =
+                peers.map { UserRebuildState.Pending(it) }.toMutableList()
+
+            val sheet = RebuildBottomSheet.launch(RebuildBottomSheet.TYPE_STREAK, states)
 
             for ((index, peerUser) in peers.withIndex()) {
-                rebuild(accountId, peerUser, true) {
-                    onProgressUpdate(index, peers.size, peerUser, it)
+                var daysChecked = 0
+
+                withContext(RateLimitContext { throttlingClock ->
+                    states[index] =
+                        UserRebuildState.InProcess(peerUser, daysChecked, throttlingClock)
+                    sheet.notifyUserStateChanged(index)
+                }) {
+                    rebuildOne(accountId, peerUser) { progress ->
+                        daysChecked = progress.daysChecked
+                        states[index] = UserRebuildState.InProcess(peerUser, daysChecked, null)
+                        sheet.notifyUserStateChanged(index)
+                    }
                 }
+
+                val rebuiltStreak = get(accountId, peerUser.id)
+                    ?.takeIf(Streak::isVisible)
+
+                states[index] = UserRebuildState.Done(peerUser, rebuiltStreak)
+                sheet.notifyUserStateChanged(index)
             }
 
-            return RebuildAllResult(
-                totalChats = peers.size,
-                uiSyncTargets = peers.map { UiSyncTarget(accountId, it.id) },
-            )
+
+            AndroidUtilities.runOnUIThread(sheet::showResults)
+
+            return RebuildAllResult(peers.size)
         } finally {
             rebuildLock.set(false)
         }
@@ -844,8 +829,7 @@ class StreaksController(
     suspend fun checkAllForUpdates(
         accountId: Int,
         onProgressUpdate: ((index: Int, total: Int, peerName: String, daysChecked: Int, totalDays: Int) -> Unit)? = null,
-    ): List<UiSyncTarget> {
-        val uiSyncTargets = mutableListOf<UiSyncTarget>()
+    ) {
         val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
         streaks.forEachIndexed { index, streak ->
@@ -860,11 +844,7 @@ class StreaksController(
             } catch (_: InvalidPeerException) {
                 removeInvalidPeerStreak(accountId, streak.peerUserId)
             }
-
-            uiSyncTargets.add(UiSyncTarget(accountId, streak.peerUserId))
         }
-
-        return uiSyncTargets
     }
 
     suspend fun handleUpdate(
@@ -1105,23 +1085,12 @@ class StreaksController(
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
     suspend fun getAllVisible(): List<Streak> = dao.getAll()
-        .filterNot { it.dead || !it.isVisible }
+        .filter { !it.dead && it.isVisible }
 
-    suspend fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? {
-        val streak =
-            dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
-                ?.let { if (it.dead || !it.isVisible) null else it }
-                ?: return null
-
-        val streakLevel = streak.level
-
-        return StreakViewData(
-            streak.length,
-            streakLevel.documentId,
-            streakLevel.color,
-            streak.length == streakLevel.length || streak.length % 100 == 0
-        )
-    }
+    suspend fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? =
+        get(accountId, peerUserId)
+            ?.takeIf { !it.dead && it.isVisible }
+            ?.let(StreakViewData::from)
 
     fun getViewDataBlocking(accountId: Int, peerUserId: Long): StreakViewData? =
         runBlocking { getViewData(accountId, peerUserId) }

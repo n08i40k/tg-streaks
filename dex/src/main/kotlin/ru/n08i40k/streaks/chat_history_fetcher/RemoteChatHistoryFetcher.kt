@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.chat_history_fetcher
 
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.datetime.LocalDate
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
@@ -9,12 +10,11 @@ import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.extension.RequestOutcome
 import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.isPeerIdInvalid
-import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.util.Logger
-import ru.n08i40k.streaks.util.RebuildNotificationHelper
+import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.RuntimeGuard
 
 
@@ -25,22 +25,18 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         const val RETRY_DELAY_MS = 15_000L
     }
 
-    private suspend fun pauseWithRetryNotification(
-        accountId: Int,
-        peerUserId: Long,
-        retryDelayMs: Long,
-        reason: String,
-    ) {
-        val peerName = MessagesController
-            .getInstance(accountId)
-            .getUser(peerUserId)
-            ?.label
-            ?: peerUserId.toString()
+    private suspend fun pauseWithRetryNotification(retryDelayMs: Long, reason: String) {
+        val rateLimitContext = currentCoroutineContext()[RateLimitContext.Key]
 
         RuntimeGuard.pauseAwareDelay(retryDelayMs, reason) { remainingMs, totalMs ->
-            RebuildNotificationHelper.showRateLimitCountdown(peerName, remainingMs, totalMs)
+            rateLimitContext?.onThrottleUpdate?.let { onUpdate ->
+                val totalSec = (totalMs / 1000L).coerceAtLeast(1L).toInt()
+                val elapsedSec = ((totalMs - remainingMs) / 1000L).toInt()
+                onUpdate(elapsedSec to totalSec)
+            }
         }
-        RebuildNotificationHelper.cancelRateLimitNotification()
+
+        rateLimitContext?.onThrottleUpdate?.invoke(null)
     }
 
     private suspend fun requestHistory(
@@ -93,7 +89,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                                 "(attempt $attempt), retrying in ${result.retryDelay / 1000}s"
                     )
                     pauseWithRetryNotification(
-                        accountId, peerUserId, result.retryDelay,
+                        result.retryDelay,
                         "history retry delay for $accountId:$peerUserId",
                     )
                     continue
@@ -105,7 +101,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                                 "$accountId:$peerUserId (attempt $attempt), retrying in ${result.retryDelay / 1000}s"
                     )
                     pauseWithRetryNotification(
-                        accountId, peerUserId, result.retryDelay,
+                        result.retryDelay,
                         "history transient retry delay for $accountId:$peerUserId",
                     )
                     continue
@@ -117,7 +113,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                                 "$accountId:$peerUserId (attempt $attempt), retrying in ${RETRY_DELAY_MS / 1000}s"
                     )
                     pauseWithRetryNotification(
-                        accountId, peerUserId, RETRY_DELAY_MS,
+                        RETRY_DELAY_MS,
                         "history retry delay for $accountId:$peerUserId",
                     )
                     continue
