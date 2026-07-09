@@ -53,7 +53,6 @@ class StreaksController(
     private val serviceMessagesController: ServiceMessagesController,
 ) {
     companion object {
-        private const val MIN_VISIBLE_STREAK_LENGTH = 3
         private const val MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT = 2
     }
 
@@ -199,9 +198,6 @@ class StreaksController(
         )
     }
 
-    private fun isVisibleLength(length: Int): Boolean =
-        length >= MIN_VISIBLE_STREAK_LENGTH
-
     private fun normalizeStatus(status: ChatHistoryFetcher.Status): StreakActivityStatus =
         StreakActivityStatus.fromFetcherStatus(status)
 
@@ -290,7 +286,7 @@ class StreaksController(
             reviveDao.insertAll(revives.map { StreakRevive(ownerUserId, peerUserId, it) })
         }
 
-        if (isVisibleLength(length) && !deathNotified) {
+        if (isVisible && !deathNotified) {
             serviceMessagesController.sendDeath(accountId, peerUserId)
 
             val peerName = MessagesController.getInstance(accountId)
@@ -615,7 +611,6 @@ class StreaksController(
         onProgressUpdate: ((daysChecked: Int, totalDays: Int) -> Unit)? = null,
     ) {
         val now = LocalDate.now()
-        val previousLength = streak.length
         val previousLevelLength = streak.level.length
 
         if (streak.updateFromOwnerAt == streak.updateFromPeerAt && streak.updateFromPeerAt == now)
@@ -703,7 +698,7 @@ class StreaksController(
                             preKill(accountId, streakBeforeDeath, revives)
                         } else {
                             alertNotificationHelper.cancelNearDeath(peerUserId)
-                            if (isVisibleLength(streakBeforeDeath.length) && !streakBeforeDeath.deathNotified) {
+                            if (streakBeforeDeath.isVisible && !streakBeforeDeath.deathNotified) {
                                 val peerName = peerUser.label
                                 alertNotificationHelper.showDeath(
                                     peerUserId,
@@ -753,10 +748,10 @@ class StreaksController(
 
         val currentStreak = get(accountId, peerUserId) ?: return
 
-        if (isVisibleLength(previousLength) && currentStreak.level.length > previousLevelLength)
+        if (streak.isVisible && currentStreak.level.length > previousLevelLength)
             serviceMessagesController.sendUpgrade(accountId, peerUserId, currentStreak.length)
 
-        if (!isVisibleLength(currentStreak.length))
+        if (!currentStreak.isVisible)
             return
 
         if (isInWarningWindow && !streak.warningNotified) {
@@ -841,12 +836,12 @@ class StreaksController(
 
             dao.insert(streak)
 
-            if (sendServiceMessages && isVisibleLength(streak.length))
+            if (sendServiceMessages && streak.isVisible)
                 serviceMessagesController.sendCreation(accountId, peerUserId)
 
             return HandleUpdateResult(
                 changed = true,
-                created = isVisibleLength(streak.length),
+                created = streak.isVisible,
             )
         }
 
@@ -871,7 +866,7 @@ class StreaksController(
             return handleUpdate(accountId, peerUserId, at, out, message, sendServiceMessages)
         }
 
-        val wasCreated = !isVisibleLength(streak.length)
+        val wasCreated = !streak.isVisible
 
         if (out) {
             if (streak.updateFromOwnerAt == now)
@@ -891,17 +886,17 @@ class StreaksController(
         streakPopupController.enqueueForTransition(accountId, peerUserId, streak, updatedStreak)
 
         if (sendServiceMessages
-            && !isVisibleLength(streak.length)
-            && isVisibleLength(updatedStreak.length)
+            && !streak.isVisible
+            && updatedStreak.isVisible
         ) serviceMessagesController.sendCreation(accountId, peerUserId)
         else if (sendServiceMessages
-            && isVisibleLength(streak.length)
+            && streak.isVisible
             && updatedStreak.level.length > streak.level.length
         ) serviceMessagesController.sendUpgrade(accountId, peerUserId, updatedStreak.length)
 
         return HandleUpdateResult(
             changed = true,
-            created = wasCreated && isVisibleLength(updatedStreak.length),
+            created = wasCreated && updatedStreak.isVisible,
         )
     }
 
@@ -1028,12 +1023,12 @@ class StreaksController(
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
     suspend fun getAllVisible(): List<Streak> = dao.getAll()
-        .filterNot { it.dead || !isVisibleLength(it.length) }
+        .filterNot { it.dead || !it.isVisible }
 
     suspend fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? {
         val streak =
             dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
-                ?.let { if (it.dead || !isVisibleLength(it.length)) null else it }
+                ?.let { if (it.dead || !it.isVisible) null else it }
                 ?: return null
 
         val streakLevel = streak.level
@@ -1284,7 +1279,7 @@ class StreaksController(
 
         val revivedStreak = get(accountId, peerUserId)
 
-        if (sendServiceMessage && revivedStreak != null && isVisibleLength(revivedStreak.length)) {
+        if (sendServiceMessage && revivedStreak != null && revivedStreak.isVisible) {
             serviceMessagesController.sendRestore(accountId, peerUserId)
         }
 

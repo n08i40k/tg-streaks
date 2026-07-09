@@ -25,6 +25,10 @@ data class Streak(
     @ColumnInfo(name = "death_notified") val deathNotified: Boolean = false,
     @ColumnInfo(name = "warning_notified") val warningNotified: Boolean = false,
 ) {
+    companion object {
+        private const val MIN_VISIBLE_LENGTH = 3
+    }
+
     @Ignore
     val length: Int
 
@@ -52,6 +56,9 @@ data class Streak(
             return@let it
         }
     }
+
+    @get:Ignore
+    val isVisible get() = length >= MIN_VISIBLE_LENGTH
 
     init {
         val nowEpoch = LocalDate.now().toEpochDays()
