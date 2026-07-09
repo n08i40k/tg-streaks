@@ -34,7 +34,7 @@ from ui.settings import Divider, Header, Selector, Switch, Text
 __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Аналог серий TikTok для extera/Ayu-Gram"
-__author__ = "@n08i40k & @RoflPlugins"
+__author__ = "@n08i40k_extera & @RoflPlugins"
 __version__ = "2.13.0"
 __icon__ = "tiktok_streak/4"
 __min_version__ = "12.1.1"
