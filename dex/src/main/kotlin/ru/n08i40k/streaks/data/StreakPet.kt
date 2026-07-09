@@ -3,6 +3,8 @@ package ru.n08i40k.streaks.data
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import kotlinx.datetime.LocalDate
+import androidx.room.Ignore
+import ru.n08i40k.streaks.Plugin
 
 @Entity(
     tableName = "streak_pet",
@@ -16,4 +18,12 @@ data class StreakPet(
     @ColumnInfo(name = "last_checked_at") val lastCheckedAt: LocalDate,
     @ColumnInfo(name = "name") val name: String,
     @ColumnInfo(name = "points") val points: Int,
-)
+
+    ) {
+    @delegate:Ignore
+    val level: StreakPetLevel by lazy {
+        Plugin.getInstance()
+            .streakPetLevelRegistry
+            .findByPointsApproximate(points)
+    }
+}

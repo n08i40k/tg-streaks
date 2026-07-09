@@ -11,6 +11,9 @@ class StreakPetLevelRegistry {
     fun findByMaxPointsPrecise(maxPoints: Int): StreakPetLevel? =
         levels.find { it.maxPoints == maxPoints }
 
+    fun findByPointsApproximate(length: Int): StreakPetLevel =
+        levels.findLast { it.maxPoints <= length } ?: levels.last()
+
     fun register(level: StreakPetLevel) {
         if (findByMaxPointsPrecise(level.maxPoints) != null)
             throw UnsupportedOperationException("Unable to overwrite existing streak pet level")
