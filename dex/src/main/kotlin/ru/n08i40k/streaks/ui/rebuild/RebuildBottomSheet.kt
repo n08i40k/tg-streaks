@@ -659,6 +659,9 @@ class RebuildBottomSheet(
     private var resultsView: ResultsView? = null
 
     init {
+        setCanDismissWithSwipe(false)
+        setCanDismissWithTouchOutside(false)
+
         setCustomView(containerLayout)
     }
 
