@@ -41,6 +41,33 @@ python3 .claude/skills/i18n-keys/scripts/i18n_tool.py <command> ...
 Use literal `\n` in `--en`/`--ru` values for embedded newlines (e.g.
 `--en "line one\nline two"`), it's converted to a real newline.
 
+## Placeholder syntax (Python only — no plurals here)
+
+This skill only manages `plugin/tg-streaks.py`'s own keys (`I18N_SETTINGS`,
+`I18N_STATUS`, `I18N_MENU`, `I18N_DIALOGS`, `I18N_UPDATE`, `I18N_DOWNLOAD`).
+Since the i18n4k migration ([[project-i18n4k-migration]]), DEX no longer
+reads strings from Python at all, and Python's `_t()` helper is just
+`str(text).format(**kwargs)` — plain Python `str.format`, nothing ICU-like.
+
+- **Simple only** — `{name}` is replaced with the keyword arg `name` via
+  `str.format`. There is no plural/`select` syntax on the Python side; a
+  value containing literal `{name, plural, ...}` would either raise inside
+  `.format()` (caught and returned as-is) or just fail to substitute — don't
+  author that shape here.
+- Keep arg names matching the call site's `_t(key, name=..., count=...)`
+  kwargs.
+- Shell-quote values that contain `{`/`}` so the shell doesn't eat them.
+
+**Plurals are a DEX-only feature.** DEX strings live in
+`dex/src/main/i18n/Strings_en.properties` / `Strings_ru.properties` and are
+compiled by i18n4k, which has its own `{name}` MessageFormat parser with
+`select`/exact-value-match plural support (see `MessageSelectFormatter` —
+exact/regex value matching, not CLDR one/few/many categories). Those files
+are **out of scope for this skill and `i18n_tool.py`** — edit them directly
+(and regenerate via i18n4k's `generateI18n4kFiles` Gradle task) rather than
+routing them through this tool, and don't try to add plural forms to a
+Python `I18N_*` key.
+
 ## What every mutating command does automatically
 
 1. Recursively re-sorts **all** `I18N_*` dicts (top-level keys, and the
