@@ -35,7 +35,7 @@ __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Аналог серий TikTok для extera/Ayu-Gram"
 __author__ = "@n08i40k_extera & @RoflPlugins"
-__version__ = "2.14.0"
+__version__ = "2.14.1"
 __icon__ = "tiktok_streak/4"
 __min_version__ = "12.1.1"
 
@@ -46,9 +46,9 @@ REPO_OWNER = "n08i40k"
 REPO_NAME = __id__
 
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
-DEX_SHA256 = "22c59fda4cb423b2f72282b9e68dc380f63a03084308e7ae58e15cbbdeed55ab"
+DEX_SHA256 = "878d29daae14ee60977bc1cda4d920aa56aa148ce1ffc999d2b27f4fd8398061"
 RESOURCES_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/resources.zip"
-RESOURCES_SHA256 = "11d2f1072384bfb2590d0141b36704d01ec8f7a1630a19a799f77a19657e2847"
+RESOURCES_SHA256 = "e62b4c7cd55826b20da903df9a8c7aab3fac83aa5e09a812d6871b5eaa79702e"
 
 PLUGIN_UPDATE_API_URL = (
     f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"

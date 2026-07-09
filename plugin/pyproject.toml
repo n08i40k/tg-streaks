@@ -1,6 +1,6 @@
 [project]
 name = "tg-streaks"
-version = "2.14.0"
+version = "2.14.1"
 description = "extera/Ayu-Gram plugin for streaks with your friends"
 requires-python = ">=3.14"
 dependencies = [
