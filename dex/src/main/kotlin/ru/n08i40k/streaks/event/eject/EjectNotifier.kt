@@ -20,12 +20,11 @@ object EjectNotifier {
         listeners.clear()
     }
 
-    abstract class Delegate(priority: Int = 0) {
-        private val unsubscribe = subscribe(priority, ::onEject)
-
+    interface Delegate {
         @AnyThread
-        protected abstract fun onEject()
-
-        protected fun unsubscribeFromEject() = unsubscribe()
+        fun onEject()
     }
+
+    fun subscribe(delegate: Delegate, priority: Int = 0): () -> Unit =
+        subscribe(priority, delegate::onEject)
 }

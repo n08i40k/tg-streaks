@@ -8,7 +8,11 @@ import org.telegram.messenger.ApplicationLoader
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 
-object RebuildNotificationHelper : EjectNotifier.Delegate() {
+object RebuildNotificationHelper : EjectNotifier.Delegate {
+    init {
+        EjectNotifier.subscribe(this)
+    }
+
     private const val CHANNEL_ID = "tg_streaks_rebuild"
     private const val NOTIFICATION_ID_SINGLE = 7001
     private const val NOTIFICATION_ID_ALL = 7002

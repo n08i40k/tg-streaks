@@ -6,7 +6,11 @@ import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import java.util.LinkedHashMap
 
-object UserPatcher : EjectNotifier.Delegate() {
+object UserPatcher : EjectNotifier.Delegate {
+    init {
+        EjectNotifier.subscribe(this)
+    }
+
     private const val FLAG_PATCHED: Int = 1 shl 32
 
     private data class OriginalUserState(val premium: Boolean)

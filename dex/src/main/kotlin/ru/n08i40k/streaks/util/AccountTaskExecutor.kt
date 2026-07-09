@@ -8,7 +8,11 @@ import kotlinx.coroutines.cancel
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import java.util.concurrent.ConcurrentHashMap
 
-object AccountTaskExecutor : EjectNotifier.Delegate() {
+object AccountTaskExecutor : EjectNotifier.Delegate {
+    init {
+        EjectNotifier.subscribe(this)
+    }
+
     private data class AccountTaskRunner(
         val scope: CoroutineScope,
         val taskQueue: TaskQueue,

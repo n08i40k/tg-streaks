@@ -6,7 +6,11 @@ import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.format
 import ru.n08i40k.streaks.ui.CrashBottomSheet
 
-object Logger : EjectNotifier.Delegate(1000) {
+object Logger : EjectNotifier.Delegate {
+    init {
+        EjectNotifier.subscribe(this, priority = 1000)
+    }
+
     @Volatile
     private var receiver: LogReceiver? = null
 
