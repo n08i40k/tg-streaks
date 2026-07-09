@@ -6,7 +6,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.time.Instant
+import kotlin.time.Clock
 
 class TaskQueue {
     data class WorkerTask(
@@ -29,11 +29,11 @@ class TaskQueue {
                         RuntimeGuard.awaitAppForeground("task '${task.name}'")
 
                         Logger.info("[TaskQueue] Processing task '${task.name}'...")
-                        val start = Instant.now().toEpochMilli()
+                        val start = Clock.System.now().toEpochMilliseconds()
 
                         task.callback.invoke()
 
-                        val end = Instant.now().toEpochMilli()
+                        val end = Clock.System.now().toEpochMilliseconds()
                         Logger.info("[TaskQueue] Task '${task.name}' was finished (took ${end - start} ms.)")
                     } catch (_: CancellationException) {
                         // Suppress

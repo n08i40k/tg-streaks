@@ -5,13 +5,17 @@ import android.os.Environment
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.char
+import kotlinx.datetime.toLocalDateTime
 import org.telegram.messenger.ApplicationLoader
 import ru.n08i40k.streaks.util.RuntimeGuard
 import java.io.File
-import java.time.Duration
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 class DatabaseBackupManager(
     private val db: RoomDatabase,
@@ -23,9 +27,10 @@ class DatabaseBackupManager(
         private const val DATABASE_NAME = "tg-streaks"
         private const val BACKUP_EXTENSION = "sqlite3"
         private const val MAX_BACKUPS = 30
-        private val AUTO_BACKUP_INTERVAL: Duration = Duration.ofHours(24)
-        private val BACKUP_NAME_FORMATTER: DateTimeFormatter =
-            DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC)
+        private val AUTO_BACKUP_INTERVAL = 24.hours
+        private val BACKUP_NAME_FORMAT = LocalDateTime.Format {
+            year(); monthNumber(); day(); char('-'); hour(); minute(); second()
+        }
     }
 
     private val context: Context
@@ -58,30 +63,30 @@ class DatabaseBackupManager(
     }
 
     private fun ensureAutoBackupIfDue() {
-        val now = Instant.now()
+        val now = Clock.System.now()
         val lastAutoBackupAt = lastAutoBackupAt()
 
         if (
             lastAutoBackupAt != null &&
-            Duration.between(lastAutoBackupAt, now) < AUTO_BACKUP_INTERVAL
+            now - lastAutoBackupAt < AUTO_BACKUP_INTERVAL
         ) {
             return
         }
 
         synchronized(lock) {
             val refreshedLastAutoBackupAt = lastAutoBackupAt()
-            val refreshedNow = Instant.now()
+            val refreshedNow = Clock.System.now()
 
             if (
                 refreshedLastAutoBackupAt != null &&
-                Duration.between(refreshedLastAutoBackupAt, refreshedNow) < AUTO_BACKUP_INTERVAL
+                refreshedNow - refreshedLastAutoBackupAt < AUTO_BACKUP_INTERVAL
             ) {
                 return@synchronized
             }
 
             val backup = createBackup("auto")
             preferences.edit()
-                .putLong(LAST_AUTO_BACKUP_AT_KEY, refreshedNow.epochSecond)
+                .putLong(LAST_AUTO_BACKUP_AT_KEY, refreshedNow.epochSeconds)
                 .apply()
 
             logger("Automatic database backup created: ${backup.absolutePath}")
@@ -94,21 +99,22 @@ class DatabaseBackupManager(
             return null
         }
 
-        return Instant.ofEpochSecond(epochSeconds)
+        return Instant.fromEpochSeconds(epochSeconds)
     }
 
     private fun millisUntilNextAutoBackup(): Long {
-        val lastAutoBackupAt = lastAutoBackupAt() ?: return AUTO_BACKUP_INTERVAL.toMillis()
-        val elapsed = Duration.between(lastAutoBackupAt, Instant.now())
-        val remaining = AUTO_BACKUP_INTERVAL.minus(elapsed)
-        return remaining.toMillis().coerceAtLeast(60_000L)
+        val lastAutoBackupAt = lastAutoBackupAt() ?: return AUTO_BACKUP_INTERVAL.inWholeMilliseconds
+        val elapsed = Clock.System.now() - lastAutoBackupAt
+        val remaining = AUTO_BACKUP_INTERVAL - elapsed
+        return remaining.inWholeMilliseconds.coerceAtLeast(60_000L)
     }
 
     private fun createBackup(source: String): File {
         val backupsDir = backupsDir()
+        val timestamp = Clock.System.now().toLocalDateTime(TimeZone.UTC).format(BACKUP_NAME_FORMAT)
         val backup = File(
             backupsDir,
-            "tg-streaks-${BACKUP_NAME_FORMATTER.format(Instant.now())}-$source.$BACKUP_EXTENSION"
+            "tg-streaks-$timestamp-$source.$BACKUP_EXTENSION"
         )
         val target = context.getDatabasePath(DATABASE_NAME)
         val sqliteDb = db.openHelper.writableDatabase

@@ -30,7 +30,10 @@ import ru.n08i40k.streaks.extension.isPeerIdInvalid
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
 import ru.n08i40k.streaks.extension.label
+import ru.n08i40k.streaks.extension.minusDays
 import ru.n08i40k.streaks.extension.next
+import ru.n08i40k.streaks.extension.now
+import ru.n08i40k.streaks.extension.plusDays
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.extension.toEpochSecondUtc
@@ -39,7 +42,7 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.fetchPeerUsers
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 
 @OptIn(DelicateCoroutinesApi::class)
@@ -180,7 +183,8 @@ class StreaksController(
         revivesCount: Int = 0,
         deathNotified: Boolean = false,
     ): Streak {
-        val minUpdateAt = minOf(updateFromOwnerAt, updateFromPeerAt, compareBy { it.toEpochDay() })
+        val minUpdateAt = minOf(updateFromOwnerAt, updateFromPeerAt)
+
         val createdAt =
             minUpdateAt.minusDays((length + revivesCount - 1).toLong().coerceAtLeast(0L))
 
@@ -475,7 +479,7 @@ class StreaksController(
 
                 val progress = RebuildProgress(
                     peerUser = peerUser,
-                    daysChecked = (startDay.toEpochDay() - checkedDay.toEpochDay()).toInt() + 1,
+                    daysChecked = (startDay.toEpochDays() - checkedDay.toEpochDays()).toInt() + 1,
                 )
 
                 var shouldStop = false
@@ -626,7 +630,6 @@ class StreaksController(
         var currentDay = minOf(
             streak.updateFromOwnerAt,
             streak.updateFromPeerAt,
-            compareBy { it.toEpochDay() }
         ).let {
             if (streak.updateFromOwnerAt == streak.updateFromPeerAt)
                 it.next()
@@ -635,7 +638,7 @@ class StreaksController(
         }
 
         val startDay = currentDay
-        val totalDays = (now.toEpochDay() - startDay.toEpochDay() + 1L).coerceAtLeast(0L).toInt()
+        val totalDays = (now.toEpochDays() - startDay.toEpochDays() + 1L).coerceAtLeast(0L).toInt()
 
         var updateFromOwnerAt = streak.updateFromOwnerAt
         var updateFromPeerAt = streak.updateFromPeerAt
@@ -724,13 +727,12 @@ class StreaksController(
             }
 
             onProgressUpdate?.invoke(
-                (currentDay.toEpochDay() - startDay.toEpochDay()).toInt(),
+                (currentDay.toEpochDays() - startDay.toEpochDays()).toInt(),
                 totalDays,
             )
         }
 
-        val lastActiveDay =
-            minOf(updateFromOwnerAt, updateFromPeerAt, compareBy { it.toEpochDay() })
+        val lastActiveDay = minOf(dynStreak.updateFromOwnerAt, dynStreak.updateFromPeerAt)
         val deathEpochSeconds = lastActiveDay.plusDays(2).toEpochSecondSystem()
         val timeUntilDeathSeconds = deathEpochSeconds - System.currentTimeMillis() / 1000L
         val isInWarningWindow = timeUntilDeathSeconds in 1..(8 * 3600)
@@ -800,7 +802,7 @@ class StreaksController(
         message: String?,
         sendServiceMessages: Boolean = true
     ): HandleUpdateResult {
-        val now = minOf(at, LocalDate.now(), compareBy { it.toEpochDay() })
+        val now = minOf(at, LocalDate.now())
 
         val peerType = getPeerType(accountId, peerUserId)
 
@@ -934,7 +936,7 @@ class StreaksController(
         day: LocalDate,
     ): CalendarTapDecision {
         val snapshot = getCalendarInteractionSnapshot(accountId, peerUserId)
-        if (snapshot.streak?.createdAt?.let { day.isBefore(it) } == true) {
+        if (snapshot.streak?.createdAt?.let { day < it } == true) {
             return CalendarTapDecision.Ignore
         }
 

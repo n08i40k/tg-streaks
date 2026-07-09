@@ -5,7 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import ru.n08i40k.streaks.data.StreakActivityCache
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 
 @Dao
 interface StreakActivityCacheDao {

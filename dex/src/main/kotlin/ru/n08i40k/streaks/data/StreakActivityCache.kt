@@ -3,7 +3,7 @@ package ru.n08i40k.streaks.data
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 
 @Entity(
     tableName = "streak_activity_cache",

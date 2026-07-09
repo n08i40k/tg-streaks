@@ -7,7 +7,7 @@ import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 
 class CachedChatHistoryFetcher : ChatHistoryFetcher {
     companion object {

@@ -1,7 +1,7 @@
 package ru.n08i40k.streaks.chat_history_fetcher
 
 import org.telegram.tgnet.TLRPC
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 
 
 interface ChatHistoryFetcher {

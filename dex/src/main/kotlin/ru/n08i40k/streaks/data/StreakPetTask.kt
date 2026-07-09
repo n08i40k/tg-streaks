@@ -5,7 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Ignore
 import androidx.room.Index
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 
 @Entity(
     tableName = "streak_pet_task",

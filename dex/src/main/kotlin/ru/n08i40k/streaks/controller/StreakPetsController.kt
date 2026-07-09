@@ -18,13 +18,14 @@ import ru.n08i40k.streaks.extension.getPeerType
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.next
+import ru.n08i40k.streaks.extension.now
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.fetchPeerUsers
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreakPetsController(
@@ -177,7 +178,7 @@ class StreakPetsController(
             onProgressUpdate(
                 RebuildProgress(
                     peerUser = peerUser,
-                    daysChecked = (startDay.toEpochDay() - currentDay.toEpochDay()).toInt() + 1
+                    daysChecked = (startDay.toEpochDays() - currentDay.toEpochDays()).toInt() + 1
                 )
             )
 

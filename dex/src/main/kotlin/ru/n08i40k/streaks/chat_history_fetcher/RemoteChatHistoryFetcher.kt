@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.chat_history_fetcher
 
+import kotlinx.datetime.LocalDate
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLRPC
@@ -15,7 +16,6 @@ import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.RuntimeGuard
-import java.time.LocalDate
 
 
 class RemoteChatHistoryFetcher : ChatHistoryFetcher {

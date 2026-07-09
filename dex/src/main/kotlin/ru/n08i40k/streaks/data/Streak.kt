@@ -4,7 +4,8 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Ignore
 import ru.n08i40k.streaks.Plugin
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
+import ru.n08i40k.streaks.extension.now
 import kotlin.math.min
 
 @Entity(
@@ -53,16 +54,16 @@ data class Streak(
     }
 
     init {
-        val nowEpoch = LocalDate.now().toEpochDay()
+        val nowEpoch = LocalDate.now().toEpochDays()
 
-        val fromOwnerEpoch = updateFromOwnerAt.toEpochDay()
-        val fromPeerEpoch = updateFromPeerAt.toEpochDay()
+        val fromOwnerEpoch = updateFromOwnerAt.toEpochDays()
+        val fromPeerEpoch = updateFromPeerAt.toEpochDays()
 
         frozen = nowEpoch > fromOwnerEpoch || nowEpoch > fromPeerEpoch
         dead = frozen && ((nowEpoch - fromOwnerEpoch) > 1 || (nowEpoch - fromPeerEpoch) > 1)
         canRevive = dead && ((nowEpoch - fromOwnerEpoch) <= 2 || (nowEpoch - fromPeerEpoch) <= 2)
 
-        var length = min(fromOwnerEpoch, fromPeerEpoch) - createdAt.toEpochDay() + 1
+        var length = min(fromOwnerEpoch, fromPeerEpoch) - createdAt.toEpochDays() + 1
 
         length -= revivesCount
 

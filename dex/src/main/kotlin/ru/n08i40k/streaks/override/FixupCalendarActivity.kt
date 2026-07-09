@@ -21,9 +21,11 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.data.StreakActivityStatus
 import ru.n08i40k.streaks.i18n.Strings
+import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.setFieldValue
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.number
 import java.util.concurrent.atomic.AtomicReference
 
 class FixupCalendarActivity : CalendarActivity {
@@ -244,7 +246,7 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private fun handleDayTap(day: LocalDate) {
-        if (peerUserId <= 0L || streakStartDate?.let { day.isBefore(it) } == true) {
+        if (peerUserId <= 0L || streakStartDate?.let { day < it } == true) {
             return
         }
 
@@ -391,11 +393,11 @@ class FixupCalendarActivity : CalendarActivity {
             val newRevivesByMonthKey = SparseArray<SparseBooleanArray>()
 
             fun monthKey(day: LocalDate): Int =
-                day.year * 100 + (day.monthValue - 1)
+                day.year * 100 + (day.month.number - 1)
 
             for (record in snapshot.cachedActivity) {
                 val monthKey = monthKey(record.day)
-                val dayIndex = record.day.dayOfMonth - 1
+                val dayIndex = record.day.day - 1
                 val statusesForMonth =
                     newStatusesByMonthKey.get(monthKey) ?: SparseIntArray().also {
                         newStatusesByMonthKey.put(monthKey, it)
@@ -406,7 +408,7 @@ class FixupCalendarActivity : CalendarActivity {
 
             for (revivedDay in snapshot.revivedDays) {
                 val monthKey = monthKey(revivedDay)
-                val dayIndex = revivedDay.dayOfMonth - 1
+                val dayIndex = revivedDay.day - 1
                 val revivesForMonth =
                     newRevivesByMonthKey.get(monthKey) ?: SparseBooleanArray().also {
                         newRevivesByMonthKey.put(monthKey, it)
@@ -468,7 +470,7 @@ class FixupCalendarActivity : CalendarActivity {
 
         val year = currentYearField.getInt(monthView)
         val monthIndex = currentMonthInYearField.getInt(monthView)
-        return LocalDate.of(year, monthIndex + 1, dayIndex + 1)
+        return LocalDate(year, monthIndex + 1, dayIndex + 1)
     }
 
     private fun getCachedActivityStatus(monthKey: Int, dayIndex: Int): StreakActivityStatus? {
@@ -485,15 +487,15 @@ class FixupCalendarActivity : CalendarActivity {
         cachedRevivesByMonthKey.get(monthKey)?.get(dayIndex, false) ?: false
 
     private fun isNextDayRevived(year: Int, monthIndex: Int, dayIndex: Int): Boolean {
-        val nextDay = LocalDate.of(year, monthIndex + 1, dayIndex + 1).plusDays(1)
-        val nextMonthKey = nextDay.year * 100 + (nextDay.monthValue - 1)
-        val nextDayIndex = nextDay.dayOfMonth - 1
+        val nextDay = LocalDate(year, monthIndex + 1, dayIndex + 1).next()
+        val nextMonthKey = nextDay.year * 100 + (nextDay.month.number - 1)
+        val nextDayIndex = nextDay.day - 1
         return isCachedRevived(nextMonthKey, nextDayIndex)
     }
 
     private fun shouldDecorateDay(year: Int, monthIndex: Int, dayIndex: Int): Boolean {
-        val day = LocalDate.of(year, monthIndex + 1, dayIndex + 1)
-        if (streakStartDate?.let { day.isBefore(it) } == true) {
+        val day = LocalDate(year, monthIndex + 1, dayIndex + 1)
+        if (streakStartDate?.let { day < it } == true) {
             return false
         }
 

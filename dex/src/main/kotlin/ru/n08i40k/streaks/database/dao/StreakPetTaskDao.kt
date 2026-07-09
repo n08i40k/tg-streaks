@@ -9,7 +9,7 @@ import androidx.room.Query
 import androidx.room.Update
 import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskType
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 
 @Dao
 interface StreakPetTaskDao {
