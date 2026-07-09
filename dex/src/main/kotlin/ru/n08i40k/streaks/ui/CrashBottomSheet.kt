@@ -31,6 +31,7 @@ import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BottomSheet
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.ChatActivity
+import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
@@ -261,11 +262,9 @@ class CrashBottomSheet(
                 gravity = Gravity.CENTER_VERTICAL
 
                 addView(
-                    AnimatedEmojiView.create(
-                        context,
-                        Emoji.CRASH_BOTTOM_SHEET,
-                        resourcesProvider = resourcesProvider
-                    ),
+                    BackupImageView(context).apply {
+                        AnimatedEmojiView.apply(this, Emoji.CRASH_BOTTOM_SHEET, 90)
+                    },
                     LinearLayout.LayoutParams(dp(48f), dp(48f)).also { it.marginEnd = dp(12f) },
                 )
 

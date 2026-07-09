@@ -11,6 +11,7 @@ import org.telegram.messenger.R
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
+import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.FireworksOverlay
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.Premium.GLIcon.GLIconTextureView
@@ -82,11 +83,9 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         user,
         base.resourcesProvider
     ) {
-        this.overrideTitleIcon = AnimatedEmojiView.create(
-            context,
-            streakViewData.documentId,
-            resourcesProvider = resourcesProvider
-        )
+        this.overrideTitleIcon = BackupImageView(context).apply {
+            AnimatedEmojiView.apply(this, streakViewData.documentId, 90)
+        }
         this.isEmojiStatus = true
 
         this.streakViewData = streakViewData
