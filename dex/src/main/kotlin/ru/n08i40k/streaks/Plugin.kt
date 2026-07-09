@@ -13,9 +13,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.LocaleController
@@ -35,10 +39,18 @@ import ru.n08i40k.streaks.database.MIGRATION_6_7
 import ru.n08i40k.streaks.database.MIGRATION_7_8
 import ru.n08i40k.streaks.database.MIGRATION_8_9
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.event.EventBus
+import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.event.eject.EjectNotifier
+import ru.n08i40k.streaks.extension.collectOnUIThread
+import ru.n08i40k.streaks.extension.collectWith
+import ru.n08i40k.streaks.extension.collectWithOnUIThread
+import ru.n08i40k.streaks.extension.diff
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
+import ru.n08i40k.streaks.extension.now
 import ru.n08i40k.streaks.extension.resolveLanguageCode
+import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
@@ -256,11 +268,163 @@ class Plugin {
         this.streaksController = StreaksController(
             this.db,
             this.resourcesProvider,
-            this.alertNotificationHelper,
-            this.serviceMessagesController
         )
         this.streakPetsController = StreakPetsController(this.db, this.streaksController)
         this.petUiManager = StreakPetUiManager()
+    }
+
+    @OptIn(FlowPreview::class)
+    private fun subscribeToEvents() {
+        backgroundScope.launch {
+            EventBus.stream
+                .filterIsInstance<PluginEvent.StreakEvent>()
+                .collectWithOnUIThread {
+                    streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+
+                    when (this) {
+                        is PluginEvent.StreakCreatedEvent -> {
+                            if (!record.isVisible)
+                                return@collectWithOnUIThread
+
+                            UserPatcher.patchUser(accountId, peerUserId)
+
+                            streaksController.enqueuePopupForTransition(
+                                accountId,
+                                peerUserId,
+                                null,
+                                record
+                            )
+                        }
+
+                        is PluginEvent.StreakGrowUpEvent -> {
+                            UserPatcher.patchUser(accountId, peerUserId)
+
+                            streaksController.enqueuePopupForTransition(
+                                accountId,
+                                peerUserId,
+                                sourceRecord,
+                                targetRecord
+                            )
+                        }
+
+                        is PluginEvent.StreakRebuiltEvent,
+                        is PluginEvent.StreakRestoredEvent -> {
+                            if (!record.isVisible)
+                                return@collectWithOnUIThread
+
+                            UserPatcher.patchUser(accountId, peerUserId)
+                        }
+
+                        is PluginEvent.StreakDeletedEvent,
+                        is PluginEvent.StreakLostEvent -> {
+                            UserPatcher.restoreUser(accountId, peerUserId)
+
+                            alertNotificationHelper.cancelNearDeath(peerUserId)
+                            alertNotificationHelper.showDeath(
+                                peerUserId,
+                                MessagesController.getInstance(accountId).getUser(peerUserId)?.label
+                                    ?: peerUserId.toString(),
+                                record.length
+                            )
+                        }
+                    }
+                }
+        }
+
+        backgroundScope.launch {
+            EventBus.stream
+                .filterIsInstance<PluginEvent.StreakEvent>()
+                .debounce(100)
+                .collectOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+        }
+
+        backgroundScope.launch {
+            EventBus.stream
+                .filterIsInstance<PluginEvent.StreakDeathWarningEvent>()
+                .collectWith {
+                    if (active) {
+                        alertNotificationHelper.showNearDeath(
+                            peerUserId,
+                            peerName,
+                            streak.length,
+                            timeUntilDeathSeconds
+                        )
+                    } else {
+                        alertNotificationHelper.cancelNearDeath(peerUserId)
+                    }
+                }
+        }
+
+        backgroundScope.launch {
+            EventBus.stream
+                .filterIsInstance<PluginEvent.StreakPetEvent>()
+                .collectWithOnUIThread {
+                    petUiManager.refreshFabForOpenChat()
+                    petUiManager.refreshOpenedDialog(accountId, peerUserId)
+                }
+        }
+
+        backgroundScope.launch {
+            EventBus.stream
+                .filterIsInstance<PluginEvent.PeerEvent>()
+                .collectWith {
+                    when (this) {
+                        is PluginEvent.StreakCreatedEvent -> {
+                            if (timestamp.toLocalDate() != LocalDate.now())
+                                return@collectWith
+
+                            serviceMessagesController.sendCreation(accountId, peerUserId)
+                        }
+
+                        is PluginEvent.StreakGrowUpEvent -> {
+                            if (LocalDate.now().diff(timestamp.toLocalDate()) > 2)
+                                return@collectWith
+
+                            if (targetRecord.level <= sourceRecord.level)
+                                return@collectWith
+
+                            serviceMessagesController.sendUpgrade(
+                                accountId,
+                                peerUserId,
+                                targetRecord.level.length
+                            )
+                        }
+
+                        is PluginEvent.StreakLostEvent -> {
+                            if (timestamp.toLocalDate() != LocalDate.now())
+                                return@collectWith
+
+                            serviceMessagesController.sendDeath(accountId, peerUserId)
+                        }
+
+                        is PluginEvent.StreakRestoredEvent -> {
+                            if (byPeer)
+                                return@collectWith
+
+                            if (timestamp.toLocalDate() != LocalDate.now())
+                                return@collectWith
+
+                            serviceMessagesController.sendRestore(accountId, peerUserId)
+                        }
+
+                        is PluginEvent.StreakPetRenamedEvent -> {
+                            if (by != PluginEvent.StreakPetRenamedEvent.By.SELF)
+                                return@collectWith
+
+                            if (timestamp.toLocalDate() != LocalDate.now())
+                                return@collectWith
+
+                            serviceMessagesController.sendPetSetName(
+                                accountId,
+                                peerUserId,
+                                record.name
+                            )
+                        }
+
+                        else -> {}
+                    }
+                }
+        }
     }
 
     fun enqueueTask(name: String, callback: suspend () -> Unit) =
@@ -317,33 +481,14 @@ class Plugin {
         }
     }
 
-    private fun enqueueAutoBackupLoopStart(reason: String) {
-        AccountTaskExecutor.enqueue(
-            UserConfig.selectedAccount,
-            "start automatic database backup loop (${reason})"
-        ) {
-            if (!isAutoBackupLoopStarted.compareAndSet(false, true))
-                return@enqueue
-
-            backgroundScope.launch {
-                try {
-                    databaseBackupManager.runAutoBackupLoop()
-                } catch (_: CancellationException) {
-                    // Suppress error
-                } catch (e: Throwable) {
-                    Logger.fatal("Automatic database backup loop failed", e)
-                    isAutoBackupLoopStarted.set(false)
-                }
-            }
-        }
-    }
-
     private fun onInject() {
         PluginBadges.add()
 
         BadgesCompat.init()
 
         RebuildNotificationHelper.createChannel()
+
+        subscribeToEvents()
 
         taskQueue.startWorker(backgroundScope)
 
@@ -363,6 +508,27 @@ class Plugin {
         enqueueAutoBackupLoopStart("plugin inject")
 
         Logger.info("Inject finalized!")
+    }
+
+    private fun enqueueAutoBackupLoopStart(reason: String) {
+        AccountTaskExecutor.enqueue(
+            UserConfig.selectedAccount,
+            "start automatic database backup loop (${reason})"
+        ) {
+            if (!isAutoBackupLoopStarted.compareAndSet(false, true))
+                return@enqueue
+
+            backgroundScope.launch {
+                try {
+                    databaseBackupManager.runAutoBackupLoop()
+                } catch (_: CancellationException) {
+                    // Suppress error
+                } catch (e: Throwable) {
+                    Logger.fatal("Automatic database backup loop failed", e)
+                    isAutoBackupLoopStarted.set(false)
+                }
+            }
+        }
     }
 
     private fun onEject() {

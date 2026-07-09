@@ -1,6 +1,7 @@
 package ru.n08i40k.streaks.controller
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.withContext
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
@@ -13,6 +14,8 @@ import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.data.StreakPetTaskType
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.event.EventBus
+import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.extension.PeerType
 import ru.n08i40k.streaks.extension.getPeerType
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
@@ -24,9 +27,12 @@ import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.RateLimitContext
+import ru.n08i40k.streaks.util.RebuildNotificationHelper
 import ru.n08i40k.streaks.util.fetchPeerUsers
 import kotlinx.datetime.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Clock
 
 class StreakPetsController(
     private val db: PluginDatabase,
@@ -42,7 +48,22 @@ class StreakPetsController(
 
     private suspend fun removeInvalidPeerPet(accountId: Int, peerUserId: Long) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        dao.deleteByRelation(ownerUserId, peerUserId)
+
+        db.withTransaction {
+            val pet = dao.findByRelation(ownerUserId, peerUserId)
+
+            dao.deleteByRelation(ownerUserId, peerUserId)
+
+            pet?.let {
+                EventBus.emit(
+                    PluginEvent.StreakPetDeletedEvent(
+                        accountId,
+                        Clock.System.now(),
+                        it
+                    )
+                )
+            }
+        }
 
         Logger.info("Removed streak-pet for invalid peer $accountId:$peerUserId after PEER_ID_INVALID")
     }
@@ -94,12 +115,13 @@ class StreakPetsController(
     private suspend fun rebuildInTransaction(
         accountId: Int,
         peerUser: TLRPC.User,
-        onProgressUpdate: (progress: RebuildProgress) -> Unit
-    ) {
+        onProgressUpdate: suspend (progress: RebuildProgress) -> Unit
+    ): Pair<StreakPet?, StreakPet> {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val peerUserId = peerUser.id
 
-        val name = dao.findByRelation(ownerUserId, peerUserId)!!.name
+        val sourcePet = dao.findByRelation(ownerUserId, peerUserId)!!
+        val name = sourcePet.name
         dao.deleteByRelation(ownerUserId, peerUserId)
 
         val startDay = LocalDate.now()
@@ -187,21 +209,52 @@ class StreakPetsController(
 
         val points = tasks.sumOf { if (it.isCompleted) it.type.points else 0 }
 
-        dao.insert(
-            StreakPet(
-                ownerUserId,
-                peerUserId,
-                endDay,
-                startDay,
-                name,
-                points
-            )
+        val targetPet = StreakPet(
+            ownerUserId,
+            peerUserId,
+            endDay,
+            startDay,
+            name,
+            points
         )
 
+        dao.insert(targetPet)
+
         tasks.forEach { taskDao.insertOrUpdateAll(it) }
+
+        return sourcePet to targetPet
     }
 
     // do not call this func if streak pet is not existing
+    // lock and user-facing feedback (notifications) are handled by rebuild;
+    // callers must hold rebuildLock before calling this
+    private suspend fun rebuildOne(
+        accountId: Int,
+        peerUser: TLRPC.User,
+        onProgressUpdate: suspend (progress: RebuildProgress) -> Unit,
+    ) {
+        try {
+            val (sourcePet, targetPet) =
+                db.withTransaction { rebuildInTransaction(accountId, peerUser, onProgressUpdate) }
+
+            EventBus.emit(
+                PluginEvent.StreakPetRebuiltEvent(
+                    accountId,
+                    Clock.System.now(),
+                    sourcePet,
+                    targetPet
+                )
+            )
+        } catch (_: InvalidPeerException) {
+            removeInvalidPeerPet(accountId, peerUser.id)
+        } catch (e: Throwable) {
+            Logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
+        }
+    }
+
+    // do not call this func if streak pet is not existing
+    // TODO: this still drives RebuildNotificationHelper directly; will be replaced once
+    // RebuildNotificationHelper itself is reworked in a follow-up commit
     suspend fun rebuild(
         accountId: Int,
         peerUser: TLRPC.User,
@@ -213,11 +266,22 @@ class StreakPetsController(
         }
 
         try {
-            db.withTransaction { rebuildInTransaction(accountId, peerUser, onProgressUpdate) }
-        } catch (_: InvalidPeerException) {
-            removeInvalidPeerPet(accountId, peerUser.id)
-        } catch (e: Throwable) {
-            Logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
+            withContext(RateLimitContext { throttlingClock ->
+                if (throttlingClock == null) {
+                    RebuildNotificationHelper.cancelRateLimitNotification()
+                    return@RateLimitContext
+                }
+
+                val (elapsedSec, totalSec) = throttlingClock
+
+                RebuildNotificationHelper.showRateLimitCountdown(
+                    peerUser.label,
+                    remainingMs = (totalSec - elapsedSec) * 1000L,
+                    totalMs = totalSec * 1000L,
+                )
+            }) {
+                rebuildOne(accountId, peerUser) { onProgressUpdate(it) }
+            }
         } finally {
             rebuildLock.set(false)
         }
@@ -422,15 +486,13 @@ class StreakPetsController(
         if (peerType == PeerType.INVALID)
             return
 
-        val streakPet = get(accountId, peerUserId)
+        val streakPet = dao.findByRelation(ownerUserId, peerUserId)
             ?: run {
                 // !out because if it is true, user already accepted and created streak-pet locally
                 if (peerType == PeerType.VALID && !out && message == ServiceMessage.PET_INVITE_ACCEPTED_TEXT)
-                    return@run create(accountId, peerUserId, at).streakPet
-                else
-                    return@run null
+                    create(accountId, peerUserId, at, true)
+                return
             }
-            ?: return
 
         ServiceMessage.PET_SET_NAME_REGEX.matchEntire(message.orEmpty())
             ?.groupValues
@@ -438,7 +500,7 @@ class StreakPetsController(
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?.let {
-                rename(accountId, peerUserId, it)
+                rename(accountId, peerUserId, it, false, !out)
                 return
             }
 
@@ -572,19 +634,15 @@ class StreakPetsController(
         }
     }
 
-    sealed class CreateResult(val streakPet: StreakPet) {
-        class Created(streakPet: StreakPet) : CreateResult(streakPet)
-        class AlreadyExists(streakPet: StreakPet) : CreateResult(streakPet)
-    }
-
     suspend fun create(
         accountId: Int,
         peerUserId: Long,
-        at: LocalDate = LocalDate.now()
-    ): CreateResult {
-        get(accountId, peerUserId)?.let { return CreateResult.AlreadyExists(it) }
-
+        at: LocalDate = LocalDate.now(),
+        byInvite: Boolean = false
+    ): Boolean {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+        dao.findByRelation(ownerUserId, peerUserId)?.let { return false }
 
         val messagesController = MessagesController.getInstance(accountId)
         val ownerUser = messagesController.getUser(ownerUserId)
@@ -615,28 +673,70 @@ class StreakPetsController(
             }
         }
 
-        return CreateResult.Created(streakPet)
+        EventBus.emit(
+            PluginEvent.StreakPetCreatedEvent(
+                accountId,
+                Clock.System.now(),
+                streakPet,
+                byInvite
+            )
+        )
+
+        return true
     }
 
-    suspend fun rename(accountId: Int, peerUserId: Long, newName: String): Boolean {
+    suspend fun rename(
+        accountId: Int,
+        peerUserId: Long,
+        newName: String,
+        byPlugin: Boolean,
+        byPeer: Boolean,
+    ): Boolean {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val pet = dao.findByRelation(ownerUserId, peerUserId) ?: return false
+
+        val pet = dao.findByRelation(ownerUserId, peerUserId)
+            ?: return false
 
         val normalizedName = newName.trim().take(20)
+
         if (normalizedName.isEmpty())
             return false
 
-        dao.update(pet.copy(name = normalizedName))
+        val renamed = pet.copy(name = normalizedName)
+        dao.update(renamed)
+
+        EventBus.emit(
+            PluginEvent.StreakPetRenamedEvent(
+                accountId,
+                Clock.System.now(),
+                renamed,
+                if (byPlugin)
+                    PluginEvent.StreakPetRenamedEvent.By.SELF
+                else if (!byPeer)
+                    PluginEvent.StreakPetRenamedEvent.By.SELF_MESSAGE
+                else
+                    PluginEvent.StreakPetRenamedEvent.By.PEER_MESSAGE
+            )
+        )
+
         return true
     }
 
     suspend fun delete(accountId: Int, peerUserId: Long): Boolean {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
-        if (dao.findByRelation(ownerUserId, peerUserId) == null)
-            return false
+        val pet = dao.findByRelation(ownerUserId, peerUserId)
+            ?: return false
 
         dao.deleteByRelation(ownerUserId, peerUserId)
+
+        EventBus.emit(
+            PluginEvent.StreakPetDeletedEvent(
+                accountId,
+                Clock.System.now(),
+                pet
+            )
+        )
 
         return true
     }
@@ -650,13 +750,8 @@ class StreakPetsController(
             ArrayList(pets.map { it.peerUserId })
         ) ?: return
 
-        val invalidPets = pets.filterNot { isPeerValidOrBot(peerUsers[it.peerUserId]) }
-
-        if (invalidPets.isEmpty())
-            return
-
-        db.withTransaction {
-            invalidPets.forEach { dao.delete(it) }
-        }
+        pets
+            .filterNot { isPeerValidOrBot(peerUsers[it.peerUserId]) }
+            .forEach { removeInvalidPeerPet(accountId, it.peerUserId) }
     }
 }

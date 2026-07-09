@@ -21,6 +21,10 @@ interface StreakReviveDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(records: Collection<StreakRevive>)
 
+    suspend fun insertBatch(ownerUserId: Long, peerUserId: Long, dates: Collection<LocalDate>) {
+        insertAll(dates.map { StreakRevive(ownerUserId, peerUserId, it) })
+    }
+
     @Query("SELECT EXISTS(SELECT * FROM streak_revive WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId AND revived_at = :day)")
     suspend fun isRevived(ownerUserId: Long, peerUserId: Long, day: LocalDate): Boolean
 }

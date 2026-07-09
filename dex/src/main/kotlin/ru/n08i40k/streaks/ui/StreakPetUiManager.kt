@@ -102,11 +102,13 @@ class StreakPetUiManager {
                         accountId,
                         "rename pet for $accountId:$peerUserId"
                     ) {
-                        if (!streakPetsController.rename(accountId, peerUserId, newName))
-                            return@enqueue
-
-                        serviceMessagesController.sendPetSetName(accountId, peerUserId, newName)
-                        refreshOpenedDialog(accountId, peerUserId)
+                        streakPetsController.rename(
+                            accountId,
+                            peerUserId,
+                            newName,
+                            byPlugin = true,
+                            byPeer = false
+                        )
                     }
                 }
 
@@ -215,7 +217,7 @@ class StreakPetUiManager {
         }
     }
 
-    private fun refreshOpenedDialog(accountId: Int, peerUserId: Long) = with(Plugin.getInstance()) {
+    fun refreshOpenedDialog(accountId: Int, peerUserId: Long) = with(Plugin.getInstance()) {
         if (openedDialog?.matches(accountId, peerUserId) != true)
             return@with
 

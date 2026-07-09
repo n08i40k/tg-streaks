@@ -55,7 +55,7 @@ object UserPatcher : EjectNotifier.Delegate {
         }
     }
 
-    private fun restoreUser(accountId: Int, userId: Long) {
+    fun restoreUser(accountId: Int, userId: Long) {
         val messagesController = MessagesController.getInstance(accountId)
         val originalState = originalUserStates.remove(userId) ?: return
         val user = messagesController.getUser(userId) ?: return

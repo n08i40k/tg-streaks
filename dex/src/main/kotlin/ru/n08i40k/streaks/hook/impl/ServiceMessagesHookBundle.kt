@@ -1,21 +1,20 @@
 package ru.n08i40k.streaks.hook.impl
 
 import android.graphics.Bitmap
-import org.telegram.messenger.MessageObject
-import org.telegram.tgnet.TLRPC
-import ru.n08i40k.streaks.hook.HookBundle
-import ru.n08i40k.streaks.hook.InstallHook
 import androidx.collection.LongSparseArray
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ImageReceiver
+import org.telegram.messenger.MessageObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
+import org.telegram.tgnet.TLRPC
 import org.telegram.ui.Cells.ChatActionCell
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
+import ru.n08i40k.streaks.hook.HookBundle
+import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.i18n.Strings
-import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.cloneFields
@@ -278,7 +277,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                             else if !streak.canRevive ->
                                 BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
 
-                            else if !streaksController.reviveNow(accountId, peerUserId) ->
+                            else if !streaksController.revive(accountId, peerUserId) ->
                                 BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
                         }
                     }
@@ -289,22 +288,15 @@ class ServiceMessagesHookBundle : HookBundle() {
                         accountId,
                         "try to accept streak-pet invitation from notification"
                     ) {
-                        streaksController.setServiceMessagesEnabled(accountId, peerUserId, true)
+                        serviceMessagesController.setEnabled(accountId, peerUserId, true)
                         serviceMessagesController.sendPetInviteAccepted(accountId, peerUserId)
 
-                        when (streakPetsController.create(accountId, peerUserId)) {
-                            is StreakPetsController.CreateResult.Created -> {
-                                plugin.petUiManager.refreshFabForOpenChat()
-
-                                BulletinHelper.show(
-                                    Strings.status_success_pet_created(),
-                                    "msg_reactions"
-                                )
-                            }
-
-                            is StreakPetsController.CreateResult.AlreadyExists ->
-                                BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
+                        if (!streakPetsController.create(accountId, peerUserId, byInvite = true)) {
+                            BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
+                            return@enqueue
                         }
+
+                        BulletinHelper.show( Strings.status_success_pet_created(), "msg_reactions")
                     }
                 }
 

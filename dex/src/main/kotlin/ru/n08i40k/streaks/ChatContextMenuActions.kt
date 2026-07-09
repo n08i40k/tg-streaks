@@ -9,17 +9,15 @@ import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
-import ru.n08i40k.streaks.i18n.Strings
-import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.toEpochSecondSystem
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.override.FixupCalendarActivity
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RebuildNotificationHelper
-import ru.n08i40k.streaks.util.UserPatcher
 
 class ChatContextMenuActions(private val plugin: Plugin) {
     @OptIn(DelicateCoroutinesApi::class)
@@ -161,11 +159,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                             .setPositiveButton(
                                 Strings.dialog_create_pet_confirm()
                             ) { _, _ ->
-                                streaksController.setServiceMessagesEnabled(
-                                    accountId,
-                                    peerUserId,
-                                    true
-                                )
+                                serviceMessagesController.setEnabled(accountId, peerUserId, true)
                                 serviceMessagesController.sendPetInvite(accountId, peerUserId)
                             }
                             .setNegativeButton(
@@ -175,19 +169,12 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                                     accountId,
                                     "create streak-pet for $accountId:$peerUserId"
                                 ) {
-                                    when (streakPetsController.create(accountId, peerUserId)) {
-                                        is StreakPetsController.CreateResult.Created -> {
-                                            petUiManager.refreshFabForOpenChat()
-                                            BulletinHelper.show(
-                                                Strings.status_success_pet_created(),
-                                                "msg_reactions"
-                                            )
-                                        }
-
-                                        is StreakPetsController.CreateResult.AlreadyExists -> {
-                                            BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
-                                        }
+                                    if (!streakPetsController.create(accountId, peerUserId)) {
+                                        BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
+                                        return@enqueue
                                     }
+
+                                    BulletinHelper.show( Strings.status_success_pet_created(), "msg_reactions")
                                 }
                             }
                             .create()
@@ -252,7 +239,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             validatePrivatePeer(accountId, peerUserId)
                 ?: return@add
 
-            val enabled = streaksController.toggleServiceMessages(accountId, peerUserId)
+            val enabled = serviceMessagesController.toggle(accountId, peerUserId)
 
             BulletinHelper.show(
                 if (enabled)
@@ -292,15 +279,11 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     return@enqueue
                 }
 
-                if (!streaksController.reviveNow(accountId, peerUserId)) {
+                if (!streaksController.revive(accountId, peerUserId)) {
                     BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
                     return@enqueue
                 }
 
-                UserPatcher.patchUser(accountId, peerUserId)
-
-                streakEmojiRegistry.refreshByPeerUserId(peerUserId)
-                AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
                 BulletinHelper.show(
                     Strings.status_success_streak_restored(),
                     "msg_reactions"
@@ -336,7 +319,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 "create debug streak for $accountId:$peerUserId"
             ) {
                 streaksController.debugSetThreeDayStreak(accountId, peerUserId)
-                syncPeerUi(accountId, peerUserId)
+
                 BulletinHelper.show(
                     Strings.status_success_debug_streak_set_to_3_days(),
                     "msg_reactions"
@@ -375,7 +358,6 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 val newLength = streaksController.debugUpgradeStreak(accountId, peerUserId)
                     ?: return@enqueue
 
-                syncPeerUi(accountId, peerUserId)
                 BulletinHelper.show(
                     Strings.status_success_debug_streak_upgraded(newLength),
                     "msg_reactions"
@@ -396,7 +378,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 "freeze debug streak for $accountId:$peerUserId"
             ) {
                 streaksController.debugFreezeStreak(accountId, peerUserId)
-                syncPeerUi(accountId, peerUserId)
+
                 BulletinHelper.show(
                     Strings.status_success_debug_streak_frozen(),
                     "msg_reactions"
@@ -417,7 +399,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 "kill debug streak for $accountId:$peerUserId"
             ) {
                 streaksController.debugMarkDead(accountId, peerUserId)
-                syncPeerUi(accountId, peerUserId)
+
                 BulletinHelper.show(
                     Strings.status_success_debug_streak_marked_dead(),
                     "msg_reactions"
@@ -442,7 +424,6 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     return@enqueue
                 }
 
-                syncPeerUi(accountId, peerUserId)
                 BulletinHelper.show(
                     Strings.status_success_debug_streak_deleted(),
                     "msg_reactions"
@@ -466,9 +447,6 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
                     return@enqueue
                 }
-
-                AndroidUtilities.runOnUIThread { petUiManager.dismissAll() }
-                syncPeerUi(accountId, peerUserId)
 
                 BulletinHelper.show(Strings.status_success_debug_pet_deleted(), "msg_reactions")
             }

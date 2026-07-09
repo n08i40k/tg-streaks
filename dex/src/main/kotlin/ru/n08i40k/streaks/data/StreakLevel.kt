@@ -7,6 +7,9 @@ data class StreakLevel(
     val color: Color,
     val documentId: Long,
     val popupResourceName: String,
-) {
+) : Comparable<StreakLevel> {
     val colorInt: Int = color.toArgb()
+
+    override fun compareTo(other: StreakLevel): Int =
+        length - other.length
 }

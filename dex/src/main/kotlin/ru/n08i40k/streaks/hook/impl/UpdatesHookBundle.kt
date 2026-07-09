@@ -1,6 +1,5 @@
 package ru.n08i40k.streaks.hook.impl
 
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.BaseController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.SendMessagesHelper
@@ -13,7 +12,6 @@ import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.TLCompat
-import ru.n08i40k.streaks.util.UserPatcher
 import ru.n08i40k.streaks.util.getFieldValue
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
@@ -103,11 +101,14 @@ class UpdatesHookBundle : HookBundle() {
                 return@apply
 
             AccountTaskExecutor.enqueue(accountId, "handle updates for $accountId") {
-                var changed = false
-
                 for ((peerUserId, at, out, messageId, message) in entries) {
-                    val result =
-                        streaksController.handleUpdate(accountId, peerUserId, at, out, message)
+                    streaksController.handleUpdate(
+                        accountId,
+                        peerUserId,
+                        at,
+                        out,
+                        message
+                    )
 
                     streakPetsController.handleUpdate(
                         accountId,
@@ -119,19 +120,7 @@ class UpdatesHookBundle : HookBundle() {
                     )
 
                     petUiManager.refreshFabForOpenChat()
-
-                    if (result.changed) {
-                        changed = true
-                        UserPatcher.patchUser(accountId, peerUserId)
-
-                        AndroidUtilities.runOnUIThread {
-                            streakEmojiRegistry.refreshByPeerUserId(peerUserId)
-                        }
-                    }
                 }
-
-                if (changed)
-                    AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
             }
         }
 
@@ -139,7 +128,6 @@ class UpdatesHookBundle : HookBundle() {
         before: InstallHook,
         after: InstallHook
     ) {
-
         // Обработка входящих сообщений
         before(
             MessagesController::class.java.getDeclaredMethod(
