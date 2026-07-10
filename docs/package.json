@@ -1,0 +1,21 @@
+{
+  "name": "tg-streaks-docs",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "15.5.20",
+    "nextra": "4.2.17",
+    "nextra-theme-docs": "4.2.17",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17"
+  }
+}

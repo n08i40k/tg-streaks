@@ -55,6 +55,7 @@ PLUGIN_UPDATE_API_URL = (
     f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 )
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
+DOCS_URL = f"https://{REPO_OWNER}.github.io/{REPO_NAME}/"
 PLUGIN_CHAT_TG_URL = "tg://resolve?domain=n08i40k_extera_chat"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
@@ -88,6 +89,12 @@ I18N_SETTINGS: dict[str, dict[str, str]] = {
         "ru": "Восстановить бэкап",
     },
     "settings.backups.title": {"en": "Backups", "ru": "Бэкапы"},
+    "settings.help.docs.description": {
+        "en": "Open the plugin user guide in your browser.",
+        "ru": "Открыть руководство пользователя в браузере.",
+    },
+    "settings.help.docs.title": {"en": "Documentation", "ru": "Документация"},
+    "settings.help.title": {"en": "Help", "ru": "Справка"},
     "settings.pet_button.size.description": {
         "en": "Floating chat button size.",
         "ru": "Размер плавающей кнопки в чате.",
@@ -1290,6 +1297,13 @@ class TgStreaksPlugin(BasePlugin):
                 on_change=lambda value: self._on_update_check_setting_changed(value),
             ),
             *self.settings_actions.build_settings(),
+            Header(text=self._t("settings.help.title")),
+            Text(
+                text=self._t("settings.help.docs.title"),
+                icon="msg_info",
+                on_click=lambda _: self._open_telegram_url(DOCS_URL),
+            ),
+            Divider(text=self._t("settings.help.docs.description")),
         ]
 
     def _show_info(self, message: str):
