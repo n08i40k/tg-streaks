@@ -11,8 +11,8 @@ class StreakPetLevelRegistry {
     fun findByMaxPointsPrecise(maxPoints: Int): StreakPetLevel? =
         levels.find { it.maxPoints == maxPoints }
 
-    fun findByPointsApproximate(length: Int): StreakPetLevel =
-        levels.findLast { it.maxPoints <= length } ?: levels.last()
+    fun findByPointsApproximate(points: Int): StreakPetLevel =
+        levels.find { points < it.maxPoints } ?: levels.last()
 
     fun register(level: StreakPetLevel) {
         if (findByMaxPointsPrecise(level.maxPoints) != null)

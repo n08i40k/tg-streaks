@@ -18,7 +18,11 @@ object Logger : EjectNotifier.Delegate {
     private var suppressFatal = false
 
     fun info(message: String) {
-        receiver?.onReceiveValue(message)
+        try {
+            receiver?.onReceiveValue(message)
+        } catch (_: Throwable) {
+            Plugin.eject()
+        }
     }
 
     fun setReceiver(receiver: LogReceiver) {
@@ -29,8 +33,12 @@ object Logger : EjectNotifier.Delegate {
         val e = exception as? Exception ?: Exception(exception)
         val formattedException = e.format()
 
-        receiver?.onReceiveValue(message)
-        receiver?.onReceiveValue(formattedException)
+        try {
+            receiver?.onReceiveValue(message)
+            receiver?.onReceiveValue(formattedException)
+        } catch (_: Throwable) {
+            Plugin.eject()
+        }
 
         if (!suppressFatal) {
             CrashBottomSheet.show(message, exception)

@@ -30,7 +30,7 @@ class ProfileSearchCellHookBundle : HookBundle() {
                 getField(thisClass, "statusDrawable"),
                 null,
                 user.id,
-                true
+                canDrawBadge = true
             )
         }
     }
