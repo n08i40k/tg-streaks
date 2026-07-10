@@ -16,10 +16,17 @@ import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.isClientVersionBelow
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 
 class StreakEmoji : SwapAnimatedEmojiDrawable {
+    enum class Source {
+        DIALOG_CELL,
+        MESSAGE_CELL,
+        OTHER
+    }
+
     data class EjectData(
         val drawable: WeakReference<StreakEmoji>,
         val targetObject: WeakReference<Any>,
@@ -69,6 +76,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             field: Field,
             arrayIndex: Int?,
             peerUserId: Long,
+            source: Source = Source.OTHER,
             canDrawBadge: Boolean = false,
             simpleTextView: SimpleTextView? = null,
         ): StreakEmoji? {
@@ -84,6 +92,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 val newDrawable = StreakEmoji(
                     drawable,
                     peerUserId,
+                    source,
                     canDrawBadge,
                 )
 
@@ -125,6 +134,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             val newDrawable = StreakEmoji(
                 drawable,
                 peerUserId,
+                source,
                 canDrawBadge,
             )
             array[arrayIndex] = newDrawable
@@ -152,6 +162,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     private var peerUserId: Long = 0
     private var cachedStreakViewData: StreakViewData? = null
 
+    private val source: Source
     private val canDrawBadge: Boolean
 
     private var streakView: SwapAnimatedEmojiDrawable? = null
@@ -296,7 +307,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
             when (dialog) {
                 is TLRPC.User -> {
-                    val badge = BadgesCompat.getDocumentId(dialog)
+                    val badge = getBadgeDocumentId(dialog)
+
                     this.hasBadge = badge != null
 
                     setStreak(dialog, null)
@@ -329,6 +341,18 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             }
     }
 
+    private fun getBadgeDocumentId(user: TLRPC.User): Long? =
+        BadgesCompat.getDocumentId(user).let { documentId ->
+            if (documentId == null
+                || isClientVersionBelow("12.8.1")
+                || (source != Source.DIALOG_CELL && source != Source.MESSAGE_CELL)
+                || !BadgesCompat.hasSecondaryBadge(user)
+            )
+                return@let documentId
+
+            return@let null
+        }
+
     fun getPeerUserId(): Long = peerUserId
 
     fun setPeerUserId(peerUserId: Long, clearStreak: Boolean = false) {
@@ -353,12 +377,14 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     constructor(
         base: SwapAnimatedEmojiDrawable,
         peerUserId: Long,
+        source: Source,
         canDrawBadge: Boolean,
     ) : super(
         null,
         0
     ) {
         cloneFields(base, this, SwapAnimatedEmojiDrawable::class.java)
+        this.source = source
         this.canDrawBadge = canDrawBadge
         this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
 

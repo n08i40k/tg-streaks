@@ -78,8 +78,9 @@ class ChatMessageCellHookBundle : HookBundle() {
                 getField(thisClass, "currentNameStatusDrawable"),
                 null,
                 peerUserId,
-                true,
-                null,
+                source = StreakEmoji.Source.MESSAGE_CELL,
+                canDrawBadge = true,
+                simpleTextView = null,
             ) ?: return@before
 
             if (getFieldValue<Int>(thisClass, thisObject, "viaNameWidth") == 0) {

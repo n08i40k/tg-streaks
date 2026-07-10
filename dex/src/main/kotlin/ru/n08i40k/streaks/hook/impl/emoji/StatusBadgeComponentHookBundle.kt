@@ -28,7 +28,7 @@ class StatusBadgeComponentHookBundle : HookBundle() {
                 getField(thisClass, "statusDrawable"),
                 null,
                 0,
-                true
+                canDrawBadge = true
             )
         }
 
@@ -54,7 +54,7 @@ class StatusBadgeComponentHookBundle : HookBundle() {
                 getField(thisClass, "statusDrawable"),
                 null,
                 user.id,
-                true,
+                canDrawBadge = true,
             )
         }
     }

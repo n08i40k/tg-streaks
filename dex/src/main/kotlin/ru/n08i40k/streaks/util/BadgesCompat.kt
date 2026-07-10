@@ -1,6 +1,7 @@
 package ru.n08i40k.streaks.util
 
 import org.telegram.tgnet.TLObject
+import org.telegram.tgnet.TLRPC
 import java.lang.reflect.Method
 
 object BadgesCompat {
@@ -8,8 +9,11 @@ object BadgesCompat {
         // BadgesController
         val badgesController: Any,
 
-        // BadgesController::getDocumentId()
+        // BadgesController::getBadge(TLObject?)
         val getBadge: Method,
+
+        // BadgesController::getSecondaryBadge(User?)
+        val getSecondaryBadge: Method?,
 
         // BadgeDTO::getDocumentId()
         val getDocumentId: Method
@@ -18,12 +22,13 @@ object BadgesCompat {
     private var reflectionData: ReflectionData? = null
 
     fun init() {
-        // Starting from 12.8.0 BadgesController is unobfuscated again
-        if (!isClientVersionBelow("12.6.4") && isClientVersionBelow("12.8.0"))
+        // Starting from 12.8.1 BadgesController is unobfuscated again
+        if (!isClientVersionBelow("12.6.4") && isClientVersionBelow("12.8.1"))
             return
 
         val controllerClass = Class.forName("com.exteragram.messenger.badges.BadgesController")
         val badgeClass = Class.forName("com.exteragram.messenger.api.dto.BadgeDTO")
+
 
         reflectionData = ReflectionData(
             badgesController = controllerClass
@@ -34,10 +39,13 @@ object BadgesCompat {
             getBadge = controllerClass
                 .getDeclaredMethod("getBadge", TLObject::class.java),
 
+            getSecondaryBadge = controllerClass
+                .takeIf { !isClientVersionBelow("12.8.1") }
+                ?.getDeclaredMethod("getSecondaryBadge", TLRPC.User::class.java),
+
             getDocumentId = badgeClass
                 .getDeclaredMethod("getDocumentId")
         )
-
     }
 
     fun getDocumentId(obj: TLObject): Long? {
@@ -54,4 +62,7 @@ object BadgesCompat {
             return documentId as Long
         }
     }
+
+    fun hasSecondaryBadge(user: TLRPC.User): Boolean =
+        reflectionData?.let { it.getSecondaryBadge?.invoke(it.badgesController, user) } != null
 }
