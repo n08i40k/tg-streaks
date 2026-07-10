@@ -3,6 +3,7 @@ package ru.n08i40k.streaks.hook.impl.emoji
 import android.text.Layout
 import android.text.Spanned
 import android.text.StaticLayout
+import android.text.TextPaint
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessageObject
 import org.telegram.messenger.UserConfig
@@ -106,7 +107,7 @@ class ChatMessageCellHookBundle : HookBundle() {
 
             val newLayout = StaticLayout(
                 spannedText,
-                Theme.chat_namePaint,
+                getFieldValue<TextPaint>(Theme::class.java, null, "chat_namePaint"),
                 nameLayoutWidth + extraPx + AndroidUtilities.dp(2f),
                 Layout.Alignment.ALIGN_NORMAL,
                 1.0f,
