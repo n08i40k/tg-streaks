@@ -304,19 +304,15 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                     val badge = BadgesCompat.getDocumentId(dialog)
                     this.hasBadge = badge != null
 
-                    AndroidUtilities.runOnUIThread {
-                        setStreak(dialog, null)
-                        setBadge(dialog, badge)
-                    }
+                    setStreak(dialog, null)
+                    setBadge(dialog, badge)
                 }
 
                 is TLRPC.Chat -> {
                     this.hasBadge = false
 
-                    AndroidUtilities.runOnUIThread {
-                        setStreak(null, null)
-                        setBadge(null, null)
-                    }
+                    setStreak(null, null)
+                    setBadge(null, null)
                 }
             }
 
@@ -329,12 +325,12 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             ?.let {
                 hideOriginal = it.premium && it.emoji_status == null
 
-                val badge = BadgesCompat.getDocumentId(it)
+                val badge = getBadgeDocumentId(it)
 
-                AndroidUtilities.runOnUIThread {
-                    setStreak(it, streakViewData)
-                    setBadge(it, badge)
-                }
+                this.hasBadge = badge != null
+
+                setStreak(it, streakViewData)
+                setBadge(it, badge)
             }
     }
 
