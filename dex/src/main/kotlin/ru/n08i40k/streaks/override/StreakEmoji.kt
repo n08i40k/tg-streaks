@@ -198,16 +198,11 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     }
 
     private fun syncBounds() {
-        val badgeOffset = bounds.left + if (hideOriginal) 0 else size
-        val badgeSize = size
-
-        val streakOffset =
-            if (badgeView != null)
-                badgeOffset + badgeSize
-            else
-                badgeOffset
-
+        val streakOffset = bounds.left + if (hideOriginal) 0 else size
         val streakSize = size
+
+        val badgeOffset = streakOffset + if (streakView == null) 0 else streakSize + getTextWidth()
+        val badgeSize = size
 
         badgeView?.setBounds(
             badgeOffset,
