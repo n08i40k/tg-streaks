@@ -11,7 +11,9 @@ type ScreenshotProps = {
   caption: string;
 };
 
-const src = (file: string) => `/screenshots/${file}`;
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
+const src = (file: string) => `${basePath}/screenshots/${file}`;
 
 /**
  * Скриншот с подписью. Если для тёмной темы передан проп `dark`,
