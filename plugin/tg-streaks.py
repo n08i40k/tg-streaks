@@ -24,6 +24,7 @@ from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
 from java.lang import Class, Integer, Long, String
 from java.nio import ByteBuffer  # ty:ignore[unresolved-import]
+from java.util import Locale  # ty:ignore[unresolved-import]
 from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
 from org.telegram.ui.ActionBar import AlertDialog
@@ -59,6 +60,7 @@ SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
 SETTING_LAST_LOADED_VERSION = "last_loaded_version"
 SETTING_PET_FAB_SIZE_INDEX = "pet_fab_size_index"
 PET_FAB_SIZE_OPTIONS_DP = (64, 80, 96, 112, 128)
+VALID_ISO_LANGUAGES = frozenset(str(code) for code in Locale.getISOLanguages())
 
 
 def get_plugin_cache_dir(*parts: str) -> str:
@@ -1628,7 +1630,11 @@ class TgStreaksPlugin(BasePlugin):
         if lc is not None:
             info = safe_call(lc.getCurrentLocaleInfo)
             if info is not None:
-                raw = safe_call(info.getLangCode) or safe_call(lambda: info.shortName)
+                has_base_lang = safe_call(info.hasBaseLang)
+                if has_base_lang:
+                    raw = safe_call(lambda: info.baseLangCode)
+                else:
+                    raw = safe_call(info.getLangCode) or safe_call(lambda: info.shortName)
                 if raw:
                     lang_code = str(raw)
 
@@ -1643,7 +1649,8 @@ class TgStreaksPlugin(BasePlugin):
             return "en"
 
         normalized = lang_code.strip().lower().replace("-", "_")
-        return normalized.split("_", 1)[0] or "en"
+        code = normalized.split("_", 1)[0]
+        return code if code in VALID_ISO_LANGUAGES else "en"
 
     def _t(self, key: str, **kwargs: Any) -> str:
         values = I18N_STRINGS.get(key, None)
