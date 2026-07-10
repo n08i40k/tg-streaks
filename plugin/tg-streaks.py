@@ -18,7 +18,7 @@ from android.net import Uri
 from android.os import Environment, Process
 from android.util import Log
 from android.webkit import ValueCallback
-from android_utils import run_on_ui_thread
+from android_utils import copy_to_clipboard, run_on_ui_thread
 from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
@@ -55,6 +55,7 @@ PLUGIN_UPDATE_API_URL = (
     f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 )
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
+PLUGIN_CHAT_TG_URL = "tg://resolve?domain=n08i40k_extera_chat"
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
 SETTING_LAST_LOADED_VERSION = "last_loaded_version"
@@ -265,6 +266,16 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "ru": "Выбрать с устройства...",
     },
     "dialog.backup_restore.title": {"en": "Choose backup", "ru": "Выберите бэкап"},
+    "dialog.load_crash.message": {
+        "en": "tg-streaks failed to load at stage '{stage}'.\n\nA crash report has been copied to the clipboard — you can send it to the plugin's chat.",
+        "ru": "Не удалось загрузить tg-streaks на этапе «{stage}».\n\nОтчёт скопирован в буфер обмена — вы можете отправить его в чат плагина.",
+    },
+    "dialog.load_crash.ok": {"en": "OK", "ru": "Ок"},
+    "dialog.load_crash.open_chat": {"en": "Open chat", "ru": "Открыть чат"},
+    "dialog.load_crash.title": {
+        "en": "Plugin load failed",
+        "ru": "Не удалось загрузить плагин",
+    },
     "dialog.sha256_mismatch.message": {
         "en": "Checksum of downloaded {filename} does not match.\nThe plugin has been disabled for security.\n\nPlugin version: {version}\nTarget file: {filename}\nHash: {hash} ({expected_hash} expected)",
         "ru": "Контрольная сумма скачанного {filename} не совпадает.\nПлагин отключён в целях безопасности.\n\nВерсия плагина: {version}\nФайл: {filename}\nХеш: {hash} (ожидался {expected_hash})",
@@ -1234,6 +1245,9 @@ class TgStreaksPlugin(BasePlugin):
         text = str(message)
         super().log(text)
 
+        if getattr(self, "_load_logging_active", False):
+            self._load_log_buffer.append(text)
+
         try:
             Log.i(cast("String", LOGCAT_TAG), cast("String", text))
         except Exception:
@@ -1430,6 +1444,75 @@ class TgStreaksPlugin(BasePlugin):
             name="tg-streaks-continue-plugin-load",
             daemon=True,
         ).start()
+
+    def _reset_load_log_buffer(self):
+        self._load_log_buffer: list[str] = []
+        self._load_logging_active = True
+
+    def _stop_load_logging(self):
+        self._load_logging_active = False
+        self._load_log_buffer = []
+
+    def _handle_load_failure(self, stage: str, exception: BaseException):
+        self.log_exception(f"Plugin load failed ({stage})", exception)
+
+        logs = "\n".join(getattr(self, "_load_log_buffer", []))
+        report = (
+            f"#load_crash\n\n"
+            f"Stage: `{stage}`\n"
+            f"Plugin version: `{__version__}`\n\n"
+            f"Error:\n```\n{exception}\n```\n\n"
+            f"Log:\n```\n{logs}\n```"
+        )
+
+        try:
+            copy_to_clipboard(report)
+        except Exception as e:
+            self.log_exception("Failed to copy load-crash report to clipboard", e)
+
+        self._show_load_crash_dialog(stage)
+
+    def _show_load_crash_dialog(self, stage: str):
+        def show():
+            try:
+                fragment = get_last_fragment()
+            except Exception:
+                fragment = None
+
+            message = self._t("dialog.load_crash.message", stage=stage)
+
+            if fragment is None:
+                self._show_error(message)
+                return
+
+            self_outer = self
+
+            class OpenChatClickListener(
+                dynamic_proxy(AlertDialog.OnButtonClickListener)
+            ):
+                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
+                    self_outer._open_telegram_url(PLUGIN_CHAT_TG_URL)
+
+            try:
+                fragment.showDialog(
+                    AlertDialog.Builder(fragment.getContext())
+                    .setTitle(String(self._t("dialog.load_crash.title")))
+                    .setMessage(String(message))
+                    .setPositiveButton(
+                        String(self._t("dialog.load_crash.open_chat")),
+                        OpenChatClickListener(),
+                    )
+                    .setNegativeButton(
+                        String(self._t("dialog.load_crash.ok")),
+                        None,
+                    )
+                    .create()
+                )
+            except Exception as e:
+                self.log_exception("Failed to show load crash dialog", e)
+                self._show_error(message)
+
+        run_on_ui_thread(show)
 
     def _restart_client(self):
         def restart():
@@ -1634,7 +1717,9 @@ class TgStreaksPlugin(BasePlugin):
                 if has_base_lang:
                     raw = safe_call(lambda: info.baseLangCode)
                 else:
-                    raw = safe_call(info.getLangCode) or safe_call(lambda: info.shortName)
+                    raw = safe_call(info.getLangCode) or safe_call(
+                        lambda: info.shortName
+                    )
                 if raw:
                     lang_code = str(raw)
 
@@ -1784,7 +1869,7 @@ class TgStreaksPlugin(BasePlugin):
             )
             self.log("JVM plugin finalizeInject completed")
         except Exception as e:
-            self.log_exception("Failed to finalize JVM plugin inject", e)
+            self._handle_load_failure("finalizeInject", e)
 
     def _load_jvm_plugin(self):
         self.jvm_plugin = JvmPluginBridge(self)
@@ -1823,7 +1908,7 @@ class TgStreaksPlugin(BasePlugin):
             self.log("JVM plugin injected successfully")
             self._apply_pet_fab_size_dp(self._get_pet_fab_size_dp())
         except Exception as e:
-            self.log_exception("Failed to inject JVM plugin", e)
+            self._handle_load_failure("inject", e)
 
     def _database_file_paths(self) -> list[str]:
         base_path = ApplicationLoader.applicationContext.getDatabasePath(
@@ -2143,34 +2228,45 @@ class TgStreaksPlugin(BasePlugin):
                 return
             self._full_load_started = True
 
-        self._load_jvm_plugin()
+        try:
+            self._load_jvm_plugin()
 
-        self._register_streak_levels()
-        self._register_streak_pet_levels()
+            self._register_streak_levels()
+            self._register_streak_pet_levels()
 
-        self.settings_actions = SettingsActions(self)
-        self.chat_context_menu = ChatContextMenu(self)
-        self.chat_context_menu.register()
+            self.settings_actions = SettingsActions(self)
+            self.chat_context_menu = ChatContextMenu(self)
+            self.chat_context_menu.register()
 
-        self._finalize_jvm_plugin_inject()
+            self._finalize_jvm_plugin_inject()
 
-        self.update_checker = PluginUpdateChecker(self)
-        self.update_checker.start()
+            self.update_checker = PluginUpdateChecker(self)
+            self.update_checker.start()
 
-        threading.Thread(
-            target=self.resources_bridge.load,
-            name="tg-streaks-resources-init",
-            daemon=True,
-        ).start()
-
-    def on_plugin_load(self):
-        self.resources_bridge = ZipResourcesBridge(self)
-        self._full_load_started = False
-
-        if self._should_pause_full_load_for_update():
+            threading.Thread(
+                target=self.resources_bridge.load,
+                name="tg-streaks-resources-init",
+                daemon=True,
+            ).start()
+        except BaseException as e:
+            self._handle_load_failure("plugin load", e)
             return
 
-        self._continue_plugin_load()
+        self._stop_load_logging()
+
+    def on_plugin_load(self):
+        self._reset_load_log_buffer()
+
+        try:
+            self.resources_bridge = ZipResourcesBridge(self)
+            self._full_load_started = False
+
+            if self._should_pause_full_load_for_update():
+                return
+
+            self._continue_plugin_load()
+        except BaseException as e:
+            self._handle_load_failure("plugin load", e)
 
     def on_plugin_unload(self):
         try:
