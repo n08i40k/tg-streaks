@@ -24,7 +24,7 @@ from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
 from java.lang import Class, Integer, Long, String
 from java.nio import ByteBuffer  # ty:ignore[unresolved-import]
-from java.util import Locale  # ty:ignore[unresolved-import]
+from java.util import Locale
 from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
 from org.telegram.ui.ActionBar import AlertDialog
@@ -273,6 +273,16 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "ru": "Выбрать с устройства...",
     },
     "dialog.backup_restore.title": {"en": "Choose backup", "ru": "Выберите бэкап"},
+    "dialog.download_failed.cancel": {"en": "Cancel", "ru": "Отмена"},
+    "dialog.download_failed.message": {
+        "en": "Failed to download {filename}. Check your internet connection or try enabling a VPN, then try again.",
+        "ru": "Не удалось скачать {filename}. Проверьте подключение к интернету или попробуйте включить ВПН, затем повторите попытку.",
+    },
+    "dialog.download_failed.retry": {"en": "Retry", "ru": "Повторить"},
+    "dialog.download_failed.title": {
+        "en": "Couldn't download plugin data",
+        "ru": "Не удалось скачать данные плагина",
+    },
     "dialog.load_crash.message": {
         "en": "tg-streaks failed to load at stage '{stage}'.\n\nA crash report has been copied to the clipboard — you can send it to the plugin's chat.",
         "ru": "Не удалось загрузить tg-streaks на этапе «{stage}».\n\nОтчёт скопирован в буфер обмена — вы можете отправить его в чат плагина.",
@@ -472,6 +482,13 @@ class StreakPetLevels(Enum):
     )
 
 
+class DownloadFailedError(Exception):
+    """Raised by TgStreaksPlugin._download_with_progress on any download
+    failure. The user-facing dialog is shown right there, at the point the
+    download failed; callers only need to handle fallback-to-cache logic, if
+    any."""
+
+
 class JvmPluginBridge:
     klass: Optional[Class]
 
@@ -487,16 +504,17 @@ class JvmPluginBridge:
             self.plugin.log(
                 "Debug mode enabled. Downloading DEX without SHA256 checks..."
             )
-            dex_data = self._download_bytes(show_bulletins=True)
-            if dex_data is not None:
-                self._write_dex_file(dex_data)
-                self._load(dex_data)
+            try:
+                dex_data = self._download(show_bulletins=True)
+            except DownloadFailedError:
+                self.plugin.log(
+                    "DEX download failed in debug mode. Falling back to cached DEX if available..."
+                )
+                self._load_cached_file()
                 return
 
-            self.plugin.log(
-                "DEX download failed in debug mode. Falling back to cached DEX if available..."
-            )
-            self._load_cached_file()
+            self._write_dex_file(dex_data)
+            self._load(dex_data)
             return
 
         expected_sha256 = str(DEX_SHA256).strip().lower()
@@ -513,8 +531,9 @@ class JvmPluginBridge:
         else:
             self.plugin.log("Cached DEX not found. Downloading...")
 
-        dex_data = self._download_bytes(show_bulletins=True)
-        if dex_data is None:
+        try:
+            dex_data = self._download(show_bulletins=True)
+        except DownloadFailedError:
             if cached_sha256 is not None:
                 self.plugin.log(
                     "DEX download failed. Falling back to stale cached DEX (version mismatch possible)..."
@@ -554,17 +573,14 @@ class JvmPluginBridge:
         with open(self.dex_path, "wb") as f:
             f.write(dex_data)
 
-    def _download_bytes(self, show_bulletins: bool) -> Optional[bytes]:
-        try:
-            return self.plugin._download_with_progress(
-                url=DEX_URL,
-                started_key="download.engine.started",
-                completed_key="download.engine.completed",
-                show_bulletins=show_bulletins,
-            )
-        except Exception as e:
-            self.plugin.log_exception("Failed to download DEX", e)
-            return None
+    def _download(self, show_bulletins: bool) -> bytes:
+        return self.plugin._download_with_progress(
+            url=DEX_URL,
+            label="classes.dex",
+            started_key="download.engine.started",
+            completed_key="download.engine.completed",
+            show_bulletins=show_bulletins,
+        )
 
     def _load(self, dex_data: bytes):
         class_path = "ru.n08i40k.streaks.Plugin"
@@ -624,8 +640,9 @@ class ZipResourcesBridge:
             return self.resources_root if os.path.isdir(self.resources_root) else None
 
         try:
-            zip_data = self._download_bytes(show_bulletins=True)
-            if zip_data is None:
+            try:
+                zip_data = self._download(show_bulletins=True)
+            except DownloadFailedError:
                 if os.path.isdir(self.resources_root):
                     self.plugin.log(
                         "Resources ZIP download failed. Falling back to stale extracted resources (version mismatch possible)..."
@@ -654,10 +671,12 @@ class ZipResourcesBridge:
                 self.plugin.log(
                     "Debug mode enabled. Downloading resources ZIP without SHA256 checks..."
                 )
-                zip_data = self._download_bytes(show_bulletins=True)
-                if zip_data is not None:
+                try:
+                    zip_data = self._download(show_bulletins=True)
                     self._write_zip_file(zip_data)
                     self._extract_zip()
+                except DownloadFailedError:
+                    pass
             finally:
                 self._release_lock(lock_fd)
         else:
@@ -704,17 +723,14 @@ class ZipResourcesBridge:
         finally:
             os.close(lock_fd)
 
-    def _download_bytes(self, show_bulletins: bool) -> Optional[bytes]:
-        try:
-            return self.plugin._download_with_progress(
-                url=RESOURCES_URL,
-                started_key="download.assets.started",
-                completed_key="download.assets.completed",
-                show_bulletins=show_bulletins,
-            )
-        except Exception as e:
-            self.plugin.log_exception("Failed to download resources ZIP", e)
-            return None
+    def _download(self, show_bulletins: bool) -> bytes:
+        return self.plugin._download_with_progress(
+            url=RESOURCES_URL,
+            label="resources.zip",
+            started_key="download.assets.started",
+            completed_key="download.assets.completed",
+            show_bulletins=show_bulletins,
+        )
 
     def _extract_zip(self):
         staging_root = os.path.join(self.cache_dir, "resources-staging")
@@ -1382,6 +1398,57 @@ class TgStreaksPlugin(BasePlugin):
 
         run_on_ui_thread(show)
 
+    def _show_download_failed_dialog(self, filename: str):
+        self.log(f"Download failed for {filename}: plugin load aborted")
+
+        def show():
+            try:
+                fragment = get_last_fragment()
+            except Exception:
+                fragment = None
+
+            message = self._t("dialog.download_failed.message", filename=filename)
+
+            if fragment is None:
+                self.log("Download failed dialog deferred: UI context is unavailable")
+                self._schedule_download_failed_dialog_retry(filename)
+                return
+
+            self_outer = self
+
+            class RetryClickListener(dynamic_proxy(AlertDialog.OnButtonClickListener)):
+                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
+                    self_outer._schedule_continue_plugin_load()
+
+            try:
+                fragment.showDialog(
+                    AlertDialog.Builder(fragment.getContext())
+                    .setTitle(String(self._t("dialog.download_failed.title")))
+                    .setMessage(String(message))
+                    .setPositiveButton(
+                        String(self._t("dialog.download_failed.retry")),
+                        RetryClickListener(),
+                    )
+                    .setNegativeButton(
+                        String(self._t("dialog.download_failed.cancel")),
+                        None,
+                    )
+                    .create()
+                )
+            except Exception as e:
+                self.log_exception("Failed to show download failed dialog", e)
+                self._show_error(message)
+
+        run_on_ui_thread(show)
+
+    def _schedule_download_failed_dialog_retry(self, filename: str):
+        timer = threading.Timer(
+            1.0,
+            lambda: self._show_download_failed_dialog(filename),
+        )
+        timer.daemon = True
+        timer.start()
+
     def _show_update_restart_dialog(self, previous_version: str):
         def show():
             try:
@@ -1593,64 +1660,73 @@ class TgStreaksPlugin(BasePlugin):
     def _download_with_progress(
         self,
         url: str,
+        label: str,
         started_key: str,
         completed_key: str,
         show_bulletins: bool,
-    ) -> Optional[bytes]:
+    ) -> bytes:
         if show_bulletins:
             self._show_info(self._t(started_key))
 
-        response = requests.get(url, timeout=10, stream=True)
-        if response.status_code != 200:
-            self.log(f"Failed to download {url}: {response.status_code}")
-            return None
+        try:
+            response = requests.get(url, timeout=10, stream=True)
+            if response.status_code != 200:
+                raise DownloadFailedError(f"HTTP {response.status_code} for {url}")
 
-        total_bytes = int(response.headers.get("content-length", "0") or "0")
-        downloaded = 0
-        chunks: list[bytes] = []
-        started_at = time.monotonic()
-        last_progress_at = 0.0
+            total_bytes = int(response.headers.get("content-length", "0") or "0")
+            downloaded = 0
+            chunks: list[bytes] = []
+            started_at = time.monotonic()
+            last_progress_at = 0.0
 
-        for chunk in response.iter_content(chunk_size=64 * 1024):
-            if not chunk:
-                continue
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
 
-            chunks.append(chunk)
-            downloaded += len(chunk)
+                chunks.append(chunk)
+                downloaded += len(chunk)
 
-            if not show_bulletins:
-                continue
+                if not show_bulletins:
+                    continue
 
-            now = time.monotonic()
-            if total_bytes > 0 and downloaded >= total_bytes:
-                continue
+                now = time.monotonic()
+                if total_bytes > 0 and downloaded >= total_bytes:
+                    continue
 
-            if (now - last_progress_at) < 0.8:
-                continue
+                if (now - last_progress_at) < 0.8:
+                    continue
 
-            elapsed = max(now - started_at, 0.001)
-            speed = downloaded / elapsed
-            title = self._t(started_key)
+                elapsed = max(now - started_at, 0.001)
+                speed = downloaded / elapsed
+                title = self._t(started_key)
 
-            if total_bytes > 0 and speed > 1.0:
-                remaining_seconds = (total_bytes - downloaded) / speed
-                subtitle = self._t(
-                    "download.progress.known_total",
-                    percent=str(int(downloaded * 100 / total_bytes)),
-                    downloaded=self._format_download_size(downloaded),
-                    total=self._format_download_size(total_bytes),
-                    eta=self._format_eta(remaining_seconds),
-                )
-            else:
-                subtitle = self._t(
-                    "download.progress.unknown_total",
-                    downloaded=self._format_download_size(downloaded),
-                )
+                if total_bytes > 0 and speed > 1.0:
+                    remaining_seconds = (total_bytes - downloaded) / speed
+                    subtitle = self._t(
+                        "download.progress.known_total",
+                        percent=str(int(downloaded * 100 / total_bytes)),
+                        downloaded=self._format_download_size(downloaded),
+                        total=self._format_download_size(total_bytes),
+                        eta=self._format_eta(remaining_seconds),
+                    )
+                else:
+                    subtitle = self._t(
+                        "download.progress.unknown_total",
+                        downloaded=self._format_download_size(downloaded),
+                    )
 
-            self._show_download_progress(title, subtitle)
-            last_progress_at = now
+                self._show_download_progress(title, subtitle)
+                last_progress_at = now
 
-        payload = b"".join(chunks)
+            payload = b"".join(chunks)
+        except DownloadFailedError as e:
+            self.log(f"Failed to download {url}: {e}")
+            self._show_download_failed_dialog(label)
+            raise
+        except Exception as e:
+            self.log_exception(f"Failed to download {url}", e)
+            self._show_download_failed_dialog(label)
+            raise DownloadFailedError(str(e)) from e
 
         if show_bulletins:
             self._show_success(self._t(completed_key))
@@ -1874,26 +1950,32 @@ class TgStreaksPlugin(BasePlugin):
             self.log_exception("Failed to register streak pet levels", e)
 
     def _finalize_jvm_plugin_inject(self):
-        if self.jvm_plugin.klass is None:
-            return
-
         try:
-            self.jvm_plugin.klass.getDeclaredMethod(String("finalizeInject")).invoke(
+            self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
+                String("finalizeInject")
+            ).invoke(
                 None  # ty:ignore[invalid-argument-type]
             )
             self.log("JVM plugin finalizeInject completed")
         except Exception as e:
             self._handle_load_failure("finalizeInject", e)
 
-    def _load_jvm_plugin(self):
+    def _prepare_jvm_plugin(self) -> bool:
+        """Verifies/downloads the DEX and resources. Any download failure is
+        reported (with a retry dialog) by JvmPluginBridge.load() /
+        ZipResourcesBridge.load() themselves, at the point it happens."""
         self.jvm_plugin = JvmPluginBridge(self)
         self.jvm_plugin.load()
 
         if self.jvm_plugin.klass is None:
-            return
+            return False
 
+        self.resources_root = self.resources_bridge.load()
+        return self.resources_root is not None
+
+    def _inject_jvm_plugin(self):
         try:
-            build_date = self.jvm_plugin.klass.getDeclaredMethod(
+            build_date = self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("getBuildDate")
             ).invoke(None)  # ty:ignore[invalid-argument-type]
             self.log(f"Loading JVM plugin {build_date}")
@@ -1907,7 +1989,7 @@ class TgStreaksPlugin(BasePlugin):
                 def onReceiveValue(self, var1):
                     ref.log(str(var1))
 
-            self.jvm_plugin.klass.getDeclaredMethod(
+            self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("inject"),
                 String.getClass(),
                 ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
@@ -1916,7 +1998,7 @@ class TgStreaksPlugin(BasePlugin):
                 None,  # ty:ignore[invalid-argument-type]
                 String(__version__),
                 Logger(),  # ty:ignore[invalid-argument-type]
-                String(self.resources_bridge.resources_root),
+                String(self.resources_root),
             )
 
             self.log("JVM plugin injected successfully")
@@ -2243,7 +2325,12 @@ class TgStreaksPlugin(BasePlugin):
             self._full_load_started = True
 
         try:
-            self._load_jvm_plugin()
+            if not self._prepare_jvm_plugin():
+                with self._full_load_lock:
+                    self._full_load_started = False
+                return
+
+            self._inject_jvm_plugin()
 
             self._register_streak_levels()
             self._register_streak_pet_levels()
@@ -2256,12 +2343,6 @@ class TgStreaksPlugin(BasePlugin):
 
             self.update_checker = PluginUpdateChecker(self)
             self.update_checker.start()
-
-            threading.Thread(
-                target=self.resources_bridge.load,
-                name="tg-streaks-resources-init",
-                daemon=True,
-            ).start()
         except BaseException as e:
             self._handle_load_failure("plugin load", e)
             return
