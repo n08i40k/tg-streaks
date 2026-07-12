@@ -124,7 +124,6 @@ class StreakPetsController(
 
         val sourcePet = dao.findByRelation(ownerUserId, peerUserId)!!
         val name = sourcePet.name
-        dao.deleteByRelation(ownerUserId, peerUserId)
 
         val startDay = LocalDate.now()
         val endDay = streaksController.get(accountId, peerUserId)!!.createdAt
@@ -220,9 +219,12 @@ class StreakPetsController(
             points
         )
 
-        dao.insert(targetPet)
+        db.withTransaction {
+            dao.deleteByRelation(ownerUserId, peerUserId)
+            dao.insert(targetPet)
 
-        tasks.forEach { taskDao.insertOrUpdateAll(it) }
+            tasks.forEach { taskDao.insertOrUpdateAll(it) }
+        }
 
         return sourcePet to targetPet
     }
@@ -236,8 +238,7 @@ class StreakPetsController(
         onProgressUpdate: suspend (progress: RebuildProgress) -> Unit,
     ) {
         try {
-            val (sourcePet, targetPet) =
-                db.withTransaction { rebuildInTransaction(accountId, peerUser, onProgressUpdate) }
+            val (sourcePet, targetPet) = rebuildInTransaction(accountId, peerUser, onProgressUpdate)
 
             EventBus.emit(
                 PluginEvent.StreakPetRebuiltEvent(
@@ -412,8 +413,10 @@ class StreakPetsController(
 
         val points = tasks.sumOf { if (it.isCompleted) it.type.points else 0 }
 
-        dao.update(currentPet.copy(lastCheckedAt = now, points = currentPet.points + points))
-        tasks.forEach { taskDao.insertOrUpdateAll(it) }
+        db.withTransaction {
+            dao.update(currentPet.copy(lastCheckedAt = now, points = currentPet.points + points))
+            tasks.forEach { taskDao.insertOrUpdateAll(it) }
+        }
     }
 
     suspend fun checkAllForUpdates(accountId: Int) {
@@ -466,7 +469,7 @@ class StreakPetsController(
                     continue
                 }
 
-                db.withTransaction { checkForUpdates(accountId, streakPet, notCompletedTasks) }
+                checkForUpdates(accountId, streakPet, notCompletedTasks)
             } catch (_: InvalidPeerException) {
                 removeInvalidPeerPet(accountId, streakPet.peerUserId)
             }
