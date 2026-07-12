@@ -3,6 +3,7 @@ package ru.n08i40k.streaks
 import android.graphics.Color
 import android.webkit.ValueCallback
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import de.comahe.i18n4k.config.I18n4kConfigDefault
 import de.comahe.i18n4k.createLocale
 import de.comahe.i18n4k.i18n4k
@@ -218,7 +219,16 @@ class Plugin {
         })
 
     // database
-    private val db: PluginDatabase
+    private val db: PluginDatabase = Room.databaseBuilder(
+        ApplicationLoader.applicationContext,
+        PluginDatabase::class.java,
+        "tg-streaks"
+    )
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
+        .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+        .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+        .build()
+
     internal val databaseBackupManager: DatabaseBackupManager
     private val taskQueue: TaskQueue
 
@@ -246,31 +256,25 @@ class Plugin {
     val streakPetLevelRegistry: StreakPetLevelRegistry = StreakPetLevelRegistry()
 
     constructor(resourcesProvider: ResourcesProvider) {
-        this.resourcesProvider = resourcesProvider
-        this.alertNotificationHelper = StreakAlertNotificationHelper()
+        try {
+            this.resourcesProvider = resourcesProvider
+            this.alertNotificationHelper = StreakAlertNotificationHelper()
 
-        // background work
-        this.taskQueue = TaskQueue()
+            // background work
+            this.taskQueue = TaskQueue()
 
-        // database
-        this.db = Room.databaseBuilder(
-            ApplicationLoader.applicationContext,
-            PluginDatabase::class.java,
-            "tg-streaks"
-        )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
-            .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-            .build()
+            // database
+            this.databaseBackupManager = DatabaseBackupManager(this.db, Logger::info)
 
-        this.databaseBackupManager = DatabaseBackupManager(this.db, Logger::info)
+            // controllers
+            this.streaksController = StreaksController(this.db, this.resourcesProvider)
+            this.streakPetsController = StreakPetsController(this.db, this.streaksController)
 
-        // controllers
-        this.streaksController = StreaksController(
-            this.db,
-            this.resourcesProvider,
-        )
-        this.streakPetsController = StreakPetsController(this.db, this.streaksController)
-        this.petUiManager = StreakPetUiManager()
+            this.petUiManager = StreakPetUiManager()
+        } catch (e: Throwable) {
+            this.db.close()
+            throw e
+        }
     }
 
     @OptIn(FlowPreview::class)
