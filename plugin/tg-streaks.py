@@ -32,6 +32,8 @@ from typing_extensions import Any
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Selector, Switch, Text
 
+# fmt: off
+
 __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Аналог серий TikTok для extera/Ayu-Gram"
@@ -40,23 +42,37 @@ __version__ = "2.14.2"
 __icon__ = "tiktok_streak/4"
 __min_version__ = "12.1.1"
 
+# Core constants
+
 DEBUG_MODE = False
-LOGCAT_TAG = "tg-streaks"
+LOGCAT_TAG = __id__
+
+# Helper constants
 
 REPO_OWNER = "n08i40k"
 REPO_NAME = __id__
 
+# External resource urls
+
+RELEASE_ARTIFACTS_BASE_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}"
+
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
-DEX_SHA256 = "2b0a14c17dd97d3b34a3e05358f0db3eed4afaadbf585c172b291d554f593385"
 RESOURCES_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/resources.zip"
+
+# Resource hashes
+
+DEX_SHA256 = "2b0a14c17dd97d3b34a3e05358f0db3eed4afaadbf585c172b291d554f593385"
 RESOURCES_SHA256 = "3aa0d0ecfeaa9bf7e6bca2ff6986ee1d98964d173acb23768a8aec77121ac3af"
 
-PLUGIN_UPDATE_API_URL = (
-    f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
-)
+# Plugin official resource links
+
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
-DOCS_URL = f"https://{REPO_OWNER}.github.io/{REPO_NAME}/"
 PLUGIN_CHAT_TG_URL = "tg://resolve?domain=n08i40k_extera_chat"
+PLUGIN_UPDATE_API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
+PLUGIN_DOCS_URL = f"https://{REPO_OWNER}.github.io/{REPO_NAME}/"
+
+# Other constants
+
 UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
 SETTING_LAST_LOADED_VERSION = "last_loaded_version"
@@ -351,6 +367,8 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
     **I18N_UPDATE,
     **I18N_DOWNLOAD,
 }
+
+# fmt: on
 
 
 class StreakLevel:
@@ -1317,7 +1335,7 @@ class TgStreaksPlugin(BasePlugin):
             Text(
                 text=self._t("settings.help.docs.title"),
                 icon="msg_info",
-                on_click=lambda _: self._open_telegram_url(DOCS_URL),
+                on_click=lambda _: self._open_telegram_url(PLUGIN_DOCS_URL),
             ),
             Divider(text=self._t("settings.help.docs.description")),
         ]
