@@ -1598,22 +1598,6 @@ class TgStreaksPlugin(BasePlugin):
     def _restart_client(self):
         def restart():
             try:
-                context = self._resolve_popup_context()
-                if context is None:
-                    raise RuntimeError("no context")
-
-                package_name = context.getPackageName()
-                intent = context.getPackageManager().getLaunchIntentForPackage(
-                    package_name
-                )
-                if intent is None:
-                    raise RuntimeError("launch intent not found")
-
-                intent.addFlags(
-                    int(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    | int(Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                )
-                context.startActivity(intent)
                 Process.killProcess(Process.myPid())
             except Exception as e:
                 self.log_exception("Failed to restart client", e)
