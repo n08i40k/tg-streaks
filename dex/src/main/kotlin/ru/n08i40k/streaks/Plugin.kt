@@ -341,6 +341,15 @@ class Plugin {
                 }
         }
 
+        // streak dependents
+        backgroundScope.launch {
+            EventBus.stream
+                .filterIsInstance<PluginEvent.StreakDeletedEvent>()
+                .collectWith {
+                    streakPetsController.delete(accountId, record.peerUserId, timestamp, true)
+                }
+        }
+
         // debounced dialog cells refresh
         backgroundScope.launch {
             EventBus.stream
