@@ -324,12 +324,17 @@ class Plugin {
                             UserPatcher.restoreUser(accountId, peerUserId)
 
                             alertNotificationHelper.cancelNearDeath(peerUserId)
-                            alertNotificationHelper.showDeath(
-                                peerUserId,
-                                MessagesController.getInstance(accountId).getUser(peerUserId)?.label
-                                    ?: peerUserId.toString(),
-                                record.length
-                            )
+
+                            // as we don't need to notify about manual streak deletion
+                            if (this is PluginEvent.StreakLostEvent) {
+                                alertNotificationHelper.showDeath(
+                                    peerUserId,
+                                    MessagesController.getInstance(accountId)
+                                        .getUser(peerUserId)?.label
+                                        ?: peerUserId.toString(),
+                                    record.length
+                                )
+                            }
                         }
                     }
                 }
