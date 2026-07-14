@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.registry
 
+import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakLevel
 
 class StreakLevelRegistry {
@@ -7,6 +8,9 @@ class StreakLevelRegistry {
 
     fun levels(): List<StreakLevel> =
         _levels.toList()
+
+    fun getFirstVisible(): StreakLevel =
+        _levels.first { it.length >= Streak.MIN_VISIBLE_LENGTH }
 
     fun findByLengthApproximate(length: Int): StreakLevel =
         _levels.findLast { it.length <= length } ?: _levels.last()

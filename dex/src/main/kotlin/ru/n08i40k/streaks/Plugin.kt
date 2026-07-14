@@ -373,16 +373,18 @@ class Plugin {
                 .filterIsInstance<PluginEvent.PeerEvent>()
                 .collectWith {
                     when (this) {
-                        is PluginEvent.StreakCreatedEvent -> {
-                            if (timestamp.toLocalDate() != LocalDate.now())
-                                return@collectWith
-
-                            serviceMessagesController.sendCreation(accountId, peerUserId)
-                        }
-
                         is PluginEvent.StreakGrowUpEvent -> {
                             if (LocalDate.now().diff(timestamp.toLocalDate()) > 2)
                                 return@collectWith
+
+                            val targetLevelLength = targetRecord.level.length
+
+                            if (targetLevelLength == targetRecord.length
+                                && targetLevelLength == streakLevelRegistry.getFirstVisible().length
+                            ) {
+                                serviceMessagesController.sendCreation(accountId, peerUserId)
+                                return@collectWith
+                            }
 
                             if (targetRecord.level <= sourceRecord.level)
                                 return@collectWith

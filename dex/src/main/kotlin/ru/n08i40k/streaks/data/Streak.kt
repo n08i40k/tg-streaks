@@ -26,7 +26,7 @@ data class Streak(
     @ColumnInfo(name = "warning_notified") val warningNotified: Boolean = false,
 ) {
     companion object {
-        private const val MIN_VISIBLE_LENGTH = 3
+        const val MIN_VISIBLE_LENGTH = 3
     }
 
     @Ignore
