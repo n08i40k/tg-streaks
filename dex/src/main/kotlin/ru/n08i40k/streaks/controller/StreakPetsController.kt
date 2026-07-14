@@ -55,6 +55,7 @@ class StreakPetsController(
             val pet = dao.findByRelation(ownerUserId, peerUserId)
 
             dao.deleteByRelation(ownerUserId, peerUserId)
+            taskDao.deleteByRelation(ownerUserId, peerUserId)
 
             pet?.let {
                 EventBus.emit(
@@ -495,6 +496,7 @@ class StreakPetsController(
                 // !out because if it is true, user already accepted and created streak-pet locally
                 if (peerType == PeerType.VALID && !out && message == ServiceMessage.PET_INVITE_ACCEPTED_TEXT)
                     create(accountId, peerUserId, at, true)
+
                 return
             }
 
@@ -733,6 +735,7 @@ class StreakPetsController(
             ?: return false
 
         dao.deleteByRelation(ownerUserId, peerUserId)
+        taskDao.deleteByRelation(ownerUserId, peerUserId)
 
         EventBus.emit(
             PluginEvent.StreakPetDeletedEvent(
