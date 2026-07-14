@@ -3,7 +3,7 @@ package ru.n08i40k.streaks.extension
 import org.telegram.tgnet.TLRPC
 
 private val FLOOD_WAIT_REGEX = Regex("""FLOOD_WAIT_(\d+)""")
-private val MSG_WAIT_ERRORS = listOf("MSG_WAIT_TIMEOUT", "MSG_WAIT_FAILED")
+private val MSG_WAIT_ERRORS = listOf("MSG_WAIT_TIMEOUT", "MSG_WAIT_FAILED", "MSGID_DECREASE_RETRY")
 
 fun TLRPC.TL_error.isRateLimited(): Boolean {
     val text = this.text.orEmpty()
