@@ -18,6 +18,7 @@ data class StreakPet(
     @ColumnInfo(name = "last_checked_at") val lastCheckedAt: LocalDate,
     @ColumnInfo(name = "name") val name: String,
     @ColumnInfo(name = "points") val points: Int,
+    @ColumnInfo(name = "fab_enabled") val fabEnabled: Boolean = true,
 
     ) {
     @delegate:Ignore

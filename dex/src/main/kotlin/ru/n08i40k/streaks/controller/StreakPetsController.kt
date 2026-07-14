@@ -76,6 +76,25 @@ class StreakPetsController(
     suspend fun get(accountId: Int, peerUserId: Long): StreakPet? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
+    fun isFabEnabled(accountId: Int, peerUserId: Long): Boolean? =
+        dao.isFabEnabled(UserConfig.getInstance(accountId).clientUserId, peerUserId)
+
+    suspend fun setFabEnabled(accountId: Int, peerUserId: Long, enabled: Boolean) {
+        val streakPet = get(accountId, peerUserId)
+            ?: throw NullPointerException("Unable to toggle streak pet fab state because it doesn't exists for $accountId:$peerUserId")
+
+        dao.updateFabEnabled(UserConfig.getInstance(accountId).clientUserId, peerUserId, enabled)
+
+        EventBus.emit(
+            PluginEvent.StreakPetFabStateChanged(
+                accountId,
+                Clock.System.now(),
+                streakPet.copy(fabEnabled = enabled),
+                enabled
+            )
+        )
+    }
+
     data class ViewStateSnapshot(
         val pet: StreakPet,
         val streak: ru.n08i40k.streaks.data.Streak?,

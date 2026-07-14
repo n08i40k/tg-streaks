@@ -137,4 +137,11 @@ sealed interface PluginEvent {
         override val sourceRecord: StreakPet?,
         override val targetRecord: StreakPet,
     ) : StreakPetEvent, RebuiltEvent<StreakPet>
+
+    data class StreakPetFabStateChanged(
+        override val accountId: Int,
+        override val timestamp: Instant,
+        override val record: StreakPet,
+        val enabled: Boolean
+    ) : StreakPetEvent
 }

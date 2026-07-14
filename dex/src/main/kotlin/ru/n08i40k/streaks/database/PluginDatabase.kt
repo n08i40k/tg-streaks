@@ -31,7 +31,7 @@ import ru.n08i40k.streaks.database.dao.StreakReviveDao
         StreakPet::class,
         StreakPetTask::class,
     ],
-    version = 9
+    version = 10
 )
 @TypeConverters(
     LocalDateConverter::class,

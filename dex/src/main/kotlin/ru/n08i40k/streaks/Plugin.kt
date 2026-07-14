@@ -40,6 +40,7 @@ import ru.n08i40k.streaks.database.MIGRATION_5_6
 import ru.n08i40k.streaks.database.MIGRATION_6_7
 import ru.n08i40k.streaks.database.MIGRATION_7_8
 import ru.n08i40k.streaks.database.MIGRATION_8_9
+import ru.n08i40k.streaks.database.MIGRATION_9_10
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
@@ -225,7 +226,7 @@ class Plugin {
         "tg-streaks"
     )
         .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
-        .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+        .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
         .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
         .build()
 

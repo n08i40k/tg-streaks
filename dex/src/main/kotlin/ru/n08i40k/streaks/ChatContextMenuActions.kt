@@ -102,21 +102,31 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             validatePrivatePeer(accountId, peerUserId)
                 ?: return@add
 
-            val petFabEnabled = petUiManager.toggleFabEnabled()
+            AccountTaskExecutor.enqueue(
+                accountId,
+                "toggle streak-pet fab for $accountId:$peerUserId"
+            ) {
+                val streakPet = streakPetsController.get(accountId, peerUserId)
 
-            if (petFabEnabled) {
+                if (streakPet == null) {
+                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
+                    return@enqueue
+                }
+
+                val petFabEnabled = !streakPet.fabEnabled
+
+                streakPetsController.setFabEnabled(accountId, peerUserId, petFabEnabled)
+
                 BulletinHelper.show(
-                    Strings.status_success_pet_button_enabled(),
+                    if (petFabEnabled)
+                        Strings.status_success_pet_button_enabled()
+                    else
+                        Strings.status_success_pet_button_disabled(),
                     "msg_reactions"
                 )
-            } else {
-                BulletinHelper.show(
-                    Strings.status_success_pet_button_disabled(),
-                    "msg_reactions"
-                )
+
+                Logger.info("[Context Menu] Toggle pet fab clicked on $peerUserId; enabled=$petFabEnabled")
             }
-
-            Logger.info("[Context Menu] Toggle pet fab clicked on $peerUserId; enabled=$petFabEnabled")
         }
 
         add(ChatContextMenuButton.CREATE_PET) { peerUserId ->

@@ -18,7 +18,6 @@ class StreakPetUiManager {
 
     private var openedDialog: StreakPetDialog? = null
     private var fabDialog: StreakPetFabDialog? = null
-    private var fabEnabled: Boolean = true
     private var fabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
     private var pendingFabRefresh: Runnable? = null
 
@@ -59,19 +58,7 @@ class StreakPetUiManager {
         }
     }
 
-    fun toggleFabEnabled(): Boolean {
-        fabEnabled = !fabEnabled
-
-        if (fabEnabled) {
-            refreshFabForOpenChat()
-        } else {
-            AndroidUtilities.runOnUIThread { dismissFab() }
-        }
-
-        return fabEnabled
-    }
-
-    fun openDialog(accountId: Int, peerUserId: Long) = with(Plugin.getInstance()) {
+    fun openDialog(accountId: Int, peerUserId: Long): Unit = with(Plugin.getInstance()) {
         backgroundScope.launch {
             val uiState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
                 ?: run {
@@ -128,12 +115,7 @@ class StreakPetUiManager {
         }
     }
 
-    fun refreshFabForOpenChat() = with(Plugin.getInstance()) {
-        if (!fabEnabled) {
-            AndroidUtilities.runOnUIThread { dismissFab() }
-            return@with
-        }
-
+    fun refreshFabForOpenChat(): Unit = with(Plugin.getInstance()) {
         val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
             ?: run {
                 AndroidUtilities.runOnUIThread { dismissFab() }
@@ -152,27 +134,22 @@ class StreakPetUiManager {
             val uiState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
             AndroidUtilities.runOnUIThread {
-                if (!fabEnabled) {
-                    dismissFab()
-                    return@runOnUIThread
-                }
-
                 val currentChat = LaunchActivity.getSafeLastFragment() as? ChatActivity
-                if (currentChat == null || currentChat.dialogId != peerUserId) {
-                    dismissFab()
-                    return@runOnUIThread
-                }
 
-                if (uiState == null) {
-                    dismissFab()
-                    return@runOnUIThread
-                }
-
-                if (
-                    fabDialog?.isShowing == true
-                    && fabDialog?.matches(accountId, peerUserId) == true
+                if (currentChat == null
+                    || currentChat.dialogId != peerUserId
+                    || uiState == null
+                    || !uiState.pet.fabEnabled
                 ) {
-                    fabDialog?.updateState(uiState)
+                    dismissFab()
+                    return@runOnUIThread
+                }
+
+                fabDialog?.apply {
+                    if (!isShowing || !matches(accountId, peerUserId))
+                        return@apply
+
+                    updateState(uiState)
                     return@runOnUIThread
                 }
 

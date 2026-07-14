@@ -1306,7 +1306,7 @@ class StreaksController(
         return streak.length
     }
 
-    suspend fun debugDeleteStreak(accountId: Int, peerUserId: Long): Boolean {
+    suspend fun delete(accountId: Int, peerUserId: Long): Boolean {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
         val streak = dao.findByRelation(ownerUserId, peerUserId)
