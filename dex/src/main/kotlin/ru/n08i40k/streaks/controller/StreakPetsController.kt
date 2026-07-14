@@ -35,6 +35,7 @@ import ru.n08i40k.streaks.util.fetchPeerUsers
 import kotlinx.datetime.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Clock
+import kotlin.time.Instant
 
 class StreakPetsController(
     private val db: PluginDatabase,
@@ -62,7 +63,8 @@ class StreakPetsController(
                     PluginEvent.StreakPetDeletedEvent(
                         accountId,
                         Clock.System.now(),
-                        it
+                        it,
+                        PluginEvent.StreakPetDeletedEvent.By.PLUGIN
                     )
                 )
             }
@@ -306,6 +308,8 @@ class StreakPetsController(
 
         val tasks = mutableListOf<StreakPetTask>()
 
+        var waitForRenew = false
+
         while (true) {
             if (currentDay > now)
                 break
@@ -348,19 +352,33 @@ class StreakPetsController(
                 }
                 .sortedBy { it.id }
                 .filterNot { message ->
-                    if (ServiceMessage.isServiceText(message.message)) {
-                        ServiceMessage.PET_SET_NAME_REGEX.matchEntire(message.message.orEmpty())
-                            ?.groupValues
-                            ?.getOrNull(1)
-                            ?.trim()
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let {
-                                currentPet = currentPet.copy(name = it)
-                                dao.update(currentPet)
-                            }
+                    if (!ServiceMessage.isServiceText(message.message))
+                        return@filterNot false
 
-                        true
-                    } else false
+                    // if deleted by any of sides - set flag to remove pet at the end of check
+                    if (message.message == ServiceMessage.PET_DELETED_TEXT) {
+                        waitForRenew = true
+                        return@filterNot true
+                    }
+
+                    // if renewed after deleting - reset flag
+                    if (message.message == ServiceMessage.PET_INVITE_ACCEPTED_TEXT) {
+                        waitForRenew = false
+                        return@filterNot true
+                    }
+
+                    ServiceMessage.PET_SET_NAME_REGEX.matchEntire(message.message.orEmpty())
+                        ?.groupValues
+                        ?.getOrNull(1)
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let {
+                            currentPet = currentPet.copy(name = it)
+                            dao.update(currentPet)
+                            return@filterNot true
+                        }
+
+                    true
                 }
                 .toMutableList()
 
@@ -415,8 +433,15 @@ class StreakPetsController(
         val points = tasks.sumOf { if (it.isCompleted) it.type.points else 0 }
 
         db.withTransaction {
-            dao.update(currentPet.copy(lastCheckedAt = now, points = currentPet.points + points))
-            tasks.forEach { taskDao.insertOrUpdateAll(it) }
+            with(currentPet) {
+                if (waitForRenew) {
+                    dao.deleteByRelation(ownerUserId, peerUserId)
+                    taskDao.deleteByRelation(ownerUserId, peerUserId)
+                } else {
+                    dao.update(copy(lastCheckedAt = now, points = this.points + points))
+                    tasks.forEach { taskDao.insertOrUpdateAll(it) }
+                }
+            }
         }
     }
 
@@ -463,13 +488,6 @@ class StreakPetsController(
                     }
                 }
 
-                if (notCompletedTasks.isEmpty()) {
-                    if (streakPet.lastCheckedAt != now)
-                        dao.update(streakPet.copy(lastCheckedAt = now))
-
-                    continue
-                }
-
                 checkForUpdates(accountId, streakPet, notCompletedTasks)
             } catch (_: InvalidPeerException) {
                 removeInvalidPeerPet(accountId, streakPet.peerUserId)
@@ -499,6 +517,25 @@ class StreakPetsController(
 
                 return
             }
+
+        if (message == ServiceMessage.PET_DELETED_TEXT) {
+            dao.deleteByRelation(ownerUserId, peerUserId)
+            taskDao.deleteByRelation(ownerUserId, peerUserId)
+
+            EventBus.emit(
+                PluginEvent.StreakPetDeletedEvent(
+                    accountId,
+                    Clock.System.now(),
+                    streakPet,
+                    if (out)
+                        PluginEvent.StreakPetDeletedEvent.By.SELF_MESSAGE
+                    else
+                        PluginEvent.StreakPetDeletedEvent.By.PEER_MESSAGE
+                )
+            )
+
+            return
+        }
 
         ServiceMessage.PET_SET_NAME_REGEX.matchEntire(message.orEmpty())
             ?.groupValues
@@ -728,7 +765,12 @@ class StreakPetsController(
         return true
     }
 
-    suspend fun delete(accountId: Int, peerUserId: Long): Boolean {
+    suspend fun delete(
+        accountId: Int,
+        peerUserId: Long,
+        at: Instant = Clock.System.now(),
+        byPlugin: Boolean = false,
+    ): Boolean {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
         val pet = dao.findByRelation(ownerUserId, peerUserId)
@@ -740,8 +782,12 @@ class StreakPetsController(
         EventBus.emit(
             PluginEvent.StreakPetDeletedEvent(
                 accountId,
-                Clock.System.now(),
-                pet
+                at,
+                pet,
+                if (byPlugin)
+                    PluginEvent.StreakPetDeletedEvent.By.PLUGIN
+                else
+                    PluginEvent.StreakPetDeletedEvent.By.SELF
             )
         )
 

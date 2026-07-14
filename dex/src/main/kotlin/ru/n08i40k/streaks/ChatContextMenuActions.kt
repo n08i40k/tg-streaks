@@ -408,7 +408,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 accountId,
                 "delete debug streak for $accountId:$peerUserId"
             ) {
-                if (!streaksController.debugDeleteStreak(accountId, peerUserId)) {
+                if (!streaksController.delete(accountId, peerUserId)) {
                     BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
                     return@enqueue
                 }

@@ -120,8 +120,16 @@ sealed interface PluginEvent {
     data class StreakPetDeletedEvent(
         override val accountId: Int,
         override val timestamp: Instant,
-        override val record: StreakPet
-    ) : StreakPetEvent
+        override val record: StreakPet,
+        val by: By,
+    ) : StreakPetEvent {
+        enum class By {
+            PLUGIN,
+            SELF,
+            SELF_MESSAGE,
+            PEER_MESSAGE
+        }
+    }
 
     data class StreakPetRebuiltEvent(
         override val accountId: Int,

@@ -44,7 +44,6 @@ class ServiceMessagesHookBundle : HookBundle() {
                 Boolean::class.java,
                 Int::class.java
             )
-
         ) { param ->
             val message = param.args[1] as? TLRPC.Message
                 ?: return@before
@@ -197,6 +196,34 @@ class ServiceMessagesHookBundle : HookBundle() {
                     .apply { this.message = messageText }
             }
 
+            val tryPetDeleted = petDeleted@{
+                if (message.message != ServiceMessage.PET_DELETED_TEXT)
+                    return@petDeleted null
+
+                val peerId = message.peer_id?.user_id
+                val fromId = message.from_id?.user_id
+
+                val byPeer = peerId != null
+                        && fromId != null
+                        && peerId > 0
+                        && fromId == peerId
+
+                val messageText = if (byPeer) {
+                    val peerName = peerId
+                        .let { MessagesController.getInstance(currentAccount).getUser(it) }
+                        ?.let { UserObject.getUserName(it) }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Unknown"
+
+                    Strings.service_pet_delete_peer(peerName)
+                } else {
+                    Strings.service_pet_delete_self()
+                }
+
+                TLRPC.TL_messageActionCustomAction()
+                    .apply { this.message = messageText }
+            }
+
             val action = tryStreakCreate()
                 ?: tryStreakUpgrade()
                 ?: tryStreakDeath()
@@ -204,6 +231,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                 ?: tryPetInvite()
                 ?: tryPetInviteAccepted()
                 ?: tryPetSetName()
+                ?: tryPetDeleted()
                 ?: return@before
 
             param.args[1] = TLRPC.TL_messageService()
@@ -296,7 +324,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                             return@enqueue
                         }
 
-                        BulletinHelper.show( Strings.status_success_pet_created(), "msg_reactions")
+                        BulletinHelper.show(Strings.status_success_pet_created(), "msg_reactions")
                     }
                 }
 

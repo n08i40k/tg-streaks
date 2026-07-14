@@ -279,6 +279,7 @@ class Plugin {
 
     @OptIn(FlowPreview::class)
     private fun subscribeToEvents() {
+        // streak ui patches/transitions
         backgroundScope.launch {
             EventBus.stream
                 .filterIsInstance<PluginEvent.StreakEvent>()
@@ -340,6 +341,7 @@ class Plugin {
                 }
         }
 
+        // debounced dialog cells refresh
         backgroundScope.launch {
             EventBus.stream
                 .filterIsInstance<PluginEvent.StreakEvent>()
@@ -347,6 +349,7 @@ class Plugin {
                 .collectOnUIThread { streakEmojiRegistry.refreshDialogCells() }
         }
 
+        // pre-death notification
         backgroundScope.launch {
             EventBus.stream
                 .filterIsInstance<PluginEvent.StreakDeathWarningEvent>()
@@ -364,6 +367,7 @@ class Plugin {
                 }
         }
 
+        // streak pet fab
         backgroundScope.launch {
             EventBus.stream
                 .filterIsInstance<PluginEvent.StreakPetEvent>()
@@ -373,6 +377,7 @@ class Plugin {
                 }
         }
 
+        // service messages
         backgroundScope.launch {
             EventBus.stream
                 .filterIsInstance<PluginEvent.PeerEvent>()
@@ -387,25 +392,24 @@ class Plugin {
                             if (targetLevelLength == targetRecord.length
                                 && targetLevelLength == streakLevelRegistry.getFirstVisible().length
                             ) {
-                                serviceMessagesController.sendCreation(accountId, peerUserId)
+                                serviceMessagesController
+                                    .sendCreation(accountId, peerUserId)
                                 return@collectWith
                             }
 
                             if (targetRecord.level <= sourceRecord.level)
                                 return@collectWith
 
-                            serviceMessagesController.sendUpgrade(
-                                accountId,
-                                peerUserId,
-                                targetRecord.level.length
-                            )
+                            serviceMessagesController
+                                .sendUpgrade(accountId, peerUserId, targetRecord.level.length)
                         }
 
                         is PluginEvent.StreakLostEvent -> {
                             if (timestamp.toLocalDate() != LocalDate.now())
                                 return@collectWith
 
-                            serviceMessagesController.sendDeath(accountId, peerUserId)
+                            serviceMessagesController
+                                .sendDeath(accountId, peerUserId)
                         }
 
                         is PluginEvent.StreakRestoredEvent -> {
@@ -415,7 +419,8 @@ class Plugin {
                             if (timestamp.toLocalDate() != LocalDate.now())
                                 return@collectWith
 
-                            serviceMessagesController.sendRestore(accountId, peerUserId)
+                            serviceMessagesController
+                                .sendRestore(accountId, peerUserId)
                         }
 
                         is PluginEvent.StreakPetRenamedEvent -> {
@@ -430,6 +435,17 @@ class Plugin {
                                 peerUserId,
                                 record.name
                             )
+                        }
+
+                        is PluginEvent.StreakPetDeletedEvent -> {
+                            if (by != PluginEvent.StreakPetDeletedEvent.By.SELF)
+                                return@collectWith
+
+                            if (timestamp.toLocalDate() != LocalDate.now())
+                                return@collectWith
+
+                            serviceMessagesController
+                                .sendPetDeleted(accountId, peerUserId)
                         }
 
                         else -> {}

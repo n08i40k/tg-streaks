@@ -62,6 +62,10 @@ class ServiceMessagesController {
         MessageSender.send(accountId, peerUserId, ServiceMessage.PET_SET_NAME_TEXT(name))
     }
 
+    fun sendPetDeleted(accountId: Int, peerUserId: Long) {
+        MessageSender.send(accountId, peerUserId, ServiceMessage.PET_DELETED_TEXT)
+    }
+
     fun sendUpgrade(accountId: Int, peerUserId: Long, length: Int) {
         if (!isEnabled(accountId, peerUserId))
             return

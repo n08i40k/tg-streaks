@@ -15,6 +15,7 @@ object ServiceMessage {
     // streak pet
     const val PET_INVITE_TEXT = "tg-streaks:pet:invite"
     const val PET_INVITE_ACCEPTED_TEXT = "tg-streaks:pet:invite:accepted"
+    const val PET_DELETED_TEXT = "tg-streaks:pet:deleted"
 
     val PET_SET_NAME_REGEX = Regex("^tg-streaks:pet:set-name:(.+)$")
 
