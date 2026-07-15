@@ -49,7 +49,7 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         peerUserId: Long,
         timeZone: TimeZone,
         day: LocalDate,
-        untilRevive: Boolean
+        untilRestore: Boolean
     ): ChatHistoryFetcher.DayActivity {
         val selfId = UserConfig.getInstance(accountId).clientUserId
 
@@ -61,7 +61,7 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
 
         var fromOwner = false
         var fromPeer = false
-        var wasRevived = false
+        var wasRestored = false
         var lastOwnerAt: Instant? = null
         var lastPeerAt: Instant? = null
 
@@ -74,10 +74,10 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
             )
 
             if (message.message == ServiceMessage.RESTORE_TEXT) {
-                wasRevived = true
+                wasRestored = true
 
                 @Suppress("KotlinConstantConditions")
-                if (fromOwner && fromPeer && untilRevive)
+                if (fromOwner && fromPeer && untilRestore)
                     break
 
                 continue
@@ -96,15 +96,15 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
                     lastPeerAt = Instant.fromEpochSeconds(message.date.toLong())
             }
 
-            if (fromOwner && fromPeer && (!untilRevive || wasRevived))
+            if (fromOwner && fromPeer && (!untilRestore || wasRestored))
                 break
         }
 
         val status = when {
-            fromOwner && fromPeer -> ChatHistoryFetcher.Status.FromBoth(wasRevived)
-            fromOwner -> ChatHistoryFetcher.Status.FromOwner(wasRevived)
-            fromPeer -> ChatHistoryFetcher.Status.FromPeer(wasRevived)
-            else -> ChatHistoryFetcher.Status.NoActivity(wasRevived)
+            fromOwner && fromPeer -> ChatHistoryFetcher.Status.FromBoth(wasRestored)
+            fromOwner -> ChatHistoryFetcher.Status.FromOwner(wasRestored)
+            fromPeer -> ChatHistoryFetcher.Status.FromPeer(wasRestored)
+            else -> ChatHistoryFetcher.Status.NoActivity(wasRestored)
         }
 
         return ChatHistoryFetcher.DayActivity(status, lastOwnerAt, lastPeerAt)

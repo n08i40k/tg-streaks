@@ -8,7 +8,7 @@ import kotlinx.datetime.LocalDate
 import kotlin.time.Instant
 
 @Entity(
-    tableName = "streak_revive",
+    tableName = "streak_revive", // todo: rename table
     primaryKeys = ["owner_user_id", "peer_user_id", "revive_date"],
     foreignKeys = [
         ForeignKey(
@@ -20,11 +20,11 @@ import kotlin.time.Instant
     ],
     indices = [Index("owner_user_id", "peer_user_id")]
 )
-data class StreakRevive(
+data class StreakRestore(
     @ColumnInfo(name = "owner_user_id") val ownerUserId: Long,
     @ColumnInfo(name = "peer_user_id") val peerUserId: Long,
 
-    @ColumnInfo(name = "revive_date") val reviveDate: LocalDate,
-    @ColumnInfo(name = "revived_at") val revivedAt: Instant,
+    @ColumnInfo(name = "revive_date") val restoreDate: LocalDate, // todo: rename fields
+    @ColumnInfo(name = "revived_at") val restoredAt: Instant, // todo: rename fields
     @ColumnInfo(name = "manual") val manual: Boolean = false,
 )

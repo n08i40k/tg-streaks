@@ -22,13 +22,13 @@ import ru.n08i40k.streaks.database.dao.ServiceMessageCategoriesDao
 import ru.n08i40k.streaks.database.dao.StreakDao
 import ru.n08i40k.streaks.database.dao.StreakPetDao
 import ru.n08i40k.streaks.database.dao.StreakPetTaskDao
-import ru.n08i40k.streaks.data.StreakRevive
-import ru.n08i40k.streaks.database.dao.StreakReviveDao
+import ru.n08i40k.streaks.data.StreakRestore
+import ru.n08i40k.streaks.database.dao.StreakRestoreDao
 
 @Database(
     entities = [
         Streak::class,
-        StreakRevive::class,
+        StreakRestore::class,
         ScheduledStreakPopup::class,
         StreakPet::class,
         StreakPetTask::class,
@@ -47,7 +47,7 @@ import ru.n08i40k.streaks.database.dao.StreakReviveDao
 )
 abstract class PluginDatabase : RoomDatabase() {
     abstract fun streakDao(): StreakDao
-    abstract fun streakReviveDao(): StreakReviveDao
+    abstract fun streakRestoreDao(): StreakRestoreDao
     abstract fun scheduledStreakPopupDao(): ScheduledStreakPopupDao
     abstract fun streakPetDao(): StreakPetDao
     abstract fun streakPetTaskDao(): StreakPetTaskDao

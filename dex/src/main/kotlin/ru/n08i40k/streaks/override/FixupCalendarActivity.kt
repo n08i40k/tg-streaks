@@ -30,8 +30,8 @@ import java.util.concurrent.atomic.AtomicReference
 class FixupCalendarActivity : CalendarActivity {
     companion object {
         private const val BOTH_ACTIVITY_COLOR = 0xFF34C759.toInt()
-        private const val PRE_REVIVE_ACTIVITY_COLOR = 0xFFFFCC00.toInt()
-        private const val REVIVE_ACTIVITY_COLOR = 0xFF5AC8FA.toInt()
+        private const val PRE_RESTORE_ACTIVITY_COLOR = 0xFFFFCC00.toInt()
+        private const val RESTORE_ACTIVITY_COLOR = 0xFF5AC8FA.toInt()
         private const val ACTIVITY_COLOR_ALPHA = 170
 
         private val monthViewClass: Class<*> by lazy {
@@ -77,7 +77,7 @@ class FixupCalendarActivity : CalendarActivity {
 
     private val peerUserId: Long
     private val activeDaysByMonthKey = SparseArray<SparseBooleanArray>()
-    private val cachedRevivesByMonthKey = SparseArray<SparseBooleanArray>()
+    private val cachedRestoresByMonthKey = SparseArray<SparseBooleanArray>()
     private val decoratedListViewRef = AtomicReference<RecyclerListView?>()
     private val interceptedListViewRef = AtomicReference<RecyclerListView?>()
     private val activityPaint =
@@ -86,7 +86,7 @@ class FixupCalendarActivity : CalendarActivity {
         }
     private var messagesByYearMonthProxy: MessagesByYearMonthProxy? = null
     private var cachedSnapshotLoaded = false
-    private var manualRevivesUsed = 0
+    private var manualRestoresUsed = 0
     private val activityStatusDecoration =
         object : RecyclerView.ItemDecoration() {
             override fun onDraw(
@@ -263,46 +263,46 @@ class FixupCalendarActivity : CalendarActivity {
                             Strings.dialog_calendar_fix_limit_reached_message(),
                         )
 
-                    is StreaksController.CalendarTapDecision.OfferManualRevive ->
-                        showManualReviveOfferDialog(decision.reviveDay)
+                    is StreaksController.CalendarTapDecision.OfferManualRestore ->
+                        showManualRestoreOfferDialog(decision.restoreDay)
                 }
             }
         }
     }
 
-    private fun showManualReviveOfferDialog(day: LocalDate) {
+    private fun showManualRestoreOfferDialog(day: LocalDate) {
         val context = context ?: parentActivity ?: return
 
         showDialog(
             AlertDialog.Builder(context)
-                .setTitle(Strings.dialog_calendar_fix_manual_revive_title())
-                .setMessage(Strings.dialog_calendar_fix_manual_revive_message())
+                .setTitle(Strings.dialog_calendar_fix_manual_restore_title())
+                .setMessage(Strings.dialog_calendar_fix_manual_restore_message())
                 .setPositiveButton(Strings.dialog_calendar_fix_confirm()) { _, _ ->
-                    persistManualRevive(day)
+                    persistManualRestore(day)
                 }
                 .setNegativeButton(Strings.dialog_calendar_fix_cancel(), null)
                 .create()
         )
     }
 
-    private fun persistManualRevive(day: LocalDate) {
+    private fun persistManualRestore(day: LocalDate) {
         val accountId = UserConfig.selectedAccount
 
         Plugin.getInstance().backgroundScope.launch {
             val result =
                 Plugin.getInstance()
                     .streaksController
-                    .addManualCalendarRevive(accountId, peerUserId, day)
+                    .addManualCalendarRestore(accountId, peerUserId, day)
 
             AndroidUtilities.runOnUIThread {
                 when (result) {
-                    StreaksController.AddManualCalendarReviveResult.Added,
-                    StreaksController.AddManualCalendarReviveResult.AlreadyExists -> {
+                    StreaksController.AddManualCalendarRestoreResult.Added,
+                    StreaksController.AddManualCalendarRestoreResult.AlreadyExists -> {
                         reloadSnapshot()
                         showRebuildOfferDialog()
                     }
 
-                    StreaksController.AddManualCalendarReviveResult.LimitReached ->
+                    StreaksController.AddManualCalendarRestoreResult.LimitReached ->
                         showInfoOnlyDialog(
                             Strings.dialog_calendar_fix_limit_reached_title(),
                             Strings.dialog_calendar_fix_limit_reached_message(),
@@ -370,7 +370,7 @@ class FixupCalendarActivity : CalendarActivity {
                     .getCalendarInteractionSnapshot(accountId, peerUserId)
 
             val newActiveByMonthKey = SparseArray<SparseBooleanArray>()
-            val newRevivesByMonthKey = SparseArray<SparseBooleanArray>()
+            val newRestoresByMonthKey = SparseArray<SparseBooleanArray>()
 
             fun monthKey(day: LocalDate): Int =
                 day.year * 100 + (day.month.number - 1)
@@ -397,23 +397,23 @@ class FixupCalendarActivity : CalendarActivity {
                 }
             }
 
-            for (revivedDay in snapshot.revivedDays) {
-                markDay(newRevivesByMonthKey, revivedDay)
+            for (restoreDay in snapshot.restoreDays) {
+                markDay(newRestoresByMonthKey, restoreDay)
             }
 
             AndroidUtilities.runOnUIThread {
                 activeDaysByMonthKey.clear()
-                cachedRevivesByMonthKey.clear()
-                manualRevivesUsed = snapshot.manualRevivesUsed
+                cachedRestoresByMonthKey.clear()
+                manualRestoresUsed = snapshot.manualRestoresUsed
 
                 for (index in 0 until newActiveByMonthKey.size()) {
                     val monthKey = newActiveByMonthKey.keyAt(index)
                     activeDaysByMonthKey.put(monthKey, newActiveByMonthKey.valueAt(index))
                 }
 
-                for (index in 0 until newRevivesByMonthKey.size()) {
-                    val monthKey = newRevivesByMonthKey.keyAt(index)
-                    cachedRevivesByMonthKey.put(monthKey, newRevivesByMonthKey.valueAt(index))
+                for (index in 0 until newRestoresByMonthKey.size()) {
+                    val monthKey = newRestoresByMonthKey.keyAt(index)
+                    cachedRestoresByMonthKey.put(monthKey, newRestoresByMonthKey.valueAt(index))
                 }
 
                 messagesByYearMonthProxy?.repatchAll()
@@ -459,30 +459,30 @@ class FixupCalendarActivity : CalendarActivity {
     private fun isActiveDay(monthKey: Int, dayIndex: Int): Boolean =
         activeDaysByMonthKey.get(monthKey)?.get(dayIndex, false) ?: false
 
-    private fun isCachedRevived(monthKey: Int, dayIndex: Int): Boolean =
-        cachedRevivesByMonthKey.get(monthKey)?.get(dayIndex, false) ?: false
+    private fun isCachedRestored(monthKey: Int, dayIndex: Int): Boolean =
+        cachedRestoresByMonthKey.get(monthKey)?.get(dayIndex, false) ?: false
 
-    private fun isNextDayRevived(year: Int, monthIndex: Int, dayIndex: Int): Boolean {
+    private fun isNextDayRestored(year: Int, monthIndex: Int, dayIndex: Int): Boolean {
         val nextDay = LocalDate(year, monthIndex + 1, dayIndex + 1).next()
         val nextMonthKey = nextDay.year * 100 + (nextDay.month.number - 1)
         val nextDayIndex = nextDay.day - 1
-        return isCachedRevived(nextMonthKey, nextDayIndex)
+        return isCachedRestored(nextMonthKey, nextDayIndex)
     }
 
     private fun shouldDecorateDay(year: Int, monthIndex: Int, dayIndex: Int): Boolean {
         val monthKey = year * 100 + monthIndex
-        return isCachedRevived(monthKey, dayIndex) ||
-                isNextDayRevived(year, monthIndex, dayIndex) ||
+        return isCachedRestored(monthKey, dayIndex) ||
+                isNextDayRestored(year, monthIndex, dayIndex) ||
                 isActiveDay(monthKey, dayIndex)
     }
 
     private fun resolveActivityColor(year: Int, monthIndex: Int, dayIndex: Int): Int? {
         val monthKey = year * 100 + monthIndex
-        if (isCachedRevived(monthKey, dayIndex)) {
-            return REVIVE_ACTIVITY_COLOR
+        if (isCachedRestored(monthKey, dayIndex)) {
+            return RESTORE_ACTIVITY_COLOR
         }
-        if (isNextDayRevived(year, monthIndex, dayIndex)) {
-            return PRE_REVIVE_ACTIVITY_COLOR
+        if (isNextDayRestored(year, monthIndex, dayIndex)) {
+            return PRE_RESTORE_ACTIVITY_COLOR
         }
         if (isActiveDay(monthKey, dayIndex)) {
             return BOTH_ACTIVITY_COLOR

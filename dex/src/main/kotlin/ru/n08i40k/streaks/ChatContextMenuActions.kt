@@ -90,8 +90,8 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                         petFabEnabled =
                             streakPetsController.isFabEnabled(accountId, peerUserId) ?: true,
 
-                        canReviveStreak =
-                            streaksController.get(accountId, peerUserId)?.dead == true,
+                        canRestoreStreak =
+                            streaksController.get(accountId, peerUserId)?.ended == true,
 
                         serviceMessageCategories =
                             ServiceMessageCategory.all.associateWith { category ->
@@ -218,7 +218,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     }
                 }
 
-                override fun reviveStreak() {
+                override fun restoreStreak() {
                     AccountTaskExecutor.enqueue(
                         accountId,
                         "revive streak for $accountId:$peerUserId"
@@ -230,17 +230,17 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                             return@enqueue
                         }
 
-                        if (!streak.dead) {
+                        if (!streak.ended) {
                             BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
                             return@enqueue
                         }
 
-                        if (!streak.canRevive) {
+                        if (!streak.canRestore) {
                             BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
                             return@enqueue
                         }
 
-                        if (!streaksController.revive(
+                        if (!streaksController.restore(
                                 accountId,
                                 peerUserId,
                                 Clock.System.now()
@@ -356,7 +356,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             Logger.info("[Context Menu] Control menu opened for $peerUserId")
         }
 
-        add(ChatContextMenuButton.REVIVE_EXACT) { _ ->
+        add(ChatContextMenuButton.RESTORE_EXACT) { _ ->
             val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
                 ?: run {
                     BulletinHelper.show(Strings.status_error_chat_open_context_failed())

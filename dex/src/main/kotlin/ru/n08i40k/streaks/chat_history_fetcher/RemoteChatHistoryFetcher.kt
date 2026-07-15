@@ -130,7 +130,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         peerUserId: Long,
         timeZone: TimeZone,
         day: LocalDate,
-        untilRevive: Boolean
+        untilRestore: Boolean
     ): ChatHistoryFetcher.DayActivity {
         val startLocalEpoch = day.toEpochSeconds(timeZone).toInt()
         var endLocalEpoch = day.next().toEpochSeconds(timeZone).toInt()
@@ -138,7 +138,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
 
         var fromOwner = false
         var fromPeer = false
-        var wasRevived = false
+        var wasRestored = false
         var lastOwnerAt: Instant? = null
         var lastPeerAt: Instant? = null
 
@@ -164,9 +164,9 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                     break@reqLoop // no more messages for today
 
                 if (message.message == ServiceMessage.RESTORE_TEXT) {
-                    wasRevived = true
+                    wasRestored = true
 
-                    if (fromOwner && fromPeer && untilRevive)
+                    if (fromOwner && fromPeer && untilRestore)
                         break@reqLoop // no need to check other messages more
 
                     continue
@@ -185,7 +185,7 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                         lastPeerAt = Instant.fromEpochSeconds(message.date.toLong())
                 }
 
-                if (fromOwner && fromPeer && (!untilRevive || wasRevived))
+                if (fromOwner && fromPeer && (!untilRestore || wasRestored))
                     break@reqLoop // no need to check other messages more
             }
 
@@ -206,10 +206,10 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
         }
 
         val status = when {
-            fromOwner && fromPeer -> ChatHistoryFetcher.Status.FromBoth(wasRevived)
-            fromOwner -> ChatHistoryFetcher.Status.FromOwner(wasRevived)
-            fromPeer -> ChatHistoryFetcher.Status.FromPeer(wasRevived)
-            else -> ChatHistoryFetcher.Status.NoActivity(wasRevived)
+            fromOwner && fromPeer -> ChatHistoryFetcher.Status.FromBoth(wasRestored)
+            fromOwner -> ChatHistoryFetcher.Status.FromOwner(wasRestored)
+            fromPeer -> ChatHistoryFetcher.Status.FromPeer(wasRestored)
+            else -> ChatHistoryFetcher.Status.NoActivity(wasRestored)
         }
 
         return ChatHistoryFetcher.DayActivity(status, lastOwnerAt, lastPeerAt)

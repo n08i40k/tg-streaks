@@ -42,7 +42,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         val timeZone: TimeZone = TimeZone.currentSystemDefault(),
         val peerHasPluginInstalled: Boolean = false,
         val petFabEnabled: Boolean = true,
-        val canReviveStreak: Boolean = false,
+        val canRestoreStreak: Boolean = false,
         val serviceMessageCategories: Map<String, Boolean> = mapOf(
             ServiceMessageCategory.LIFECYCLE to true,
             ServiceMessageCategory.LEVEL_UP to false,
@@ -66,7 +66,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         fun rebuildBoth()
         fun rebuildPet()
 
-        fun reviveStreak()
+        fun restoreStreak()
         fun createPet()
 
         fun goToStreakStart()
@@ -84,7 +84,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
 
         PET_HEADER, PET_CREATE_BTN, PET_FAB_SW,
 
-        ACTIONS_HEADER, ACTIONS_REVIVE_STREAK_BTN, ACTIONS_GO_TO_STREAK_START_BTN,
+        ACTIONS_HEADER, ACTIONS_RESTORE_STREAK_BTN, ACTIONS_GO_TO_STREAK_START_BTN,
 
         DANGER_ZONE_HEADER, DANGER_ZONE_REBUILD_BOTH_BTN, DANGER_ZONE_REBUILD_PET_BTN, DANGER_ZONE_DELETE_BOTH_BTH, DANGER_ZONE_DELETE_PET_BTN, DANGER_ZONE_DESC,
 
@@ -167,7 +167,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
                         listAdapter.notifyRowChanged(Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW)
                         listAdapter.notifyRowChanged(Row.SYNC_OFFER_BTN)
                         listAdapter.notifyRowChanged(Row.PET_FAB_SW)
-                        listAdapter.notifyRowChanged(Row.ACTIONS_REVIVE_STREAK_BTN)
+                        listAdapter.notifyRowChanged(Row.ACTIONS_RESTORE_STREAK_BTN)
                     }
                 }
             }
@@ -230,8 +230,8 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
                 viewModel.createPet()
             }
 
-            Row.ACTIONS_REVIVE_STREAK_BTN.ordinal -> {
-                viewModel.reviveStreak()
+            Row.ACTIONS_RESTORE_STREAK_BTN.ordinal -> {
+                viewModel.restoreStreak()
             }
 
             Row.ACTIONS_GO_TO_STREAK_START_BTN.ordinal -> {
@@ -313,7 +313,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
 
                 Row.PET_CREATE_BTN.ordinal -> !viewState.hasPet
 
-                Row.ACTIONS_REVIVE_STREAK_BTN.ordinal -> viewState.canReviveStreak
+                Row.ACTIONS_RESTORE_STREAK_BTN.ordinal -> viewState.canRestoreStreak
 
                 else -> when (holder.itemViewType) {
                     TYPE_SWITCH, TYPE_BUTTON, TYPE_LINK -> true
@@ -326,7 +326,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
 
             Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW.ordinal, Row.PET_FAB_SW.ordinal -> TYPE_SWITCH
 
-            Row.TIME_ZONE_SELECTOR.ordinal, Row.SYNC_OFFER_BTN.ordinal, Row.PET_CREATE_BTN.ordinal, Row.ACTIONS_REVIVE_STREAK_BTN.ordinal, Row.DANGER_ZONE_REBUILD_BOTH_BTN.ordinal, Row.DANGER_ZONE_REBUILD_PET_BTN.ordinal, Row.DANGER_ZONE_DELETE_BOTH_BTH.ordinal, Row.DANGER_ZONE_DELETE_PET_BTN.ordinal -> TYPE_BUTTON
+            Row.TIME_ZONE_SELECTOR.ordinal, Row.SYNC_OFFER_BTN.ordinal, Row.PET_CREATE_BTN.ordinal, Row.ACTIONS_RESTORE_STREAK_BTN.ordinal, Row.DANGER_ZONE_REBUILD_BOTH_BTN.ordinal, Row.DANGER_ZONE_REBUILD_PET_BTN.ordinal, Row.DANGER_ZONE_DELETE_BOTH_BTH.ordinal, Row.DANGER_ZONE_DELETE_PET_BTN.ordinal -> TYPE_BUTTON
 
             Row.SERVICE_MESSAGES_CATS_LINK.ordinal, Row.ACTIONS_GO_TO_STREAK_START_BTN.ordinal -> TYPE_LINK
 
@@ -417,9 +417,9 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
                 Row.ACTIONS_HEADER.ordinal -> (holder.itemView as HeaderCell)
                     .setText(Strings.menu_control_actions_header())
 
-                Row.ACTIONS_REVIVE_STREAK_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                Row.ACTIONS_RESTORE_STREAK_BTN.ordinal -> (holder.itemView as TextSettingsCell)
                     .apply {
-                        setText(Strings.menu_control_actions_revive_streak_button(), true)
+                        setText(Strings.menu_control_actions_restore_streak_button(), true)
                         setIcon(0)
                     }
 

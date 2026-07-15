@@ -23,7 +23,7 @@ data class Streak(
     @ColumnInfo(name = "update_from_owner_at") val updateFromOwnerAt: Instant,
     @ColumnInfo(name = "update_from_peer_at") val updateFromPeerAt: Instant,
 
-    @ColumnInfo(name = "revives_count") val revivesCount: Int,
+    @ColumnInfo(name = "revives_count") val restoresCount: Int, // todo: rename field
     @ColumnInfo(name = "death_notified") val deathNotified: Boolean = false,
     @ColumnInfo(name = "warning_notified") val warningNotified: Boolean = false,
 
@@ -40,10 +40,10 @@ data class Streak(
     val frozen: Boolean
 
     @Ignore
-    val dead: Boolean
+    val ended: Boolean
 
     @Ignore
-    val canRevive: Boolean
+    val canRestore: Boolean
 
     @delegate:Ignore
     val level: StreakLevel by lazy {
@@ -71,12 +71,12 @@ data class Streak(
         val fromPeerEpoch = updateFromPeerAt.toEpochDays(timeZone)
 
         frozen = nowEpoch > fromOwnerEpoch || nowEpoch > fromPeerEpoch
-        dead = frozen && ((nowEpoch - fromOwnerEpoch) > 1 || (nowEpoch - fromPeerEpoch) > 1)
-        canRevive = dead && ((nowEpoch - fromOwnerEpoch) <= 2 || (nowEpoch - fromPeerEpoch) <= 2)
+        ended = frozen && ((nowEpoch - fromOwnerEpoch) > 1 || (nowEpoch - fromPeerEpoch) > 1)
+        canRestore = ended && ((nowEpoch - fromOwnerEpoch) <= 2 || (nowEpoch - fromPeerEpoch) <= 2)
 
         var length = min(fromOwnerEpoch, fromPeerEpoch) - createdAt.toEpochDays(timeZone) + 1
 
-        length -= revivesCount
+        length -= restoresCount
 
         this.length = length.coerceAtLeast(1).toInt()
     }

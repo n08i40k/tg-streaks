@@ -7,11 +7,11 @@ import kotlin.time.Instant
 
 
 interface ChatHistoryFetcher {
-    sealed class Status(val wasRevived: Boolean) {
-        class NoActivity(wasRevived: Boolean) : Status(wasRevived)
-        class FromOwner(wasRevived: Boolean) : Status(wasRevived)
-        class FromPeer(wasRevived: Boolean) : Status(wasRevived)
-        class FromBoth(wasRevived: Boolean) : Status(wasRevived)
+    sealed class Status(val wasRestored: Boolean) {
+        class NoActivity(wasRestored: Boolean) : Status(wasRestored)
+        class FromOwner(wasRestored: Boolean) : Status(wasRestored)
+        class FromPeer(wasRestored: Boolean) : Status(wasRestored)
+        class FromBoth(wasRestored: Boolean) : Status(wasRestored)
     }
 
     data class DayActivity(
@@ -25,7 +25,7 @@ interface ChatHistoryFetcher {
         peerUserId: Long,
         timeZone: TimeZone,
         day: LocalDate,
-        untilRevive: Boolean = false
+        untilRestore: Boolean = false
     ): DayActivity
 
     suspend fun fetchRawMessages(

@@ -2,7 +2,7 @@ package ru.n08i40k.streaks.constants
 
 object ChatContextMenuButton {
     const val CONTROL_MENU = "controlMenu"
-    const val REVIVE_EXACT = "reviveExact"
+    const val RESTORE_EXACT = "restoreExact"
 
     const val DEBUG_CREATE = "debug.create"
     const val DEBUG_UPGRADE = "debug.upgrade"

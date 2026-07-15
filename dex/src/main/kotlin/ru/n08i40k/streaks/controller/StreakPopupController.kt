@@ -55,7 +55,7 @@ class StreakPopupController(
         before: Streak?,
         after: Streak?
     ) {
-        if (accountId < 0 || peerUserId <= 0L || after == null || after.dead || after.length < 3) {
+        if (accountId < 0 || peerUserId <= 0L || after == null || after.ended || after.length < 3) {
             return
         }
 
@@ -71,7 +71,7 @@ class StreakPopupController(
                 )
             }
 
-            !before.dead && after.level.length > before.level.length -> {
+            !before.ended && after.level.length > before.level.length -> {
                 enqueue(
                     accountId = accountId,
                     peerUserId = peerUserId,

@@ -553,11 +553,11 @@ class RebuildBottomSheet(
                             valueColor = record.level.colorInt
                         ),
                         InfoRow(
-                            iconDocumentId = Emoji.REBUILD_RESULT_REVIVES,
+                            iconDocumentId = Emoji.REBUILD_RESULT_RESTORES,
                             iconBg = withAlpha(Theme.getColor(Theme.key_dialogButton), 0x29),
                             iconColor = Theme.getColor(Theme.key_dialogButton),
-                            label = Strings.sheet_rebuild_result_card_revives(),
-                            value = record.revivesCount.toString(),
+                            label = Strings.sheet_rebuild_result_card_restores(),
+                            value = record.restoresCount.toString(),
                             valueColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText)
                         )
                     )

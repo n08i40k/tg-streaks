@@ -256,13 +256,13 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
             """.trimIndent()
         )
 
-        fun copyRevives(table: String, manual: Int) {
+        fun copyRestores(table: String, manual: Int) {
             val cursor = db.query("SELECT owner_user_id, peer_user_id, revived_at FROM `$table`")
             cursor.use {
                 while (it.moveToNext()) {
                     val ownerUserId = it.getLong(0)
                     val peerUserId = it.getLong(1)
-                    val reviveDate = it.getLong(2)
+                    val restoreDate = it.getLong(2)
 
                     db.execSQL(
                         """
@@ -273,8 +273,8 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
                         arrayOf<Any?>(
                             ownerUserId,
                             peerUserId,
-                            reviveDate,
-                            epochDaysToMillis(reviveDate),
+                            restoreDate,
+                            epochDaysToMillis(restoreDate),
                             manual,
                         )
                     )
@@ -282,8 +282,8 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
             }
         }
 
-        copyRevives("streak_revive", 0)
-        copyRevives("streak_manual_revive", 1)
+        copyRestores("streak_revive", 0)
+        copyRestores("streak_manual_revive", 1)
 
         db.execSQL("DROP TABLE `streak_revive`")
         db.execSQL("DROP TABLE IF EXISTS `streak_manual_revive`")

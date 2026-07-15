@@ -36,7 +36,7 @@ from ui.settings import Divider, Header, Selector, Switch, Text
 
 __id__ = "tg-streaks"
 __name__ = "Streaks"
-__description__ = "Аналог серий TikTok для extera/Ayu-Gram"
+__description__ = "Аналог стриков TikTok для Telegram"
 __author__ = "@n08i40k_extera & @RoflPlugins"
 __version__ = "2.15.1"
 __icon__ = "tiktok_streak/4"
@@ -114,7 +114,7 @@ I18N_SETTINGS: dict[str, dict[str, str]] = {
         "ru": "Размер плавающей кнопки в чате.",
     },
     "settings.pet_button.size.title": {"en": "Button size", "ru": "Размер кнопки"},
-    "settings.pet_button.title": {"en": "Streak pet", "ru": "Стрик-пет"},
+    "settings.pet_button.title": {"en": "Streak pet", "ru": "Серийчик"},
     "settings.streak_tools.rebuild_all_chats.description": {
         "en": "Only user DMs are checked. Bots and groups are skipped.",
         "ru": "Только лички с пользователями. Боты и группы пропускаются.",
@@ -173,7 +173,7 @@ I18N_STATUS: dict[str, dict[str, str]] = {
 I18N_MENU: dict[str, dict[str, str]] = {
     "menu.chat.control_panel.description": {
         "en": "Streak, pet, sync and time zone settings",
-        "ru": "Настройки стрика, пета, синхронизации и часового пояса",
+        "ru": "Настройки стрика, серийчика, синхронизации и часового пояса",
     },
     "menu.chat.control_panel.title": {"en": "Control panel", "ru": "Панель управления"},
     "menu.chat.restore_streak_exact.description": {
@@ -199,11 +199,11 @@ I18N_MENU: dict[str, dict[str, str]] = {
     },
     "menu.debug.delete_pet.description": {
         "en": "Deletes the streak pet from this chat",
-        "ru": "Удаляет стрик-пета из этого чата",
+        "ru": "Удаляет серийчика из этого чата",
     },
     "menu.debug.delete_pet.title": {
         "en": "[DEBUG] Streak pet delete",
-        "ru": "[DEBUG] Удаление стрик-пета",
+        "ru": "[DEBUG] Удаление серийчика",
     },
     "menu.debug.delete_streak.description": {
         "en": "Deletes the streak from this chat",
@@ -749,7 +749,7 @@ class ZipResourcesBridge:
 
 class ChatContextMenu:
     CONTROL_MENU = "controlMenu"
-    REVIVE_EXACT = "reviveExact"
+    RESTORE_EXACT = "restoreExact"
 
     DEBUG_CREATE = "debug.create"
     DEBUG_UPGRADE = "debug.upgrade"
@@ -793,7 +793,7 @@ class ChatContextMenu:
                 "priority": 1001,
             },
             {
-                "key": cls.REVIVE_EXACT,
+                "key": cls.RESTORE_EXACT,
                 "text_key": "menu.chat.restore_streak_exact.title",
                 "subtext_key": "menu.chat.restore_streak_exact.description",
                 "icon": "msg_reactions",

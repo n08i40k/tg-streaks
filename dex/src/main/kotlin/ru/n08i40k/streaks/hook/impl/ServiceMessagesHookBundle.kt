@@ -300,13 +300,13 @@ class ServiceMessagesHookBundle : HookBundle() {
                             null ->
                                 BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
 
-                            else if !streak.dead ->
+                            else if !streak.ended ->
                                 BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
 
-                            else if !streak.canRevive ->
+                            else if !streak.canRestore ->
                                 BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
 
-                            else if !streaksController.revive(
+                            else if !streaksController.restore(
                                 accountId,
                                 peerUserId,
                                 Clock.System.now()
