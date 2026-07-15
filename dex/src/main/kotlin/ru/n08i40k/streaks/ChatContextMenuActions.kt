@@ -151,8 +151,29 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 }
 
                 override fun offerSync() {
-                    // TODO: implement feature
-                    Logger.info("Sync offered!")
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "offer sync for $accountId:$peerUserId"
+                    ) {
+                        val streak = streaksController.get(accountId, peerUserId)
+                        if (streak == null) {
+                            BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
+                            return@enqueue
+                        }
+                        val createdAt = streak.createdAt.epochSeconds
+                        val updateFromOwnerAt = streak.updateFromOwnerAt.epochSeconds
+                        val updateFromPeerAt = streak.updateFromPeerAt.epochSeconds
+                        val revivesCount = streak.revivesCount
+                        val timeZone = streak.timeZone.id
+
+                        val revives = streaksController.getRevives(ownerUserId, peerUserId)
+                        val revivesListStr = revives.joinToString(";") { "${it.revivedAt.epochSeconds},${if (it.manual) 1 else 0}" }
+
+                        val msg = "tg-streaks:sync:offer:$createdAt:$updateFromOwnerAt:$updateFromPeerAt:$revivesCount:$timeZone:$revivesListStr"
+                        ru.n08i40k.streaks.util.MessageSender.send(accountId, peerUserId, msg)
+
+                        BulletinHelper.show(Strings.status_success_sync_offered())
+                    }
                 }
 
                 override fun setServiceMessagesCategoryEnabled(

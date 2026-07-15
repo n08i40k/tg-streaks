@@ -113,6 +113,9 @@ class StreaksController(
         reviveDao.findManualByRelation(ownerUserId, peerUserId)
             .map { it.copy(reviveDate = it.revivedAt.toLocalDate(timeZone)) }
 
+    suspend fun getRevives(ownerUserId: Long, peerUserId: Long): List<StreakRevive> =
+        reviveDao.findByRelation(ownerUserId, peerUserId)
+
     private suspend fun persistAutoRevives(
         ownerUserId: Long,
         peerUserId: Long,
@@ -778,7 +781,8 @@ class StreaksController(
         at: Instant,
         out: Boolean,
         message: String?,
-        sendServiceMessages: Boolean = true
+        sendServiceMessages: Boolean = true,
+        forceReply: Boolean = false
     ) {
         val peerType = getPeerType(accountId, peerUserId)
 
@@ -786,6 +790,122 @@ class StreaksController(
         // продолжение стриков с ботами возможно (остались ли они вообще у кого-нибудь?)
         if (peerType == PeerType.INVALID)
             return
+
+        if (message != null && (message.startsWith("tg-streaks:sync:offer:") || message.startsWith("tg-streaks:sync:accept:"))) {
+            try {
+                val isOffer = message.startsWith("tg-streaks:sync:offer:")
+                val prefix = if (isOffer) "tg-streaks:sync:offer:" else "tg-streaks:sync:accept:"
+                val payload = message.removePrefix(prefix)
+                val payloadParts = payload.split(":")
+                val peerCreatedAt = Instant.fromEpochSeconds(payloadParts[0].toLong())
+                val peerUpdateFromOwnerAt = Instant.fromEpochSeconds(payloadParts[1].toLong())
+                val peerUpdateFromPeerAt = Instant.fromEpochSeconds(payloadParts[2].toLong())
+                val peerRevivesCount = payloadParts[3].toInt()
+                
+                val tzPart4 = payloadParts[4]
+                val tzPart5 = payloadParts.getOrNull(5)
+                val peerTimeZone: TimeZone
+                val revivesListStr: String?
+                if (tzPart4.startsWith("+") || tzPart4.startsWith("-")) {
+                    if (tzPart5 != null && tzPart5.length == 2 && tzPart5.all { it.isDigit() }) {
+                        peerTimeZone = TimeZone.of("$tzPart4:$tzPart5")
+                        revivesListStr = payloadParts.getOrNull(6)?.takeIf { it.isNotEmpty() }
+                    } else {
+                        peerTimeZone = TimeZone.of(tzPart4)
+                        revivesListStr = tzPart5?.takeIf { it.isNotEmpty() }
+                    }
+                } else {
+                    peerTimeZone = TimeZone.of(tzPart4)
+                    revivesListStr = tzPart5?.takeIf { it.isNotEmpty() }
+                }
+
+                val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+                val newUpdateFromOwnerAt = if (out) peerUpdateFromOwnerAt else peerUpdateFromPeerAt
+                val newUpdateFromPeerAt = if (out) peerUpdateFromPeerAt else peerUpdateFromOwnerAt
+
+                val currentStreak = get(accountId, peerUserId)
+
+                val updatedStreak = if (currentStreak == null) {
+                    Streak(
+                        ownerUserId = ownerUserId,
+                        peerUserId = peerUserId,
+                        createdAt = peerCreatedAt,
+                        updateFromOwnerAt = newUpdateFromOwnerAt,
+                        updateFromPeerAt = newUpdateFromPeerAt,
+                        revivesCount = peerRevivesCount,
+                        timeZone = peerTimeZone
+                    )
+                } else {
+                    currentStreak.copy(
+                        createdAt = peerCreatedAt,
+                        updateFromOwnerAt = newUpdateFromOwnerAt,
+                        updateFromPeerAt = newUpdateFromPeerAt,
+                        revivesCount = peerRevivesCount,
+                        timeZone = peerTimeZone
+                    )
+                }
+
+                val newRevives = if (!revivesListStr.isNullOrEmpty()) {
+                    revivesListStr.split(";").map { reviveStr ->
+                        val subparts = reviveStr.split(",")
+                        val revivedAt = Instant.fromEpochSeconds(subparts[0].toLong())
+                        val manual = subparts[1] == "1"
+                        val reviveDate = revivedAt.toLocalDate(peerTimeZone)
+                        StreakRevive(
+                            ownerUserId = ownerUserId,
+                            peerUserId = peerUserId,
+                            reviveDate = reviveDate,
+                            revivedAt = revivedAt,
+                            manual = manual
+                        )
+                    }
+                } else {
+                    emptyList()
+                }
+
+                db.withTransaction {
+                    dao.insertOrReplace(updatedStreak)
+                    db.streakReviveDao().deleteByRelation(ownerUserId, peerUserId)
+                    if (newRevives.isNotEmpty()) {
+                        db.streakReviveDao().insertAll(newRevives)
+                    }
+                }
+
+                // Emit event to notify the UI to refresh
+                EventBus.emit(
+                    PluginEvent.StreakRebuiltEvent(
+                        accountId,
+                        Clock.System.now(),
+                        currentStreak,
+                        updatedStreak
+                    )
+                )
+                
+                Logger.info("Streak synchronized successfully from message: $message")
+                
+                // BUT ONLY if the message was sent recently (e.g., in the last 10 seconds) or forceReply is true
+                // to prevent replying to old messages in chat history!
+                val messageAgeSeconds = Clock.System.now().epochSeconds - at.epochSeconds
+                if (isOffer && !out && (forceReply || messageAgeSeconds < 10)) {
+                    val finalStreak = get(accountId, peerUserId) ?: updatedStreak
+                    val createdAt = finalStreak.createdAt.epochSeconds
+                    val updateFromOwnerAtVal = finalStreak.updateFromOwnerAt.epochSeconds
+                    val updateFromPeerAtVal = finalStreak.updateFromPeerAt.epochSeconds
+                    val revivesCountVal = finalStreak.revivesCount
+                    val timeZoneVal = finalStreak.timeZone.id
+
+                    val revivesList = getRevives(ownerUserId, peerUserId)
+                    val revivesListStrVal = revivesList.joinToString(";") { "${it.revivedAt.epochSeconds},${if (it.manual) 1 else 0}" }
+
+                    val replyMsg = "tg-streaks:sync:accept:$createdAt:$updateFromOwnerAtVal:$updateFromPeerAtVal:$revivesCountVal:$timeZoneVal:$revivesListStrVal"
+                    ru.n08i40k.streaks.util.MessageSender.send(accountId, peerUserId, replyMsg)
+                }
+            } catch (e: Exception) {
+                Logger.info("Failed to parse sync message: $e")
+            }
+            return
+        }
 
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 

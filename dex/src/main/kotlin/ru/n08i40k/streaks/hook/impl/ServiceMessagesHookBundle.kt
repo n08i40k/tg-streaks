@@ -1,6 +1,8 @@
 package ru.n08i40k.streaks.hook.impl
 
 import android.graphics.Bitmap
+import kotlinx.coroutines.launch
+import kotlinx.datetime.Instant
 import androidx.collection.LongSparseArray
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ImageReceiver
@@ -225,6 +227,49 @@ class ServiceMessagesHookBundle : HookBundle() {
                     .apply { this.message = messageText }
             }
 
+            val trySyncOffer = syncOffer@{
+                val msgText = message.message ?: return@syncOffer null
+                val isOffer = msgText.startsWith("tg-streaks:sync:offer:")
+                val isAccept = msgText.startsWith("tg-streaks:sync:accept:")
+                if (!isOffer && !isAccept)
+                    return@syncOffer null
+
+                val peerId = message.peer_id?.user_id
+                val fromId = message.from_id?.user_id
+
+                val byPeer = peerId != null
+                        && fromId != null
+                        && peerId > 0
+                        && fromId == peerId
+
+                if (isOffer && byPeer) {
+                    // Incoming offer: render as PrizeStars with a button!
+                    TLRPC.TL_messageActionPrizeStars().apply {
+                        boost_peer = message.peer_id
+                        flags = 0
+                        giveaway_msg_id = 0
+                        stars = 0
+                        transaction_id = msgText
+                        unclaimed = false
+                    }
+                } else {
+                    val messageText = if (byPeer) {
+                        val peerName = peerId
+                            .let { MessagesController.getInstance(currentAccount).getUser(it) }
+                            ?.let { UserObject.getUserName(it) }
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Unknown"
+
+                        if (isOffer) Strings.service_sync_offered_peer(peerName) else Strings.service_sync_accepted_peer(peerName)
+                    } else {
+                        if (isOffer) Strings.service_sync_offered_self() else Strings.service_sync_accepted_self()
+                    }
+
+                    TLRPC.TL_messageActionCustomAction()
+                        .apply { this.message = messageText }
+                }
+            }
+
             val action = tryStreakCreate()
                 ?: tryStreakUpgrade()
                 ?: tryStreakDeath()
@@ -233,6 +278,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                 ?: tryPetInviteAccepted()
                 ?: tryPetSetName()
                 ?: tryPetDeleted()
+                ?: trySyncOffer()
                 ?: return@before
 
             param.args[1] = TLRPC.TL_messageService()
@@ -259,9 +305,17 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = thisObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
 
-            thisObject.messageText = when (prizeStars.transaction_id) {
-                ServiceMessage.DEATH_TEXT -> Strings.service_streak_ended_title()
-                ServiceMessage.PET_INVITE_TEXT -> Strings.service_pet_invite_title()
+            val txId = prizeStars.transaction_id
+            thisObject.messageText = when {
+                txId == ServiceMessage.DEATH_TEXT -> Strings.service_streak_ended_title()
+                txId == ServiceMessage.PET_INVITE_TEXT -> Strings.service_pet_invite_title()
+                txId != null && txId.startsWith("tg-streaks:sync:offer:") -> {
+                    val peerName = thisObject.dialogId
+                        .let { MessagesController.getInstance(thisObject.currentAccount).getUser(it) }
+                        ?.let { UserObject.getUserName(it) }
+                        ?: "Unknown"
+                    Strings.service_sync_offered_peer(peerName)
+                }
                 else -> return@after
             }
         }
@@ -333,7 +387,28 @@ class ServiceMessagesHookBundle : HookBundle() {
                     }
                 }
 
-                else -> return@before
+                else -> {
+                    val txId = prizeStars.transaction_id
+                    if (txId != null && txId.startsWith("tg-streaks:sync:offer:")) {
+                        AccountTaskExecutor.enqueue(
+                            accountId,
+                            "accept sync offer from message button"
+                        ) {
+                            streaksController.handleUpdate(
+                                accountId = accountId,
+                                peerUserId = peerUserId,
+                                at = Instant.fromEpochSeconds(messageObject.messageOwner.date.toLong()),
+                                out = false,
+                                message = txId,
+                                sendServiceMessages = true,
+                                forceReply = true
+                            )
+                            BulletinHelper.show(Strings.status_success_sync_offered())
+                        }
+                    } else {
+                        return@before
+                    }
+                }
             }
 
             param.result = null
@@ -388,6 +463,18 @@ class ServiceMessagesHookBundle : HookBundle() {
                         Strings.service_pet_invite_action()
                     param.args[9] = false
                     param.args[10] = true
+                }
+
+                else -> {
+                    val txId = prizeStars.transaction_id
+                    if (txId != null && txId.startsWith("tg-streaks:sync:offer:")) {
+                        param.args[0] = Strings.service_sync_offer_title()
+                        param.args[1] = Strings.service_sync_offer_description()
+                        param.args[3] = Strings.service_sync_offer_hint()
+                        param.args[5] = Strings.service_sync_offer_action()
+                        param.args[9] = false
+                        param.args[10] = true
+                    }
                 }
             }
         }
