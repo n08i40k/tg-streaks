@@ -1,21 +1,26 @@
 package ru.n08i40k.streaks
 
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.datetime.TimeZone
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
-import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
+import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.extension.isPeerValid
-import ru.n08i40k.streaks.extension.toEpochSecondSystem
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.override.FixupCalendarActivity
+import ru.n08i40k.streaks.ui.StreakControlFragment
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
+import kotlin.time.Clock
 
 class ChatContextMenuActions(private val plugin: Plugin) {
     @OptIn(DelicateCoroutinesApi::class)
@@ -50,244 +55,304 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             return peerUser
         }
 
-        add(ChatContextMenuButton.REBUILD) { peerUserId ->
-            val accountId = UserConfig.selectedAccount
-
-            validatePrivatePeer(accountId, peerUserId)
-                ?: return@add
-
-            enqueueRebuildForPeer(accountId, peerUserId)
-
-            Logger.info("[Context Menu] Rebuild clicked on $peerUserId")
-        }
-
-        add(ChatContextMenuButton.REBUILD_PET) { peerUserId ->
-            val accountId = UserConfig.selectedAccount
-
-            val peerUser = validatePrivatePeer(accountId, peerUserId)
-                ?: return@add
-
-            if (streakPetsController.isRebuildRunning()) {
-                BulletinHelper.show(Strings.status_info_rebuild_already_running())
-                return@add
-            }
-
-            AccountTaskExecutor.enqueue(
-                accountId,
-                "rebuild streak-pet for $accountId:$peerUserId"
-            ) {
-                val streakPet = streakPetsController.get(accountId, peerUserId)
-
-                if (streakPet == null) {
-                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
-                    return@enqueue
-                }
-
-                val streak = streaksController.get(accountId, peerUserId)
-
-                if (streak == null) {
-                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
-                    return@enqueue
-                }
-
-                streakPetsController.rebuild(accountId, peerUser)
-            }
-
-            Logger.info("[Context Menu] Rebuild pet clicked on $peerUserId")
-        }
-
-        add(ChatContextMenuButton.TOGGLE_PET_FAB) { peerUserId ->
-            val accountId = UserConfig.selectedAccount
-
-            validatePrivatePeer(accountId, peerUserId)
-                ?: return@add
-
-            AccountTaskExecutor.enqueue(
-                accountId,
-                "toggle streak-pet fab for $accountId:$peerUserId"
-            ) {
-                val streakPet = streakPetsController.get(accountId, peerUserId)
-
-                if (streakPet == null) {
-                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
-                    return@enqueue
-                }
-
-                val petFabEnabled = !streakPet.fabEnabled
-
-                streakPetsController.setFabEnabled(accountId, peerUserId, petFabEnabled)
-
-                BulletinHelper.show(
-                    if (petFabEnabled)
-                        Strings.status_success_pet_button_enabled()
-                    else
-                        Strings.status_success_pet_button_disabled(),
-                    "msg_reactions"
-                )
-
-                Logger.info("[Context Menu] Toggle pet fab clicked on $peerUserId; enabled=$petFabEnabled")
-            }
-        }
-
-        add(ChatContextMenuButton.CREATE_PET) { peerUserId ->
-            val accountId = UserConfig.selectedAccount
-
-            validatePrivatePeer(accountId, peerUserId)
-                ?: return@add
-
-            AccountTaskExecutor.enqueue(
-                accountId,
-                "try to create streak-pet for $accountId:$peerUserId"
-            ) {
-                if (streakPetsController.get(accountId, peerUserId) != null) {
-                    BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
-                    return@enqueue
-                }
-
-                AndroidUtilities.runOnUIThread {
-                    val fragment = LaunchActivity.getSafeLastFragment()
-                    if (fragment == null) {
-                        BulletinHelper.show(Strings.status_error_chat_open_context_failed())
-                        return@runOnUIThread
-                    }
-
-                    fragment.showDialog(
-                        AlertDialog.Builder(fragment.context)
-                            .setTitle(Strings.dialog_create_pet_title())
-                            .setMessage(Strings.dialog_create_pet_message())
-                            .setPositiveButton(
-                                Strings.dialog_create_pet_confirm()
-                            ) { _, _ ->
-                                serviceMessagesController.setEnabled(accountId, peerUserId, true)
-                                serviceMessagesController.sendPetInvite(accountId, peerUserId)
-                            }
-                            .setNegativeButton(
-                                Strings.dialog_create_pet_cancel()
-                            ) { _, _ ->
-                                AccountTaskExecutor.enqueue(
-                                    accountId,
-                                    "create streak-pet for $accountId:$peerUserId"
-                                ) {
-                                    if (!streakPetsController.create(accountId, peerUserId)) {
-                                        BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
-                                        return@enqueue
-                                    }
-
-                                    BulletinHelper.show( Strings.status_success_pet_created(), "msg_reactions")
-                                }
-                            }
-                            .create()
-                    )
-                }
-            }
-
-            Logger.info("[Context Menu] Create pet clicked on $peerUserId")
-        }
-
-        add(ChatContextMenuButton.GO_TO_STREAK_START) { peerUserId ->
+        add(ChatContextMenuButton.CONTROL_MENU) { peerUserId ->
             val accountId = UserConfig.selectedAccount
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
-            if (peerUserId <= 0L || peerUserId == ownerUserId) {
-                BulletinHelper.show(Strings.status_info_chat_private_users_only())
-                return@add
-            }
+            validatePrivatePeer(accountId, peerUserId)
+                ?: return@add
 
-            val chatActivity = (LaunchActivity.getSafeLastFragment() as? ChatActivity)
-                ?.takeIf { it.dialogId == peerUserId }
+            val viewModel = object : StreakControlFragment.ViewModel {
+                private val stateFlow = MutableStateFlow(StreakControlFragment.ViewState())
 
-            if (chatActivity == null) {
-                BulletinHelper.show(Strings.status_error_chat_open_context_failed())
-                Logger.info("[Context Menu] Go-to-streak-start failed: no chat context for $peerUserId")
-                return@add
-            }
-
-            BulletinHelper.show(Strings.status_info_streak_searching_start_message())
-
-            AccountTaskExecutor.enqueue(
-                accountId,
-                "go to streak start for $accountId:$peerUserId"
-            ) {
-                val streak = streaksController.get(accountId, peerUserId)
-
-                if (streak == null) {
-                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
-                    return@enqueue
+                init {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "load control state for $accountId:$peerUserId"
+                    ) {
+                        refreshState()
+                    }
                 }
 
-                val jumpTs = streak.createdAt.toEpochSecondSystem().toInt()
-                val messageId = streaksController.findStartMessageId(accountId, peerUserId)
+                private suspend fun refreshState() {
+                    stateFlow.value = StreakControlFragment.ViewState(
+                        hasPet =
+                            streakPetsController.exists(accountId, peerUserId),
 
-                AndroidUtilities.runOnUIThread {
-                    if (messageId != null && messageId > 0) {
-                        chatActivity.scrollToMessageId(messageId, 0, true, 0, true, 0)
-                        BulletinHelper.show(Strings.status_success_streak_jump_to_start_completed())
-                    } else {
-                        chatActivity.jumpToDate(jumpTs)
-                        BulletinHelper.show(Strings.status_info_streak_start_message_not_found())
+                        timeZone =
+                            timeZonesController.get(ownerUserId, peerUserId),
+
+                        peerHasPluginInstalled =
+                            pluginRelationController.hasPlugin(ownerUserId, peerUserId),
+
+                        petFabEnabled =
+                            streakPetsController.isFabEnabled(accountId, peerUserId) ?: true,
+
+                        canReviveStreak =
+                            streaksController.get(accountId, peerUserId)?.dead == true,
+
+                        serviceMessageCategories =
+                            ServiceMessageCategory.all.associateWith { category ->
+                                serviceMessageCategoriesController.isEnabled(
+                                    ownerUserId,
+                                    peerUserId,
+                                    category
+                                )
+                            },
+                    )
+                }
+
+                override fun state(): Flow<StreakControlFragment.ViewState> = stateFlow
+
+                override fun setTimeZone(value: TimeZone) {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "set time zone for $accountId:$peerUserId"
+                    ) {
+                        timeZonesController.set(ownerUserId, peerUserId, value)
+
+                        val peerUser =
+                            MessagesController.getInstance(accountId).getUser(peerUserId)
+
+                        if (peerUser != null && isPeerValid(peerUser)) {
+                            streaksController.rebuild(accountId, peerUser)
+
+                            if (streaksController.exists(accountId, peerUserId) &&
+                                streakPetsController.exists(accountId, peerUserId)
+                            ) {
+                                streakPetsController.rebuild(accountId, peerUser)
+                            }
+                        }
+
+                        refreshState()
+                    }
+                }
+
+                override fun setPeerHasPluginInstalled(value: Boolean) {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "set peer has installed for $accountId:$peerUserId"
+                    ) {
+                        pluginRelationController.setHasPlugin(ownerUserId, peerUserId, value)
+
+                        serviceMessageCategoriesController.setEnabledBatch(
+                            ownerUserId,
+                            peerUserId,
+                            mapOf(
+                                ServiceMessageCategory.LEVEL_UP to value,
+                                ServiceMessageCategory.PET to value,
+                            )
+                        )
+
+                        refreshState()
+                    }
+                }
+
+                override fun offerSync() {
+                    // TODO: implement feature
+                    Logger.info("Sync offered!")
+                }
+
+                override fun setServiceMessagesCategoryEnabled(
+                    categoryName: String,
+                    value: Boolean
+                ) {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "set service message category $categoryName for $accountId:$peerUserId"
+                    ) {
+                        serviceMessageCategoriesController.setEnabled(
+                            ownerUserId,
+                            peerUserId,
+                            categoryName,
+                            value
+                        )
+                        refreshState()
+                    }
+                }
+
+                override fun setPetFabEnabled(value: Boolean) {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "set pet fab enabled for $accountId:$peerUserId"
+                    ) {
+                        streakPetsController.setFabEnabled(accountId, peerUserId, value)
+                        refreshState()
+                    }
+                }
+
+                override fun rebuildBoth() {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "rebuild streak+pet for $accountId:$peerUserId"
+                    ) {
+                        val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
+                            ?: return@enqueue
+
+                        streaksController.rebuild(accountId, peerUser)
+
+                        if (streakPetsController.exists(accountId, peerUserId))
+                            streakPetsController.rebuild(accountId, peerUser)
+
+                        refreshState()
+                    }
+                }
+
+                override fun rebuildPet() {
+                    if (streakPetsController.isRebuildRunning()) {
+                        BulletinHelper.show(Strings.status_info_rebuild_already_running())
+                        return
+                    }
+
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "rebuild pet for $accountId:$peerUserId"
+                    ) {
+                        val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
+                            ?: return@enqueue
+
+                        streakPetsController.rebuild(accountId, peerUser)
+                        refreshState()
+                    }
+                }
+
+                override fun reviveStreak() {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "revive streak for $accountId:$peerUserId"
+                    ) {
+                        val streak = streaksController.get(accountId, peerUserId)
+
+                        if (streak == null) {
+                            BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
+                            return@enqueue
+                        }
+
+                        if (!streak.dead) {
+                            BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
+                            return@enqueue
+                        }
+
+                        if (!streak.canRevive) {
+                            BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
+                            return@enqueue
+                        }
+
+                        if (!streaksController.revive(
+                                accountId,
+                                peerUserId,
+                                Clock.System.now()
+                            )
+                        ) {
+                            BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
+                            return@enqueue
+                        }
+
+                        BulletinHelper.show(
+                            Strings.status_success_streak_restored(),
+                            "msg_reactions"
+                        )
+
+                        refreshState()
+                    }
+                }
+
+                override fun createPet() {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "create streak-pet for $accountId:$peerUserId"
+                    ) {
+                        if (streakPetsController.exists(accountId, peerUserId))
+                            return@enqueue
+
+                        if (pluginRelationController.hasPlugin(ownerUserId, peerUserId)) {
+                            serviceMessagesController.setEnabled(accountId, peerUserId, true)
+                            serviceMessagesController.sendPetInvite(accountId, peerUserId)
+
+                            BulletinHelper.show(Strings.status_success_pet_invite_sent())
+
+                            return@enqueue
+                        }
+
+                        if (!streakPetsController.create(accountId, peerUserId)) {
+                            BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
+                            return@enqueue
+                        }
+
+                        BulletinHelper.show(Strings.status_success_pet_created(), "msg_reactions")
+
+                        refreshState()
+                    }
+                }
+
+                override fun goToStreakStart() {
+                    BulletinHelper.show(Strings.status_info_streak_searching_start_message())
+
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "go to streak start for $accountId:$peerUserId"
+                    ) {
+                        val streak = streaksController.get(accountId, peerUserId)
+
+                        if (streak == null) {
+                            BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
+                            return@enqueue
+                        }
+
+                        val jumpTs = streak.createdAt.epochSeconds.toInt()
+
+                        // wait for dialog activity appear
+                        delay(2000)
+
+                        AndroidUtilities.runOnUIThread {
+                            val chatActivity =
+                                (LaunchActivity.getSafeLastFragment() as? ChatActivity)
+                                    ?.takeIf { it.dialogId == peerUserId }
+
+                            if (chatActivity == null) {
+                                BulletinHelper.show(Strings.status_error_chat_open_context_failed())
+                                return@runOnUIThread
+                            }
+
+                            chatActivity.jumpToDate(jumpTs)
+                            BulletinHelper.show(Strings.status_success_streak_jump_to_start_completed())
+                        }
+                    }
+                }
+
+                override fun deleteBoth() {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "delete streak with pet for $accountId:$peerUserId"
+                    ) {
+                        streaksController.delete(accountId, peerUserId)
+                        streakPetsController.delete(accountId, peerUserId)
+
+                        refreshState()
+                    }
+                }
+
+                override fun deletePet() {
+                    AccountTaskExecutor.enqueue(
+                        accountId,
+                        "delete pet for $accountId:$peerUserId"
+                    ) {
+                        streakPetsController.delete(accountId, peerUserId)
+
+                        refreshState()
                     }
                 }
             }
 
-            Logger.info("[Context Menu] Go-to-streak-start clicked on $peerUserId")
-        }
+            val fragment = StreakControlFragment(viewModel)
 
-        add(ChatContextMenuButton.TOGGLE_SERVICE_MESSAGES) { peerUserId ->
-            val accountId = UserConfig.selectedAccount
-
-            validatePrivatePeer(accountId, peerUserId)
-                ?: return@add
-
-            val enabled = serviceMessagesController.toggle(accountId, peerUserId)
-
-            BulletinHelper.show(
-                if (enabled)
-                    Strings.status_success_chat_level_messages_enabled()
-                else
-                    Strings.status_success_chat_level_messages_disabled(),
-                "msg_reactions"
-            )
-
-            Logger.info("[Context Menu] Toggle service messages clicked on $peerUserId; enabled=$enabled")
-        }
-
-        add(ChatContextMenuButton.REVIVE) { peerUserId ->
-            val accountId = UserConfig.selectedAccount
-
-            validatePrivatePeer(accountId, peerUserId)
-                ?: return@add
-
-            AccountTaskExecutor.enqueue(
-                accountId,
-                "revive streak for $accountId:$peerUserId"
-            ) {
-                val streak = streaksController.get(accountId, peerUserId)
-
-                if (streak == null) {
-                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
-                    return@enqueue
-                }
-
-                if (!streak.dead) {
-                    BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
-                    return@enqueue
-                }
-
-                if (!streak.canRevive) {
-                    BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
-                    return@enqueue
-                }
-
-                if (!streaksController.revive(accountId, peerUserId)) {
-                    BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
-                    return@enqueue
-                }
-
-                BulletinHelper.show(
-                    Strings.status_success_streak_restored(),
-                    "msg_reactions"
-                )
+            AndroidUtilities.runOnUIThread {
+                LaunchActivity.instance
+                    ?.actionBarLayout
+                    ?.presentFragment(fragment)
             }
+
+            Logger.info("[Context Menu] Control menu opened for $peerUserId")
         }
 
         add(ChatContextMenuButton.REVIVE_EXACT) { _ ->

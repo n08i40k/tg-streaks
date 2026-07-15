@@ -2,6 +2,7 @@ package ru.n08i40k.streaks.controller
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.LocalDate
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -17,6 +18,7 @@ import ru.n08i40k.streaks.data.StreakPetTaskType
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
+import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.extension.PeerType
 import ru.n08i40k.streaks.extension.getPeerType
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
@@ -26,13 +28,13 @@ import ru.n08i40k.streaks.extension.now
 import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
-import ru.n08i40k.streaks.exception.InvalidPeerException
+import ru.n08i40k.streaks.extension.toInstant
+import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.fetchPeerUsers
-import kotlinx.datetime.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -40,6 +42,7 @@ import kotlin.time.Instant
 class StreakPetsController(
     private val db: PluginDatabase,
     private val streaksController: StreaksController,
+    private val timeZonesController: TimeZonesController,
 ) {
     private val dao = db.streakPetDao()
     private val taskDao = db.streakPetTaskDao()
@@ -76,6 +79,9 @@ class StreakPetsController(
     suspend fun get(accountId: Int, peerUserId: Long): StreakPet? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
+    suspend fun exists(accountId: Int, peerUserId: Long): Boolean =
+        dao.exists(UserConfig.getInstance(accountId).clientUserId, peerUserId)
+
     fun isFabEnabled(accountId: Int, peerUserId: Long): Boolean? =
         dao.isFabEnabled(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
@@ -106,16 +112,20 @@ class StreakPetsController(
     suspend fun getViewStateSnapshot(
         accountId: Int,
         peerUserId: Long,
-        day: LocalDate = LocalDate.now(),
+        day: LocalDate? = null,
     ): ViewStateSnapshot? {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val pet = dao.findByRelation(ownerUserId, peerUserId) ?: return null
 
-        val taskByType = taskDao.findAllByRelationAndDay(ownerUserId, peerUserId, day)
-            .associateBy { it.type }
-            .toMutableMap()
+        val timeZone = pet.timeZone
+        val resolvedDay = day ?: LocalDate.now(timeZone)
 
-        StreakPetTask.getNewTasksList(ownerUserId, peerUserId, day)
+        val taskByType =
+            taskDao.findAllByRelationAndDay(ownerUserId, peerUserId, resolvedDay)
+                .associateBy { it.type }
+                .toMutableMap()
+
+        StreakPetTask.getNewTasksList(ownerUserId, peerUserId, resolvedDay)
             .forEach { taskByType.putIfAbsent(it.type, it) }
 
         val messagesController = MessagesController.getInstance(accountId)
@@ -146,9 +156,12 @@ class StreakPetsController(
 
         val sourcePet = dao.findByRelation(ownerUserId, peerUserId)!!
         val name = sourcePet.name
+        val timeZone = timeZonesController.get(ownerUserId, peerUserId)
 
-        val startDay = LocalDate.now()
-        val endDay = streaksController.get(accountId, peerUserId)!!.createdAt
+        val streak = streaksController.get(accountId, peerUserId)!!
+
+        val startDay = LocalDate.now(timeZone)
+        val endDay = streak.createdAt.toLocalDate(timeZone)
 
         var currentDay = startDay
 
@@ -162,6 +175,7 @@ class StreakPetsController(
             val messages = cachedFetcher.fetchRawMessages(
                 accountId,
                 peerUserId,
+                timeZone,
                 currentDay,
                 maxPerSide,
                 maxPerSide
@@ -170,6 +184,7 @@ class StreakPetsController(
                     remoteFetcher.fetchRawMessages(
                         accountId,
                         peerUserId,
+                        timeZone,
                         currentDay,
                         maxPerSide,
                         maxPerSide
@@ -235,10 +250,11 @@ class StreakPetsController(
         val targetPet = StreakPet(
             ownerUserId,
             peerUserId,
-            endDay,
-            startDay,
+            streak.createdAt,
+            startDay.toInstant(timeZone),
             name,
-            points
+            points,
+            timeZone = timeZone
         )
 
         db.withTransaction {
@@ -317,9 +333,10 @@ class StreakPetsController(
         notCompletedTasks: List<StreakPetTask>
     ) {
         var currentPet = streakPet
+        val timeZone = streakPet.timeZone
 
-        val lastCheckedDay = currentPet.lastCheckedAt
-        val now = LocalDate.now()
+        val lastCheckedDay = currentPet.lastCheckedAt.toLocalDate(timeZone)
+        val now = LocalDate.now(timeZone)
 
         val peerUserId = currentPet.peerUserId
 
@@ -334,7 +351,7 @@ class StreakPetsController(
                 break
 
             val fromOwnerMax = notCompletedTasks
-                .filter { it.createdAt == currentDay }
+                .filter { it.createdDate == currentDay }
                 .sumOf {
                     when (it.payload) {
                         is StreakPetTaskPayload.ExchangeOneMessage -> it.payload.remainingFromOwner
@@ -344,7 +361,7 @@ class StreakPetsController(
                 }
 
             val fromPeerMax = notCompletedTasks
-                .filter { it.createdAt == currentDay }
+                .filter { it.createdDate == currentDay }
                 .sumOf {
                     when (it.payload) {
                         is StreakPetTaskPayload.ExchangeOneMessage -> it.payload.remainingFromPeer
@@ -356,6 +373,7 @@ class StreakPetsController(
             val messages = cachedFetcher.fetchRawMessages(
                 accountId,
                 peerUserId,
+                timeZone,
                 currentDay,
                 fromOwnerMax,
                 fromPeerMax
@@ -364,6 +382,7 @@ class StreakPetsController(
                     remoteFetcher.fetchRawMessages(
                         accountId,
                         peerUserId,
+                        timeZone,
                         currentDay,
                         fromOwnerMax,
                         fromPeerMax
@@ -407,7 +426,7 @@ class StreakPetsController(
             }
 
             for (task in notCompletedTasks) {
-                if (task.createdAt != currentDay)
+                if (task.createdDate != currentDay)
                     continue
 
                 val payload = when (task.type) {
@@ -457,27 +476,41 @@ class StreakPetsController(
                     dao.deleteByRelation(ownerUserId, peerUserId)
                     taskDao.deleteByRelation(ownerUserId, peerUserId)
                 } else {
-                    dao.update(copy(lastCheckedAt = now, points = this.points + points))
+                    dao.update(
+                        copy(
+                            lastCheckedAt = now.toInstant(timeZone),
+                            points = this.points + points
+                        )
+                    )
                     tasks.forEach { taskDao.insertOrUpdateAll(it) }
                 }
             }
         }
     }
 
+    // todo: create invites table to check skipped updates with invite accept
     suspend fun checkAllForUpdates(accountId: Int) {
-        val now = LocalDate.now()
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val streakPets = dao.findAllByOwnerUserId(ownerUserId)
 
         for (streakPet in streakPets) {
+            val timeZone = streakPet.timeZone
+            val now = LocalDate.now(timeZone)
+
             try {
                 if (
-                    taskDao.findAllByRelationAndDay(ownerUserId, streakPet.peerUserId, now)
-                        .isEmpty()
+                    taskDao.findAllByRelationAndDay(
+                        ownerUserId,
+                        streakPet.peerUserId,
+                        now
+                    ).isEmpty()
                 ) {
                     taskDao.insertIfNotExistsAll(
-                        *StreakPetTask.getNewTasksList(ownerUserId, streakPet.peerUserId, now)
-                            .toTypedArray()
+                        *StreakPetTask.getNewTasksList(
+                            ownerUserId,
+                            streakPet.peerUserId,
+                            now
+                        ).toTypedArray()
                     )
                 }
 
@@ -485,11 +518,11 @@ class StreakPetsController(
                     taskDao.findNotCompletedByRelationAndDay(
                         ownerUserId,
                         streakPet.peerUserId,
-                        streakPet.lastCheckedAt
+                        streakPet.lastCheckedAt.toLocalDate(timeZone)
                     ).toMutableList()
 
                 run {
-                    var currentDay = streakPet.lastCheckedAt.next()
+                    var currentDay = streakPet.lastCheckedAt.toLocalDate(timeZone).next()
 
                     while (true) {
                         if (currentDay > now)
@@ -517,7 +550,7 @@ class StreakPetsController(
     suspend fun handleUpdate(
         accountId: Int,
         peerUserId: Long,
-        at: LocalDate,
+        at: Instant,
         messageId: Int,
         message: String?,
         out: Boolean
@@ -569,8 +602,10 @@ class StreakPetsController(
         if (ServiceMessage.isServiceText(message))
             return
 
-        val now = LocalDate.now()
-        val targetDay = if (at > now) now else at
+        val timeZone = streakPet.timeZone
+        val now = LocalDate.now(timeZone)
+        val atDay = at.toLocalDate(timeZone)
+        val targetDay = if (atDay > now) now else atDay
 
         val tasksByType = taskDao.findAllByRelationAndDay(
             ownerUserId,
@@ -593,7 +628,7 @@ class StreakPetsController(
 
         val backfillTasks = mutableListOf<StreakPetTask>()
         run {
-            var currentDay = streakPet.lastCheckedAt.next()
+            var currentDay = streakPet.lastCheckedAt.toLocalDate(timeZone).next()
 
             while (true) {
                 if (currentDay > targetDay)
@@ -666,7 +701,7 @@ class StreakPetsController(
             }
         }
 
-        val lastCheckedAt = maxOf(streakPet.lastCheckedAt, targetDay)
+        val lastCheckedAt = maxOf(streakPet.lastCheckedAt.toLocalDate(timeZone), targetDay)
 
         val pointsToAdd =
             if (updatedTask?.isCompleted == true)
@@ -674,7 +709,9 @@ class StreakPetsController(
             else
                 0
 
-        if (updatedTask == null && backfillTasks.isEmpty() && lastCheckedAt == streakPet.lastCheckedAt)
+        if (updatedTask == null && backfillTasks.isEmpty() &&
+            lastCheckedAt == streakPet.lastCheckedAt.toLocalDate(timeZone)
+        )
             return
 
         db.withTransaction {
@@ -686,7 +723,7 @@ class StreakPetsController(
 
             dao.update(
                 streakPet.copy(
-                    lastCheckedAt = lastCheckedAt,
+                    lastCheckedAt = lastCheckedAt.toInstant(timeZone),
                     points = streakPet.points + pointsToAdd
                 )
             )
@@ -699,12 +736,15 @@ class StreakPetsController(
     suspend fun create(
         accountId: Int,
         peerUserId: Long,
-        at: LocalDate = LocalDate.now(),
+        at: Instant = Clock.System.now(),
         byInvite: Boolean = false
     ): Boolean {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
         dao.findByRelation(ownerUserId, peerUserId)?.let { return false }
+
+        val timeZone = timeZonesController.get(ownerUserId, peerUserId)
+        val atDay = at.toLocalDate(timeZone)
 
         val messagesController = MessagesController.getInstance(accountId)
         val ownerUser = messagesController.getUser(ownerUserId)
@@ -713,19 +753,20 @@ class StreakPetsController(
         val streakPet = StreakPet(
             ownerUserId,
             peerUserId,
-            at,
-            at,
+            atDay.toInstant(timeZone),
+            atDay.toInstant(timeZone),
             "${ownerUser.label}&${peerUser.label}",
-            0
+            0,
+            timeZone = timeZone
         )
 
         db.withTransaction {
             dao.insert(streakPet)
 
-            var currentDay = at
+            var currentDay = atDay
 
             while (true) {
-                if (currentDay > LocalDate.now())
+                if (currentDay > LocalDate.now(timeZone))
                     break
 
                 StreakPetTask.getNewTasksList(ownerUserId, peerUserId, currentDay)

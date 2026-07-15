@@ -1,16 +1,15 @@
 package ru.n08i40k.streaks.controller
 
 import androidx.room.withTransaction
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
-import org.telegram.tgnet.ConnectionsManager
-import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.chat_history_fetcher.CachedChatHistoryFetcher
@@ -18,9 +17,6 @@ import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.data.Streak
-import ru.n08i40k.streaks.data.StreakActivityCache
-import ru.n08i40k.streaks.data.StreakActivityStatus
-import ru.n08i40k.streaks.data.StreakManualRevive
 import ru.n08i40k.streaks.data.StreakRevive
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.PluginDatabase
@@ -30,7 +26,6 @@ import ru.n08i40k.streaks.exception.InvalidPeerException
 import ru.n08i40k.streaks.extension.PeerType
 import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.getPeerType
-import ru.n08i40k.streaks.extension.isPeerIdInvalid
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.isPeerValidOrBot
 import ru.n08i40k.streaks.extension.label
@@ -39,22 +34,24 @@ import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.now
 import ru.n08i40k.streaks.extension.plusDays
 import ru.n08i40k.streaks.extension.prev
-import ru.n08i40k.streaks.extension.toEpochSecondSystem
-import ru.n08i40k.streaks.extension.toEpochSecondUtc
+import ru.n08i40k.streaks.extension.toEpochSeconds
+import ru.n08i40k.streaks.extension.toInstant
+import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
-import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.fetchPeerUsers
-import kotlinx.datetime.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 
 @OptIn(DelicateCoroutinesApi::class)
 class StreaksController(
     private val db: PluginDatabase,
+    private val timeZonesController: TimeZonesController,
     resourcesProvider: ResourcesProvider,
 ) {
     companion object {
@@ -71,8 +68,8 @@ class StreaksController(
     )
 
     data class CalendarInteractionSnapshot(
+        val timeZone: TimeZone,
         val streak: Streak?,
-        val cachedActivity: List<StreakActivityCache>,
         val revivedDays: Set<LocalDate>,
         val manualRevivesUsed: Int,
     )
@@ -105,52 +102,32 @@ class StreaksController(
     private val remoteFetcher: ChatHistoryFetcher = RemoteChatHistoryFetcher()
     private val streakPopupController = StreakPopupController(db, resourcesProvider)
 
-    private val activityCacheDao = db.streakActivityCacheDao()
     private val dao = db.streakDao()
-    private val manualReviveDao = db.streakManualReviveDao()
     private val reviveDao = db.streakReviveDao()
 
-    private suspend fun loadEffectiveRevivedDays(
+    private suspend fun loadManualRevives(
         ownerUserId: Long,
         peerUserId: Long,
-        cachedActivity: List<StreakActivityCache>,
-    ): Set<LocalDate> =
-        buildSet {
-            reviveDao.findByRelation(ownerUserId, peerUserId)
-                .mapTo(this) { it.revivedAt }
-            manualReviveDao.findByRelation(ownerUserId, peerUserId)
-                .mapTo(this) { it.revivedAt }
-            cachedActivity.filter { it.wasRevived }
-                .mapTo(this) { it.day }
-        }
+        timeZone: TimeZone,
+    ): List<StreakRevive> =
+        reviveDao.findManualByRelation(ownerUserId, peerUserId)
+            .map { it.copy(reviveDate = it.revivedAt.toLocalDate(timeZone)) }
 
-    private suspend fun loadReviveDates(
+    private suspend fun persistAutoRevives(
         ownerUserId: Long,
         peerUserId: Long,
-    ): MutableSet<LocalDate> =
-        buildSet {
-            reviveDao.findByRelation(ownerUserId, peerUserId)
-                .mapTo(this) { it.revivedAt }
-            manualReviveDao.findByRelation(ownerUserId, peerUserId)
-                .mapTo(this) { it.revivedAt }
-        }.toMutableSet()
+        timeZone: TimeZone,
+        reviveDates: Set<LocalDate>,
+        manualDates: Set<LocalDate>,
+    ) {
+        val autos = reviveDates.asSequence()
+            .filterNot { it in manualDates }
+            .map { StreakRevive(ownerUserId, peerUserId, it, it.toInstant(timeZone), manual = false) }
+            .toList()
 
-    private fun isBoth(
-        activityByDay: Map<LocalDate, StreakActivityStatus>,
-        day: LocalDate,
-    ): Boolean = activityByDay[day] == StreakActivityStatus.BOTH
-
-    private fun isAliveLike(
-        activityByDay: Map<LocalDate, StreakActivityStatus>,
-        revivedDays: Set<LocalDate>,
-        day: LocalDate,
-    ): Boolean = isBoth(activityByDay, day) || revivedDays.contains(day)
-
-    private fun isDead(
-        activityByDay: Map<LocalDate, StreakActivityStatus>,
-        revivedDays: Set<LocalDate>,
-        day: LocalDate,
-    ): Boolean = !isBoth(activityByDay, day) && !revivedDays.contains(day.next())
+        if (autos.isNotEmpty())
+            reviveDao.insertAll(autos)
+    }
 
     private suspend fun removeInvalidPeerStreak(accountId: Int, peerUserId: Long) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
@@ -159,8 +136,6 @@ class StreaksController(
             val streak = dao.findByRelation(ownerUserId, peerUserId)
 
             dao.deleteByRelation(ownerUserId, peerUserId)
-            activityCacheDao.deleteByRelation(accountId, peerUserId)
-            manualReviveDao.deleteByRelation(ownerUserId, peerUserId)
 
             streak?.let {
                 EventBus.emit(
@@ -178,106 +153,6 @@ class StreaksController(
 
     fun isRebuildRunning(): Boolean =
         rebuildLock.get()
-
-    private fun buildStreak(
-        ownerUserId: Long,
-        peerUserId: Long,
-        length: Int,
-        updateFromOwnerAt: LocalDate,
-        updateFromPeerAt: LocalDate,
-        revivesCount: Int = 0,
-        deathNotified: Boolean = false,
-    ): Streak {
-        val minUpdateAt = minOf(updateFromOwnerAt, updateFromPeerAt)
-
-        val createdAt =
-            minUpdateAt.minusDays((length + revivesCount - 1).toLong().coerceAtLeast(0L))
-
-        return Streak(
-            ownerUserId,
-            peerUserId,
-            createdAt,
-            updateFromOwnerAt,
-            updateFromPeerAt,
-            revivesCount,
-            deathNotified,
-        )
-    }
-
-    private fun normalizeStatus(status: ChatHistoryFetcher.Status): StreakActivityStatus =
-        StreakActivityStatus.fromFetcherStatus(status)
-
-    private suspend fun upsertActivityCache(
-        accountId: Int,
-        peerUserId: Long,
-        day: LocalDate,
-        status: ChatHistoryFetcher.Status,
-    ) {
-        upsertActivityCache(
-            accountId,
-            peerUserId,
-            day,
-            normalizeStatus(status),
-            status.wasRevived
-        )
-    }
-
-    private suspend fun upsertActivityCache(
-        accountId: Int,
-        peerUserId: Long,
-        day: LocalDate,
-        status: StreakActivityStatus,
-        wasRevived: Boolean,
-    ) {
-        activityCacheDao.insertOrReplace(
-            StreakActivityCache(
-                accountId = accountId,
-                peerUserId = peerUserId,
-                day = day,
-                status = status.code,
-                wasRevived = wasRevived,
-                updatedAtEpochMs = System.currentTimeMillis(),
-            )
-        )
-    }
-
-    private suspend fun mergeActivityCacheFromUpdate(
-        accountId: Int,
-        peerUserId: Long,
-        at: LocalDate,
-        out: Boolean,
-        message: String?,
-    ) {
-        val existing = activityCacheDao.findByRelationAndDay(accountId, peerUserId, at)
-
-        if (message == ServiceMessage.RESTORE_TEXT) {
-            upsertActivityCache(
-                accountId,
-                peerUserId,
-                at,
-                existing?.let { StreakActivityStatus.fromCode(it.status) }
-                    ?: StreakActivityStatus.NO_ACTIVITY,
-                true
-            )
-            return
-        }
-
-        if (ServiceMessage.isServiceText(message))
-            return
-
-        val mergedStatus =
-            existing?.let { StreakActivityStatus.fromCode(it.status) }
-                ?.mergeMessage(out)
-                ?: StreakActivityStatus.NO_ACTIVITY.mergeMessage(out)
-
-        upsertActivityCache(
-            accountId,
-            peerUserId,
-            at,
-            mergedStatus,
-            existing?.wasRevived ?: false
-        )
-    }
 
     private fun resolveDialogId(dialog: TLRPC.Dialog): Long {
         var dialogId = dialog.id
@@ -337,85 +212,76 @@ class StreaksController(
         REVIVE,
     }
 
+    private data class DayResult(
+        val action: Action,
+        val lastOwnerAt: Instant?,
+        val lastPeerAt: Instant?,
+    )
+
     private suspend fun fetchStreakActionForDay(
         accountId: Int,
         peerUser: TLRPC.User,
+        timeZone: TimeZone,
         day: LocalDate,
         revives: Set<LocalDate>,
         untilRevive: Boolean
-    ): Action {
-        if (revives.contains(day)) {
-            val existingStatus =
-                activityCacheDao.findByRelationAndDay(accountId, peerUser.id, day)
-                    ?.let { StreakActivityStatus.fromCode(it.status) }
-                    ?: StreakActivityStatus.NO_ACTIVITY
+    ): DayResult {
+        if (revives.contains(day))
+            return DayResult(Action.REVIVE, null, null)
 
-            upsertActivityCache(
-                accountId,
-                peerUser.id,
-                day,
-                existingStatus,
-                true
-            )
-            return Action.REVIVE
-        }
+        val local = cachedFetcher.fetchActivity(
+            accountId,
+            peerUser.id,
+            timeZone,
+            day,
+            untilRevive
+        )
 
-        when (val status =
-            cachedFetcher.fetchActivity(accountId, peerUser.id, day, untilRevive)) {
+        when (local.status) {
             is ChatHistoryFetcher.Status.FromBoth -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
-
-                if (status.wasRevived)
-                    return Action.REVIVE
+                if (local.status.wasRevived)
+                    return DayResult(Action.REVIVE, local.lastOwnerAt, local.lastPeerAt)
 
                 if (!untilRevive)
-                    return Action.GROW
+                    return DayResult(Action.GROW, local.lastOwnerAt, local.lastPeerAt)
             }
 
-            is ChatHistoryFetcher.Status.FromOwner -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
+            is ChatHistoryFetcher.Status.FromOwner ->
+                if (local.status.wasRevived)
+                    return DayResult(Action.REVIVE, local.lastOwnerAt, local.lastPeerAt)
 
-                if (status.wasRevived)
-                    return Action.REVIVE
-            }
+            is ChatHistoryFetcher.Status.FromPeer ->
+                if (local.status.wasRevived)
+                    return DayResult(Action.REVIVE, local.lastOwnerAt, local.lastPeerAt)
 
-            is ChatHistoryFetcher.Status.FromPeer -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
-
-                if (status.wasRevived)
-                    return Action.REVIVE
-            }
-
-            is ChatHistoryFetcher.Status.NoActivity -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
-
-                if (status.wasRevived)
-                    return Action.REVIVE
-            }
+            is ChatHistoryFetcher.Status.NoActivity ->
+                if (local.status.wasRevived)
+                    return DayResult(Action.REVIVE, local.lastOwnerAt, local.lastPeerAt)
         }
 
-        return when (val status =
-            remoteFetcher.fetchActivity(accountId, peerUser.id, day, untilRevive)) {
-            is ChatHistoryFetcher.Status.FromBoth -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
-                if (status.wasRevived) Action.REVIVE else Action.GROW
-            }
+        val remote = remoteFetcher.fetchActivity(
+            accountId,
+            peerUser.id,
+            timeZone,
+            day,
+            untilRevive
+        )
 
-            is ChatHistoryFetcher.Status.FromOwner -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
-                if (status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
-            }
+        val action = when (remote.status) {
+            is ChatHistoryFetcher.Status.FromBoth ->
+                if (remote.status.wasRevived) Action.REVIVE else Action.GROW
 
-            is ChatHistoryFetcher.Status.FromPeer -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
-                if (status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER
-            }
+            is ChatHistoryFetcher.Status.FromOwner ->
+                if (remote.status.wasRevived) Action.REVIVE else Action.KILL_BY_PEER
 
-            is ChatHistoryFetcher.Status.NoActivity -> {
-                upsertActivityCache(accountId, peerUser.id, day, status)
-                if (status.wasRevived) Action.REVIVE else Action.KILL
-            }
+            is ChatHistoryFetcher.Status.FromPeer ->
+                if (remote.status.wasRevived) Action.REVIVE else Action.KILL_BY_OWNER
+
+            is ChatHistoryFetcher.Status.NoActivity ->
+                if (remote.status.wasRevived) Action.REVIVE else Action.KILL
         }
+
+        return DayResult(action, remote.lastOwnerAt, remote.lastPeerAt)
     }
 
     // lock and user-facing feedback (notifications, rebuild sheet) are handled by rebuildWithFeedback;
@@ -429,23 +295,29 @@ class StreaksController(
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
             val peerUserId = peerUser.id
 
-            val revives = loadReviveDates(ownerUserId, peerUserId)
+            val timeZone = timeZonesController.get(ownerUserId, peerUserId)
 
-            val startDay = LocalDate.now()
-            var currentDay = LocalDate.now()
+            val manualRevives = loadManualRevives(ownerUserId, peerUserId, timeZone)
+            val manualDates = manualRevives.mapTo(mutableSetOf()) { it.reviveDate }
+            val revives = manualDates.toMutableSet()
+
+            val startDay = LocalDate.now(timeZone)
+            var currentDay = LocalDate.now(timeZone)
 
             var startDayIsFrozen = false
 
             while (true) {
                 val checkedDay = currentDay
-                val action =
-                    fetchStreakActionForDay(
-                        accountId,
-                        peerUser,
-                        checkedDay,
-                        revives,
-                        false
-                    )
+
+                val action = fetchStreakActionForDay(
+                    accountId,
+                    peerUser,
+                    timeZone,
+                    checkedDay,
+                    revives,
+                    false
+                ).action
+
                 Logger.info("[StreakRebuild] $action at ${currentDay.fmt()} for $accountId:$peerUserId")
 
                 val progress = RebuildProgress(
@@ -464,14 +336,16 @@ class StreaksController(
                         // если проверяемый день текущий и может быть зафриженным
                         if (checkedDay == startDay) {
                             // revive может быть и сегодня
-                            if (fetchStreakActionForDay(
-                                    accountId,
-                                    peerUser,
-                                    checkedDay,
-                                    revives,
-                                    true
-                                ) == Action.REVIVE
-                            ) {
+                            val action = fetchStreakActionForDay(
+                                accountId,
+                                peerUser,
+                                timeZone,
+                                checkedDay,
+                                revives,
+                                true
+                            ).action
+
+                            if (action == Action.REVIVE) {
                                 Logger.info("[StreakRebuild] First-day-revive at ${currentDay.fmt()} for $accountId:$peerUserId")
                                 revives.add(checkedDay)
                                 currentDay = checkedDay.minusDays(2)
@@ -486,10 +360,11 @@ class StreaksController(
                             val action = fetchStreakActionForDay(
                                 accountId,
                                 peerUser,
+                                timeZone,
                                 checkedDay.next(),
                                 revives,
                                 true
-                            )
+                            ).action
 
                             Logger.info(
                                 "[StreakRebuild] Checking if next day was revive. $action at ${
@@ -533,13 +408,17 @@ class StreaksController(
                     dao.deleteByRelation(ownerUserId, peerUserId)
                 }
 
-                sourceStreak?.let {
-                    if (it.isVisible) {
+                sourceStreak
+                    ?.takeIf { it.isVisible }
+                    ?.let {
                         EventBus.emit(
-                            PluginEvent.StreakDeletedEvent(accountId, Clock.System.now(), it)
+                            PluginEvent.StreakDeletedEvent(
+                                accountId,
+                                Clock.System.now(),
+                                it
+                            )
                         )
                     }
-                }
 
                 return
             }
@@ -547,21 +426,33 @@ class StreaksController(
             var sourceStreak: Streak? =
                 null
 
+            val boundaryTo =
+                fetchStreakActionForDay(accountId, peerUser, timeZone, rebuildTo, revives, false)
+            val boundaryFrom =
+                if (rebuildFrom == rebuildTo) boundaryTo
+                else fetchStreakActionForDay(accountId, peerUser, timeZone, rebuildFrom, revives, false)
+
+            val createdAt =
+                listOfNotNull(boundaryFrom.lastOwnerAt, boundaryFrom.lastPeerAt).minOrNull()
+                    ?: rebuildFrom.toInstant(timeZone)
+
             val targetStreak =
                 Streak(
                     ownerUserId,
                     peerUserId,
-                    rebuildFrom,
-                    rebuildTo,
-                    rebuildTo,
-                    revives.size
+                    createdAt,
+                    boundaryTo.lastOwnerAt ?: rebuildTo.toInstant(timeZone),
+                    boundaryTo.lastPeerAt ?: rebuildTo.toInstant(timeZone),
+                    revives.size,
+                    timeZone = timeZone
                 )
 
             db.withTransaction {
                 sourceStreak = dao.findByRelation(ownerUserId, peerUserId)
 
                 dao.insertOrReplace(targetStreak)
-                reviveDao.insertAll(revives.map { StreakRevive(ownerUserId, peerUserId, it) })
+                reviveDao.insertAll(manualRevives)
+                persistAutoRevives(ownerUserId, peerUserId, timeZone, revives, manualDates)
             }
 
             EventBus.emit(
@@ -643,9 +534,14 @@ class StreaksController(
         streak: Streak,
         onProgressUpdate: ((daysChecked: Int, totalDays: Int) -> Unit)? = null,
     ) {
-        val now = LocalDate.now()
+        val timeZone = streak.timeZone
 
-        if (streak.updateFromOwnerAt == streak.updateFromPeerAt && streak.updateFromPeerAt == now)
+        val now = LocalDate.now(timeZone)
+
+        val updateFromOwnerDay = streak.updateFromOwnerAt.toLocalDate(timeZone)
+        val updateFromPeerDay = streak.updateFromPeerAt.toLocalDate(timeZone)
+
+        if (updateFromOwnerDay == updateFromPeerDay && updateFromPeerDay == now)
             return
 
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
@@ -654,38 +550,51 @@ class StreaksController(
         val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return
 
         // if last checked day is active, check next
-        var currentDay = minOf(
-            streak.updateFromOwnerAt,
-            streak.updateFromPeerAt,
-        ).let {
-            if (streak.updateFromOwnerAt == streak.updateFromPeerAt)
-                it.next()
-            else
-                it
-        }
+        var currentDay = minOf(updateFromOwnerDay, updateFromPeerDay)
+            .let {
+                if (updateFromOwnerDay == updateFromPeerDay)
+                    it.next()
+                else
+                    it
+            }
 
         val startDay = currentDay
-        val totalDays = (now.toEpochDays() - startDay.toEpochDays() + 1L).coerceAtLeast(0L).toInt()
+
+        val totalDays = (now.toEpochDays() - startDay.toEpochDays() + 1L)
+            .coerceAtLeast(0L)
+            .toInt()
 
         // TODO: rename
         var dynStreak = streak
 
+        val manualDates = reviveDao.findManualByRelation(ownerUserId, peerUserId)
+            .mapTo(mutableSetOf()) { it.reviveDate }
         val revives = reviveDao.findByRelation(ownerUserId, peerUserId)
-            .map { it.revivedAt }
-            .toMutableSet()
+            .mapTo(mutableSetOf()) { it.reviveDate }
 
         while (true) {
             if (currentDay > now)
                 break
 
-            when (val action =
-                fetchStreakActionForDay(accountId, peerUser, currentDay, revives, false)) {
+            val result = fetchStreakActionForDay(
+                accountId,
+                peerUser,
+                timeZone,
+                currentDay,
+                revives,
+                false
+            )
+            val action = result.action
+            val ownerAt = result.lastOwnerAt ?: currentDay.toInstant(timeZone)
+            val peerAt = result.lastPeerAt ?: currentDay.toInstant(timeZone)
+
+            when (action) {
                 Action.GROW -> {
                     dynStreak = dynStreak.copy(
                         deathNotified = false,
                         warningNotified = false,
-                        updateFromOwnerAt = currentDay,
-                        updateFromPeerAt = currentDay
+                        updateFromOwnerAt = ownerAt,
+                        updateFromPeerAt = peerAt
                     )
 
                     currentDay = currentDay.next()
@@ -697,8 +606,8 @@ class StreaksController(
                     dynStreak = dynStreak.copy(
                         deathNotified = false,
                         warningNotified = false,
-                        updateFromOwnerAt = currentDay,
-                        updateFromPeerAt = currentDay,
+                        updateFromOwnerAt = ownerAt,
+                        updateFromPeerAt = peerAt,
                         revivesCount = revives.size
                     )
 
@@ -707,10 +616,15 @@ class StreaksController(
 
                 Action.KILL, Action.KILL_BY_OWNER, Action.KILL_BY_PEER -> {
                     if (currentDay == now) {
-                        if (action == Action.KILL_BY_OWNER)
-                            dynStreak = dynStreak.copy(updateFromPeerAt = currentDay)
-                        else if (action == Action.KILL_BY_PEER)
-                            dynStreak = dynStreak.copy(updateFromOwnerAt = currentDay)
+                        if (action == Action.KILL_BY_OWNER) {
+                            dynStreak = dynStreak.copy(
+                                updateFromPeerAt = peerAt
+                            )
+                        } else if (action == Action.KILL_BY_PEER) {
+                            dynStreak = dynStreak.copy(
+                                updateFromOwnerAt = ownerAt
+                            )
+                        }
 
                         onProgressUpdate?.invoke(totalDays, totalDays)
                         break
@@ -719,10 +633,11 @@ class StreaksController(
                     if (fetchStreakActionForDay(
                             accountId,
                             peerUser,
+                            timeZone,
                             currentDay.next(),
                             revives,
                             true
-                        ) == Action.REVIVE
+                        ).action == Action.REVIVE
                     ) {
                         val reviveDay = currentDay.next()
                         revives.add(reviveDay)
@@ -730,8 +645,8 @@ class StreaksController(
                         dynStreak = dynStreak.copy(
                             deathNotified = false,
                             warningNotified = false,
-                            updateFromOwnerAt = reviveDay,
-                            updateFromPeerAt = reviveDay,
+                            updateFromOwnerAt = reviveDay.toInstant(timeZone),
+                            updateFromPeerAt = reviveDay.toInstant(timeZone),
                             revivesCount = revives.size
                         )
 
@@ -748,14 +663,20 @@ class StreaksController(
 
                         db.withTransaction {
                             dao.update(resStreak)
-                            reviveDao.insertBatch(ownerUserId, peerUserId, revives)
+                            persistAutoRevives(
+                                ownerUserId,
+                                peerUserId,
+                                timeZone,
+                                revives,
+                                manualDates
+                            )
                         }
 
                         if (dynStreak.isVisible && !dynStreak.deathNotified) {
                             EventBus.emit(
                                 PluginEvent.StreakLostEvent(
                                     accountId,
-                                    Clock.System.now(), // TODO: extract from?
+                                    currentDay.toInstant(timeZone),
                                     resStreak
                                 )
                             )
@@ -767,7 +688,7 @@ class StreaksController(
                             EventBus.emit(
                                 PluginEvent.StreakDeletedEvent(
                                     accountId,
-                                    Clock.System.now(), // TODO: extract from?
+                                    currentDay.toInstant(timeZone),
                                     dynStreak
                                 )
                             )
@@ -788,8 +709,12 @@ class StreaksController(
                 dynStreak.updateFromPeerAt != streak.updateFromPeerAt ||
                 dynStreak.revivesCount != streak.revivesCount
 
-        val lastActiveDay = minOf(dynStreak.updateFromOwnerAt, dynStreak.updateFromPeerAt)
-        val deathEpochSeconds = lastActiveDay.plusDays(2).toEpochSecondSystem()
+        val lastActiveDay = minOf(
+            dynStreak.updateFromOwnerAt.toLocalDate(timeZone),
+            dynStreak.updateFromPeerAt.toLocalDate(timeZone)
+        )
+
+        val deathEpochSeconds = lastActiveDay.plusDays(2).toEpochSeconds(timeZone)
         val timeUntilDeathSeconds = deathEpochSeconds - System.currentTimeMillis() / 1000L
         val isInWarningWindow = timeUntilDeathSeconds in 1..(8 * 3600)
 
@@ -797,7 +722,7 @@ class StreaksController(
 
         db.withTransaction {
             dao.update(dynStreak)
-            reviveDao.insertBatch(ownerUserId, peerUserId, revives)
+            persistAutoRevives(ownerUserId, peerUserId, timeZone, revives, manualDates)
         }
 
         if (streakGrew) {
@@ -850,13 +775,11 @@ class StreaksController(
     suspend fun handleUpdate(
         accountId: Int,
         peerUserId: Long,
-        at: LocalDate,
+        at: Instant,
         out: Boolean,
         message: String?,
         sendServiceMessages: Boolean = true
     ) {
-        val now = minOf(at, LocalDate.now())
-
         val peerType = getPeerType(accountId, peerUserId)
 
         // ignore invalid peers
@@ -866,31 +789,32 @@ class StreaksController(
 
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
-        mergeActivityCacheFromUpdate(accountId, peerUserId, now, out, message)
-
         val streak = get(accountId, peerUserId) ?: run {
             // forbid streak creation for bots
             if (peerType == PeerType.BOT)
                 return
 
-            val updateFromOwnerAt: LocalDate
-            val updateFromPeerAt: LocalDate
+            val timeZone = timeZonesController.get(ownerUserId, peerUserId)
+
+            val updateFromOwnerAt: Instant
+            val updateFromPeerAt: Instant
 
             if (out) {
-                updateFromOwnerAt = now
-                updateFromPeerAt = now.prev()
+                updateFromOwnerAt = at
+                updateFromPeerAt = at.minus(1.days)
             } else {
-                updateFromOwnerAt = now.prev()
-                updateFromPeerAt = now
+                updateFromOwnerAt = at.minus(1.days)
+                updateFromPeerAt = at
             }
 
             val streak = Streak(
                 ownerUserId,
                 peerUserId,
-                now,
+                at,
                 updateFromOwnerAt,
                 updateFromPeerAt,
-                0
+                0,
+                timeZone = timeZone
             )
 
             dao.insert(streak)
@@ -898,7 +822,7 @@ class StreaksController(
             EventBus.emit(
                 PluginEvent.StreakCreatedEvent(
                     accountId,
-                    Clock.System.now(), // TODO: get from update
+                    at,
                     streak
                 )
             )
@@ -906,17 +830,15 @@ class StreaksController(
             return
         }
 
+        val timeZone = streak.timeZone
+        val now = at.toLocalDate(timeZone)
+
         if (ServiceMessage.isServiceText(message)) {
             // do not handle revives for bots
             if (peerType == PeerType.VALID
                 && message == ServiceMessage.RESTORE_TEXT
                 && streak.canRevive
-            ) revive(
-                accountId,
-                peerUserId,
-                // TODO: extract at from update
-                byPeer = !out
-            )
+            ) revive( accountId, peerUserId, at, !out )
 
             return
         }
@@ -930,7 +852,7 @@ class StreaksController(
             EventBus.emit(
                 PluginEvent.StreakDeletedEvent(
                     accountId,
-                    Clock.System.now(), // TODO: extract from update
+                    at,
                     streak
                 )
             )
@@ -939,11 +861,23 @@ class StreaksController(
         }
 
         if (out) {
-            if (streak.updateFromOwnerAt != now)
-                dao.update(streak.copy(updateFromOwnerAt = now, deathNotified = false))
+            if (streak.updateFromOwnerAt.toLocalDate(timeZone) != now) {
+                dao.update(
+                    streak.copy(
+                        updateFromOwnerAt = at,
+                        deathNotified = false
+                    )
+                )
+            }
         } else {
-            if (streak.updateFromPeerAt != now)
-                dao.update(streak.copy(updateFromPeerAt = now, deathNotified = false))
+            if (streak.updateFromPeerAt.toLocalDate(timeZone) != now) {
+                dao.update(
+                    streak.copy(
+                        updateFromPeerAt = at,
+                        deathNotified = false
+                    )
+                )
+            }
         }
 
         dao.findByRelation(ownerUserId, peerUserId)!!
@@ -952,7 +886,7 @@ class StreaksController(
                 EventBus.emit(
                     PluginEvent.StreakGrowUpEvent(
                         accountId,
-                        Clock.System.now(), // TODO: extract from update
+                        at,
                         streak,
                         it
                     )
@@ -976,14 +910,18 @@ class StreaksController(
         peerUserId: Long,
     ): CalendarInteractionSnapshot {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val cachedActivity = activityCacheDao.findByRelation(accountId, peerUserId)
-        val manualRevives = manualReviveDao.findByRelation(ownerUserId, peerUserId)
+
+        val streak = dao.findByRelation(ownerUserId, peerUserId)
+        val timeZone = streak?.timeZone
+            ?: timeZonesController.get(ownerUserId, peerUserId)
+
+        val revives = reviveDao.findByRelation(ownerUserId, peerUserId)
 
         return CalendarInteractionSnapshot(
-            streak = dao.findByRelation(ownerUserId, peerUserId),
-            cachedActivity = cachedActivity,
-            revivedDays = loadEffectiveRevivedDays(ownerUserId, peerUserId, cachedActivity),
-            manualRevivesUsed = manualRevives.size,
+            timeZone = timeZone,
+            streak = streak,
+            revivedDays = revives.mapTo(mutableSetOf()) { it.reviveDate },
+            manualRevivesUsed = revives.count { it.manual },
         )
     }
 
@@ -991,59 +929,31 @@ class StreaksController(
         accountId: Int,
         peerUserId: Long,
         day: LocalDate,
-    ): CalendarTapDecision {
-        val snapshot = getCalendarInteractionSnapshot(accountId, peerUserId)
-        if (snapshot.streak?.createdAt?.let { day < it } == true) {
+    ): CalendarTapDecision = with(getCalendarInteractionSnapshot(accountId, peerUserId)) {
+        val streak = streak ?: return CalendarTapDecision.Ignore
+
+        if (revivedDays.contains(day))
             return CalendarTapDecision.Ignore
-        }
 
-        val activityByDay =
-            snapshot.cachedActivity.associate { it.day to StreakActivityStatus.fromCode(it.status) }
-        val revivedDays = snapshot.revivedDays
+        val streakStart = streak.createdAt.toLocalDate(timeZone)
+        val lastAliveDay = minOf(
+            streak.updateFromOwnerAt.toLocalDate(timeZone),
+            streak.updateFromPeerAt.toLocalDate(timeZone),
+        )
 
-        val currentDayRevived = revivedDays.contains(day)
-        if (currentDayRevived) {
+        if (day in streakStart..lastAliveDay)
             return CalendarTapDecision.Ignore
-        }
 
-        val previousDay = day.prev()
-        val nextDay = day.next()
-        val currentDayBoth = isBoth(activityByDay, day)
-        val previousDayBoth = isBoth(activityByDay, previousDay)
-
-        if (currentDayBoth && previousDayBoth) {
+        if (day >= streakStart)
             return CalendarTapDecision.Ignore
-        }
 
-        val previousDayAliveLike = isAliveLike(activityByDay, revivedDays, previousDay)
-        val nextDayRevived = revivedDays.contains(nextDay)
-        val currentDayDead = isDead(activityByDay, revivedDays, day)
-        val previousDayDead = isDead(activityByDay, revivedDays, previousDay)
-
-        fun actionableDecision(
-            reason: CalendarTapDecision.Reason,
-        ): CalendarTapDecision =
-            if (snapshot.manualRevivesUsed >= MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT) {
-                CalendarTapDecision.LimitReached
-            } else {
-                CalendarTapDecision.OfferManualRevive(day, reason)
-            }
-
-        if (currentDayBoth && !previousDayAliveLike) {
-            return actionableDecision(
-                CalendarTapDecision.Reason.FIRST_LIVE_DAY_AFTER_UNRESTORED_GAP
+        return if (manualRevivesUsed >= MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT)
+            CalendarTapDecision.LimitReached
+        else
+            CalendarTapDecision.OfferManualRevive(
+                day,
+                CalendarTapDecision.Reason.DEAD_CHAIN_RESTORE,
             )
-        }
-
-        if (currentDayDead && !nextDayRevived && previousDayAliveLike) {
-            return CalendarTapDecision.WarnTapNextDay
-        }
-
-        if (currentDayDead && !nextDayRevived && previousDayDead) {
-            return actionableDecision(CalendarTapDecision.Reason.DEAD_CHAIN_RESTORE)
-        }
-
-        return CalendarTapDecision.Ignore
     }
 
     suspend fun addManualCalendarRevive(
@@ -1052,27 +962,29 @@ class StreaksController(
         day: LocalDate,
     ): AddManualCalendarReviveResult {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+        val timeZone = timeZonesController.get(ownerUserId, peerUserId)
         var result = AddManualCalendarReviveResult.AlreadyExists
 
         db.withTransaction {
-            if (manualReviveDao.exists(ownerUserId, peerUserId, day)) {
+            if (reviveDao.isRevived(ownerUserId, peerUserId, day)) {
                 result = AddManualCalendarReviveResult.AlreadyExists
                 return@withTransaction
             }
 
-            if (manualReviveDao.countByRelation(ownerUserId, peerUserId) >=
+            if (reviveDao.countManualByRelation(ownerUserId, peerUserId) >=
                 MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT
             ) {
                 result = AddManualCalendarReviveResult.LimitReached
                 return@withTransaction
             }
 
-            manualReviveDao.insertIgnore(
-                StreakManualRevive(
+            reviveDao.insert(
+                StreakRevive(
                     ownerUserId = ownerUserId,
                     peerUserId = peerUserId,
-                    revivedAt = day,
-                    createdAtEpochMs = System.currentTimeMillis(),
+                    reviveDate = day,
+                    revivedAt = day.toInstant(timeZone),
+                    manual = true,
                 )
             )
             result = AddManualCalendarReviveResult.Added
@@ -1083,6 +995,9 @@ class StreaksController(
 
     suspend fun get(accountId: Int, peerUserId: Long): Streak? =
         dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
+
+    suspend fun exists(accountId: Int, peerUserId: Long): Boolean =
+        dao.exists(UserConfig.getInstance(accountId).clientUserId, peerUserId)
 
     suspend fun getAllVisible(): List<Streak> = dao.getAll()
         .filter { !it.dead && it.isVisible }
@@ -1095,102 +1010,38 @@ class StreaksController(
     fun getViewDataBlocking(accountId: Int, peerUserId: Long): StreakViewData? =
         runBlocking { getViewData(accountId, peerUserId) }
 
-    suspend fun findStartMessageId(accountId: Int, peerUserId: Long): Int? {
-        val streak = get(accountId, peerUserId) ?: return null
-        val peerUser =
-            MessagesController.getInstance(accountId).getInputPeer(peerUserId) ?: return null
-        val connectionsManager = ConnectionsManager.getInstance(accountId)
+    private fun buildDebugStreak(
+        ownerUserId: Long,
+        peerUserId: Long,
+        length: Int,
+        updateFromOwnerAt: LocalDate,
+        updateFromPeerAt: LocalDate,
+        timeZone: TimeZone,
+        revivesCount: Int = 0,
+        deathNotified: Boolean = false,
+    ): Streak {
+        val minUpdateAt = minOf(updateFromOwnerAt, updateFromPeerAt)
 
-        val startTs = streak.createdAt.toEpochSecondUtc().toInt()
-        val endTs = streak.createdAt.plusDays(1).toEpochSecondUtc().toInt()
+        val createdAt =
+            minUpdateAt.minusDays((length + revivesCount - 1).toLong().coerceAtLeast(0L))
 
-        var offsetId = 0
-        var offsetDate = endTs
-        var firstId = 0
-        var firstDate = 0
-
-        try {
-            while (true) {
-                RuntimeGuard.awaitAppForegroundAndConnection(
-                    accountId,
-                    "streak start lookup for $accountId:$peerUserId",
-                )
-
-                val req = TLRPC.TL_messages_getHistory().apply {
-                    this.peer = peerUser
-                    offset_id = offsetId
-                    offset_date = offsetDate
-                    limit = 100
-                }
-
-                val deferred = CompletableDeferred<Result<TLObject>>()
-
-                connectionsManager.sendRequest(req) { response, error ->
-                    if (error != null) {
-                        val failure =
-                            if (error.isPeerIdInvalid()) {
-                                InvalidPeerException(
-                                    accountId,
-                                    peerUserId,
-                                    "Invalid peer for streak start lookup $accountId:$peerUserId",
-                                    Exception(error.fmt())
-                                )
-                            } else {
-                                RuntimeException(error.text ?: error.toString())
-                            }
-
-                        deferred.complete(Result.failure(failure))
-                    } else {
-                        deferred.complete(
-                            Result.success(
-                                response ?: throw NullPointerException("History response is null")
-                            )
-                        )
-                    }
-                }
-
-                val response = deferred.await().getOrElse { throw it } as? TLRPC.messages_Messages
-                    ?: throw RuntimeException("Unexpected history response type")
-                val messages = response.messages
-
-                if (messages.isEmpty())
-                    break
-
-                for (message in messages) {
-                    val messageDate = message.date
-
-                    if (messageDate !in startTs until endTs)
-                        continue
-
-                    if (
-                        firstId == 0
-                        || messageDate < firstDate
-                        || (messageDate == firstDate && message.id < firstId)
-                    ) {
-                        firstId = message.id
-                        firstDate = messageDate
-                    }
-                }
-
-                val oldest = messages.lastOrNull() ?: break
-                offsetId = oldest.id
-                offsetDate = oldest.date
-
-                if (oldest.date < startTs)
-                    break
-            }
-        } catch (_: InvalidPeerException) {
-            removeInvalidPeerStreak(accountId, peerUserId)
-            return null
-        }
-
-        return firstId.takeIf { it > 0 }
+        return Streak(
+            ownerUserId,
+            peerUserId,
+            createdAt.toInstant(timeZone),
+            updateFromOwnerAt.toInstant(timeZone),
+            updateFromPeerAt.toInstant(timeZone),
+            revivesCount,
+            deathNotified,
+            timeZone = timeZone
+        )
     }
 
     suspend fun debugSetThreeDayStreak(accountId: Int, peerUserId: Long): Int {
-        val now = LocalDate.now()
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val streak = buildStreak(ownerUserId, peerUserId, 3, now, now)
+        val timeZone = timeZonesController.get(ownerUserId, peerUserId)
+        val now = LocalDate.now(timeZone)
+        val streak = buildDebugStreak(ownerUserId, peerUserId, 3, now, now, timeZone)
 
         db.withTransaction {
             dao.deleteByRelation(ownerUserId, peerUserId)
@@ -1218,13 +1069,14 @@ class StreaksController(
             ?.length
             ?: return streak.level.length
 
-        val upgraded = buildStreak(
+        val upgraded = buildDebugStreak(
             streak.ownerUserId,
             streak.peerUserId,
             nextLevelLength,
-            streak.updateFromOwnerAt,
-            streak.updateFromPeerAt,
-            streak.revivesCount,
+            streak.updateFromOwnerAt.toLocalDate(streak.timeZone),
+            streak.updateFromPeerAt.toLocalDate(streak.timeZone),
+            streak.timeZone,
+            revivesCount = streak.revivesCount,
         )
 
         dao.update(upgraded)
@@ -1242,19 +1094,25 @@ class StreaksController(
     }
 
     suspend fun debugFreezeStreak(accountId: Int, peerUserId: Long): Int {
-        val existing = get(accountId, peerUserId)
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val yesterday = LocalDate.now().prev()
+
+        val existing = dao.findByRelation(ownerUserId, peerUserId)
+
+        val timeZone = existing?.timeZone
+            ?: timeZonesController.get(ownerUserId, peerUserId)
+
+        val yesterday = LocalDate.now(timeZone).prev()
         val length = existing?.length ?: 3
         val revivesCount = existing?.revivesCount ?: 0
 
-        val streak = buildStreak(
+        val streak = buildDebugStreak(
             ownerUserId,
             peerUserId,
             length,
             yesterday,
             yesterday,
-            revivesCount,
+            timeZone,
+            revivesCount = revivesCount,
         )
 
         db.withTransaction {
@@ -1274,20 +1132,26 @@ class StreaksController(
     }
 
     suspend fun debugMarkDead(accountId: Int, peerUserId: Long): Int {
-        val existing = get(accountId, peerUserId)
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
-        val deathDay = LocalDate.now().minusDays(2)
+
+        val existing = dao.findByRelation(ownerUserId, peerUserId)
+
+        val timeZone = existing?.timeZone
+            ?: timeZonesController.get(ownerUserId, peerUserId)
+
+        val deathDay = LocalDate.now(timeZone).minusDays(2)
         val length = existing?.length ?: 3
         val revivesCount = existing?.revivesCount ?: 0
 
-        val streak = buildStreak(
+        val streak = buildDebugStreak(
             ownerUserId,
             peerUserId,
             length,
             deathDay,
             deathDay,
-            revivesCount,
-            true,
+            timeZone,
+            revivesCount = revivesCount,
+            deathNotified = true,
         )
 
         db.withTransaction {
@@ -1313,8 +1177,6 @@ class StreaksController(
 
         db.withTransaction {
             dao.deleteByRelation(ownerUserId, peerUserId)
-            activityCacheDao.deleteByRelation(accountId, peerUserId)
-            manualReviveDao.deleteByRelation(ownerUserId, peerUserId)
         }
 
         if (streak != null) {
@@ -1333,7 +1195,7 @@ class StreaksController(
     suspend fun revive(
         accountId: Int,
         peerUserId: Long,
-        @Suppress("unused") at: LocalDate = LocalDate.now(),
+        at: Instant,
         byPeer: Boolean = false
     ): Boolean {
         val streak = get(accountId, peerUserId) ?: return false
@@ -1341,22 +1203,32 @@ class StreaksController(
         if (!streak.canRevive)
             return false
 
-        val now = LocalDate.now()
-
-        val alreadyRevived = reviveDao.isRevived(streak.ownerUserId, streak.peerUserId, now)
+        val reviveDate = at.toLocalDate(streak.timeZone)
+        val alreadyRevived =
+            reviveDao.isRevived(streak.ownerUserId, streak.peerUserId, reviveDate)
 
         db.withTransaction {
             dao.update(
                 streak.copy(
                     revivesCount = if (alreadyRevived) streak.revivesCount else streak.revivesCount + 1,
-                    updateFromOwnerAt = now,
-                    updateFromPeerAt = now,
+                    updateFromOwnerAt = at,
+                    updateFromPeerAt = at,
                     deathNotified = false,
                     warningNotified = false,
                 )
             )
 
-            reviveDao.insert(StreakRevive(streak.ownerUserId, streak.peerUserId, now))
+            if (!alreadyRevived) {
+                reviveDao.insert(
+                    StreakRevive(
+                        streak.ownerUserId,
+                        streak.peerUserId,
+                        reviveDate,
+                        at,
+                        manual = false,
+                    )
+                )
+            }
         }
 
         val revivedStreak = get(accountId, peerUserId)!!
@@ -1364,7 +1236,7 @@ class StreaksController(
         EventBus.emit(
             PluginEvent.StreakRestoredEvent(
                 accountId,
-                Clock.System.now(), // TODO: extract from at
+                at,
                 revivedStreak,
                 byPeer
             )
@@ -1374,20 +1246,12 @@ class StreaksController(
             EventBus.emit(
                 PluginEvent.StreakGrowUpEvent(
                     accountId,
-                    Clock.System.now(), // TODO: extract from at
+                    at,
                     streak,
                     revivedStreak
                 )
             )
         }
-
-        upsertActivityCache(
-            accountId,
-            peerUserId,
-            now,
-            StreakActivityStatus.BOTH,
-            true
-        )
 
         return true
     }

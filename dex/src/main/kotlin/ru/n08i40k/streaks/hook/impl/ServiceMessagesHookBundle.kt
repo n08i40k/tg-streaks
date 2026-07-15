@@ -20,6 +20,7 @@ import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getFieldValue
 import java.util.AbstractMap
+import kotlin.time.Clock
 
 class ServiceMessagesHookBundle : HookBundle() {
     override fun inject(
@@ -305,7 +306,11 @@ class ServiceMessagesHookBundle : HookBundle() {
                             else if !streak.canRevive ->
                                 BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
 
-                            else if !streaksController.revive(accountId, peerUserId) ->
+                            else if !streaksController.revive(
+                                accountId,
+                                peerUserId,
+                                Clock.System.now()
+                            ) ->
                                 BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
                         }
                     }

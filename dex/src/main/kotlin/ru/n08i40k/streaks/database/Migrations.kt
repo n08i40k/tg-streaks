@@ -2,6 +2,10 @@ package ru.n08i40k.streaks.database
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import ru.n08i40k.streaks.extension.rawOffset
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -159,6 +163,184 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
             """
             ALTER TABLE `streak_pet`
             ADD COLUMN `fab_enabled` INTEGER NOT NULL DEFAULT 1
+            """.trimIndent()
+        )
+    }
+}
+
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    private fun epochDaysToMillis(epochDays: Long): Long {
+        val zone = TimeZone.currentSystemDefault()
+        return LocalDate.fromEpochDays(epochDays).atStartOfDayIn(zone).toEpochMilliseconds()
+    }
+
+    private fun convertDaysToMillis(
+        db: SupportSQLiteDatabase,
+        table: String,
+        cols: List<String>,
+    ) {
+        val cursor = db.query("SELECT rowid, ${cols.joinToString(", ")} FROM `$table`")
+        cursor.use {
+            while (it.moveToNext()) {
+                val rowId = it.getLong(0)
+                val newValues = List(cols.size) { index -> epochDaysToMillis(it.getLong(index + 1)) }
+
+                val setClause = cols.joinToString(", ") { col -> "`$col` = ?" }
+                db.execSQL(
+                    "UPDATE `$table` SET $setClause WHERE rowid = ?",
+                    (newValues + rowId).toTypedArray()
+                )
+            }
+        }
+    }
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `peer_time_zone` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `raw_offset` INTEGER NOT NULL,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `plugin_relation` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `has_plugin` INTEGER NOT NULL,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `service_message_categories` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `lifecycle` INTEGER NOT NULL,
+                `level_up` INTEGER NOT NULL,
+                `pet` INTEGER NOT NULL,
+                `sync` INTEGER NOT NULL,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`)
+            )
+            """.trimIndent()
+        )
+
+        val rawOffset = TimeZone.currentSystemDefault().rawOffset
+        db.execSQL("ALTER TABLE `streak` ADD COLUMN `raw_offset` INTEGER NOT NULL DEFAULT $rawOffset")
+        db.execSQL("ALTER TABLE `streak_pet` ADD COLUMN `raw_offset` INTEGER NOT NULL DEFAULT $rawOffset")
+
+        convertDaysToMillis(
+            db,
+            "streak",
+            listOf("created_at", "update_from_owner_at", "update_from_peer_at"),
+        )
+        convertDaysToMillis(db, "streak_pet", listOf("created_at", "last_checked_at"))
+
+        db.execSQL("DROP TABLE IF EXISTS `streak_activity_cache`")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `streak_revive_new` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `revive_date` INTEGER NOT NULL,
+                `revived_at` INTEGER NOT NULL,
+                `manual` INTEGER NOT NULL,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`, `revive_date`),
+                FOREIGN KEY(`owner_user_id`, `peer_user_id`) REFERENCES `streak`(`owner_user_id`, `peer_user_id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+
+        fun copyRevives(table: String, manual: Int) {
+            val cursor = db.query("SELECT owner_user_id, peer_user_id, revived_at FROM `$table`")
+            cursor.use {
+                while (it.moveToNext()) {
+                    val ownerUserId = it.getLong(0)
+                    val peerUserId = it.getLong(1)
+                    val reviveDate = it.getLong(2)
+
+                    db.execSQL(
+                        """
+                        INSERT OR REPLACE INTO `streak_revive_new`
+                            (`owner_user_id`, `peer_user_id`, `revive_date`, `revived_at`, `manual`)
+                        VALUES (?, ?, ?, ?, ?)
+                        """.trimIndent(),
+                        arrayOf<Any?>(
+                            ownerUserId,
+                            peerUserId,
+                            reviveDate,
+                            epochDaysToMillis(reviveDate),
+                            manual,
+                        )
+                    )
+                }
+            }
+        }
+
+        copyRevives("streak_revive", 0)
+        copyRevives("streak_manual_revive", 1)
+
+        db.execSQL("DROP TABLE `streak_revive`")
+        db.execSQL("DROP TABLE IF EXISTS `streak_manual_revive`")
+        db.execSQL("ALTER TABLE `streak_revive_new` RENAME TO `streak_revive`")
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_streak_revive_owner_user_id_peer_user_id`
+            ON `streak_revive` (`owner_user_id`, `peer_user_id`)
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `streak_pet_task_new` (
+                `owner_user_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `created_date` INTEGER NOT NULL,
+                `type` TEXT NOT NULL,
+                `is_completed` INTEGER NOT NULL,
+                `payload` TEXT,
+                PRIMARY KEY(`owner_user_id`, `peer_user_id`, `created_date`, `type`),
+                FOREIGN KEY(`owner_user_id`, `peer_user_id`) REFERENCES `streak_pet`(`owner_user_id`, `peer_user_id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+
+        run {
+            val cursor = db.query(
+                "SELECT owner_user_id, peer_user_id, created_at, type, is_completed, payload FROM `streak_pet_task`"
+            )
+            cursor.use {
+                while (it.moveToNext()) {
+                    db.execSQL(
+                        """
+                        INSERT OR REPLACE INTO `streak_pet_task_new`
+                            (`owner_user_id`, `peer_user_id`, `created_date`, `type`, `is_completed`, `payload`)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """.trimIndent(),
+                        arrayOf<Any?>(
+                            it.getLong(0),
+                            it.getLong(1),
+                            it.getLong(2),
+                            it.getString(3),
+                            it.getLong(4),
+                            if (it.isNull(5)) null else it.getString(5),
+                        )
+                    )
+                }
+            }
+        }
+
+        db.execSQL("DROP TABLE `streak_pet_task`")
+        db.execSQL("ALTER TABLE `streak_pet_task_new` RENAME TO `streak_pet_task`")
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_streak_pet_task_owner_user_id_peer_user_id_created_date`
+            ON `streak_pet_task` (`owner_user_id`, `peer_user_id`, `created_date`)
             """.trimIndent()
         )
     }

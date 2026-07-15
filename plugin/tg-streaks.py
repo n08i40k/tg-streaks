@@ -173,37 +173,11 @@ I18N_STATUS: dict[str, dict[str, str]] = {
 }
 
 I18N_MENU: dict[str, dict[str, str]] = {
-    "menu.chat.create_pet.description": {
-        "en": "Create it or send an invite",
-        "ru": "Создать или отправить инвайт",
+    "menu.chat.control_panel.description": {
+        "en": "Streak, pet, sync and time zone settings",
+        "ru": "Настройки стрика, пета, синхронизации и часового пояса",
     },
-    "menu.chat.create_pet.title": {"en": "Streak pet", "ru": "Стрик-пет"},
-    "menu.chat.open_streak_start.description": {
-        "en": "Opens the message or day where it began",
-        "ru": "Открывает сообщение или день начала",
-    },
-    "menu.chat.open_streak_start.title": {"en": "Streak start", "ru": "Начало стрика"},
-    "menu.chat.rebuild.pet.description": {
-        "en": "Recounts streak pet tasks and points",
-        "ru": "Пересчитывает задачи и очки",
-    },
-    "menu.chat.rebuild.pet.title": {
-        "en": "Streak pet rebuild",
-        "ru": "Пересчёт стрик-пета",
-    },
-    "menu.chat.rebuild.streak.description": {
-        "en": "Rereads chat history and updates the streak",
-        "ru": "Заново проверяет чат и обновляет стрик",
-    },
-    "menu.chat.rebuild.streak.title": {"en": "Streak rebuild", "ru": "Пересчёт стрика"},
-    "menu.chat.restore_streak.description": {
-        "en": "Available for 24 hours after it ends",
-        "ru": "Доступно 24 часа после обрыва",
-    },
-    "menu.chat.restore_streak.title": {
-        "en": "Streak restore",
-        "ru": "Восстановление стрика",
-    },
+    "menu.chat.control_panel.title": {"en": "Control panel", "ru": "Панель управления"},
     "menu.chat.restore_streak_exact.description": {
         "en": "Available anytime, but limited by 2 usages per chat",
         "ru": "Доступно в любое время, но с ограничением по 2 раза на чат",
@@ -211,22 +185,6 @@ I18N_MENU: dict[str, dict[str, str]] = {
     "menu.chat.restore_streak_exact.title": {
         "en": "Streak restore menu",
         "ru": "Меню восстановление стрика",
-    },
-    "menu.chat.toggle_level_messages.description": {
-        "en": "Shows or hides level-up messages in this chat",
-        "ru": "Показывает или скрывает сообщения о новых уровнях",
-    },
-    "menu.chat.toggle_level_messages.title": {
-        "en": "Service messages",
-        "ru": "Сервисные сообщения",
-    },
-    "menu.chat.toggle_pet_button.description": {
-        "en": "Shows or hides the floating button in all chats",
-        "ru": "Показывает или скрывает кнопку во всех чатах",
-    },
-    "menu.chat.toggle_pet_button.title": {
-        "en": "Streak pet button",
-        "ru": "Кнопка стрик-пета",
     },
     "menu.debug.crash_plugin.description": {"en": "Test crash", "ru": "Тестовый краш"},
     "menu.debug.crash_plugin.title": {
@@ -792,13 +750,7 @@ class ZipResourcesBridge:
 
 
 class ChatContextMenu:
-    TOGGLE_PET_FAB = "togglePetFab"
-    REBUILD = "rebuild"
-    REBUILD_PET = "rebuildPet"
-    CREATE_PET = "createPet"
-    TOGGLE_SERVICE_MESSAGES = "serviceMessages.toggle"
-    GO_TO_STREAK_START = "goToStreakStart"
-    REVIVE_NOW = "reviveNow"
+    CONTROL_MENU = "controlMenu"
     REVIVE_EXACT = "reviveExact"
 
     DEBUG_CREATE = "debug.create"
@@ -836,18 +788,11 @@ class ChatContextMenu:
     def _menu_items(cls) -> tuple[dict[str, Any], ...]:
         return (
             {
-                "key": cls.CREATE_PET,
-                "text_key": "menu.chat.create_pet.title",
-                "subtext_key": "menu.chat.create_pet.description",
-                "icon": "menu_premium_main",
+                "key": cls.CONTROL_MENU,
+                "text_key": "menu.chat.control_panel.title",
+                "subtext_key": "menu.chat.control_panel.description",
+                "icon": "msg_settings",
                 "priority": 1001,
-            },
-            {
-                "key": cls.REVIVE_NOW,
-                "text_key": "menu.chat.restore_streak.title",
-                "subtext_key": "menu.chat.restore_streak.description",
-                "icon": "msg_reactions",
-                "priority": 1000,
             },
             {
                 "key": cls.REVIVE_EXACT,
@@ -855,41 +800,6 @@ class ChatContextMenu:
                 "subtext_key": "menu.chat.restore_streak_exact.description",
                 "icon": "msg_reactions",
                 "priority": 999,
-            },
-            {
-                "key": cls.REBUILD,
-                "text_key": "menu.chat.rebuild.streak.title",
-                "subtext_key": "menu.chat.rebuild.streak.description",
-                "icon": "msg_retry",
-                "priority": 998,
-            },
-            {
-                "key": cls.REBUILD_PET,
-                "text_key": "menu.chat.rebuild.pet.title",
-                "subtext_key": "menu.chat.rebuild.pet.description",
-                "icon": "msg_retry",
-                "priority": 997,
-            },
-            {
-                "key": cls.GO_TO_STREAK_START,
-                "text_key": "menu.chat.open_streak_start.title",
-                "subtext_key": "menu.chat.open_streak_start.description",
-                "icon": "other_chats",
-                "priority": 996,
-            },
-            {
-                "key": cls.TOGGLE_PET_FAB,
-                "text_key": "menu.chat.toggle_pet_button.title",
-                "subtext_key": "menu.chat.toggle_pet_button.description",
-                "icon": "menu_premium_main",
-                "priority": 995,
-            },
-            {
-                "key": cls.TOGGLE_SERVICE_MESSAGES,
-                "text_key": "menu.chat.toggle_level_messages.title",
-                "subtext_key": "menu.chat.toggle_level_messages.description",
-                "icon": "msg_settings",
-                "priority": 994,
             },
             {
                 "key": cls.DEBUG_CREATE,

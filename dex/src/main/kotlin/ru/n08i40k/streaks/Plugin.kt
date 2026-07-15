@@ -27,12 +27,17 @@ import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
+import ru.n08i40k.streaks.constants.ServiceMessageCategory
+import ru.n08i40k.streaks.controller.PluginRelationController
+import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
 import ru.n08i40k.streaks.controller.ServiceMessagesController
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreaksController
+import ru.n08i40k.streaks.controller.TimeZonesController
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
+import ru.n08i40k.streaks.database.MIGRATION_10_11
 import ru.n08i40k.streaks.database.MIGRATION_1_2
 import ru.n08i40k.streaks.database.MIGRATION_2_3
 import ru.n08i40k.streaks.database.MIGRATION_3_5
@@ -227,6 +232,7 @@ class Plugin {
     )
         .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
         .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+        .addMigrations(MIGRATION_10_11)
         .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
         .build()
 
@@ -250,6 +256,9 @@ class Plugin {
     val serviceMessagesController = ServiceMessagesController()
     val streaksController: StreaksController
     val streakPetsController: StreakPetsController
+    val timeZonesController: TimeZonesController
+    val pluginRelationController: PluginRelationController
+    val serviceMessageCategoriesController: ServiceMessageCategoriesController
     val petUiManager: StreakPetUiManager
 
     // registries
@@ -268,8 +277,13 @@ class Plugin {
             this.databaseBackupManager = DatabaseBackupManager(this.db, Logger::info)
 
             // controllers
-            this.streaksController = StreaksController(this.db, this.resourcesProvider)
-            this.streakPetsController = StreakPetsController(this.db, this.streaksController)
+            this.timeZonesController = TimeZonesController(this.db)
+            this.streaksController =
+                StreaksController(this.db, this.timeZonesController, this.resourcesProvider)
+            this.streakPetsController =
+                StreakPetsController(this.db, this.streaksController, this.timeZonesController)
+            this.pluginRelationController = PluginRelationController(this.db)
+            this.serviceMessageCategoriesController = ServiceMessageCategoriesController(this.db)
 
             this.petUiManager = StreakPetUiManager()
         } catch (e: Throwable) {
@@ -394,7 +408,18 @@ class Plugin {
                 .collectWith {
                     when (this) {
                         is PluginEvent.StreakGrowUpEvent -> {
-                            if (LocalDate.now().diff(timestamp.toLocalDate()) > 2)
+                            if (LocalDate.now(record.timeZone)
+                                    .diff(timestamp.toLocalDate(record.timeZone)) > 2
+                            )
+                                return@collectWith
+
+                            val allowSend = serviceMessageCategoriesController.isEnabled(
+                                record.ownerUserId,
+                                record.peerUserId,
+                                ServiceMessageCategory.LEVEL_UP
+                            )
+
+                            if (!allowSend)
                                 return@collectWith
 
                             val targetLevelLength = targetRecord.level.length
@@ -415,7 +440,16 @@ class Plugin {
                         }
 
                         is PluginEvent.StreakLostEvent -> {
-                            if (timestamp.toLocalDate() != LocalDate.now())
+                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
+                                return@collectWith
+
+                            val allowSend = serviceMessageCategoriesController.isEnabled(
+                                record.ownerUserId,
+                                record.peerUserId,
+                                ServiceMessageCategory.LIFECYCLE
+                            )
+
+                            if (!allowSend)
                                 return@collectWith
 
                             serviceMessagesController
@@ -426,7 +460,16 @@ class Plugin {
                             if (byPeer)
                                 return@collectWith
 
-                            if (timestamp.toLocalDate() != LocalDate.now())
+                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
+                                return@collectWith
+
+                            val allowSend = serviceMessageCategoriesController.isEnabled(
+                                record.ownerUserId,
+                                record.peerUserId,
+                                ServiceMessageCategory.LIFECYCLE
+                            )
+
+                            if (!allowSend)
                                 return@collectWith
 
                             serviceMessagesController
@@ -437,21 +480,36 @@ class Plugin {
                             if (by != PluginEvent.StreakPetRenamedEvent.By.SELF)
                                 return@collectWith
 
-                            if (timestamp.toLocalDate() != LocalDate.now())
+                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
                                 return@collectWith
 
-                            serviceMessagesController.sendPetSetName(
-                                accountId,
-                                peerUserId,
-                                record.name
+                            val allowSend = serviceMessageCategoriesController.isEnabled(
+                                record.ownerUserId,
+                                record.peerUserId,
+                                ServiceMessageCategory.PET
                             )
+
+                            if (!allowSend)
+                                return@collectWith
+
+                            serviceMessagesController
+                                .sendPetSetName(accountId, peerUserId, record.name)
                         }
 
                         is PluginEvent.StreakPetDeletedEvent -> {
                             if (by != PluginEvent.StreakPetDeletedEvent.By.SELF)
                                 return@collectWith
 
-                            if (timestamp.toLocalDate() != LocalDate.now())
+                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
+                                return@collectWith
+
+                            val allowSend = serviceMessageCategoriesController.isEnabled(
+                                record.ownerUserId,
+                                record.peerUserId,
+                                ServiceMessageCategory.PET
+                            )
+
+                            if (!allowSend)
                                 return@collectWith
 
                             serviceMessagesController

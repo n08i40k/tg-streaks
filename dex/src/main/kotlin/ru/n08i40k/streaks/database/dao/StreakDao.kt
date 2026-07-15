@@ -18,6 +18,9 @@ interface StreakDao {
     @Query("SELECT * FROM streak WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId LIMIT 1")
     suspend fun findByRelation(ownerUserId: Long, peerUserId: Long): Streak?
 
+    @Query("SELECT EXISTS(SELECT 1 FROM streak WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId LIMIT 1)")
+    suspend fun exists(ownerUserId: Long, peerUserId: Long): Boolean
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(record: Streak)
 

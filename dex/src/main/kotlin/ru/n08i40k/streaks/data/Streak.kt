@@ -3,10 +3,12 @@ package ru.n08i40k.streaks.data
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Ignore
+import kotlinx.datetime.TimeZone
 import ru.n08i40k.streaks.Plugin
-import kotlinx.datetime.LocalDate
-import ru.n08i40k.streaks.extension.now
+import ru.n08i40k.streaks.extension.toEpochDays
 import kotlin.math.min
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 @Entity(
     tableName = "streak",
@@ -16,14 +18,16 @@ data class Streak(
     @ColumnInfo(name = "owner_user_id") val ownerUserId: Long,
     @ColumnInfo(name = "peer_user_id") val peerUserId: Long,
 
-    @ColumnInfo(name = "created_at") val createdAt: LocalDate,
+    @ColumnInfo(name = "created_at") val createdAt: Instant,
 
-    @ColumnInfo(name = "update_from_owner_at") val updateFromOwnerAt: LocalDate,
-    @ColumnInfo(name = "update_from_peer_at") val updateFromPeerAt: LocalDate,
+    @ColumnInfo(name = "update_from_owner_at") val updateFromOwnerAt: Instant,
+    @ColumnInfo(name = "update_from_peer_at") val updateFromPeerAt: Instant,
 
     @ColumnInfo(name = "revives_count") val revivesCount: Int,
     @ColumnInfo(name = "death_notified") val deathNotified: Boolean = false,
     @ColumnInfo(name = "warning_notified") val warningNotified: Boolean = false,
+
+    @ColumnInfo(name = "raw_offset") val timeZone: TimeZone,
 ) {
     companion object {
         const val MIN_VISIBLE_LENGTH = 3
@@ -61,16 +65,16 @@ data class Streak(
     val isVisible get() = length >= MIN_VISIBLE_LENGTH
 
     init {
-        val nowEpoch = LocalDate.now().toEpochDays()
+        val nowEpoch = Clock.System.now().toEpochDays(timeZone)
 
-        val fromOwnerEpoch = updateFromOwnerAt.toEpochDays()
-        val fromPeerEpoch = updateFromPeerAt.toEpochDays()
+        val fromOwnerEpoch = updateFromOwnerAt.toEpochDays(timeZone)
+        val fromPeerEpoch = updateFromPeerAt.toEpochDays(timeZone)
 
         frozen = nowEpoch > fromOwnerEpoch || nowEpoch > fromPeerEpoch
         dead = frozen && ((nowEpoch - fromOwnerEpoch) > 1 || (nowEpoch - fromPeerEpoch) > 1)
         canRevive = dead && ((nowEpoch - fromOwnerEpoch) <= 2 || (nowEpoch - fromPeerEpoch) <= 2)
 
-        var length = min(fromOwnerEpoch, fromPeerEpoch) - createdAt.toEpochDays() + 1
+        var length = min(fromOwnerEpoch, fromPeerEpoch) - createdAt.toEpochDays(timeZone) + 1
 
         length -= revivesCount
 

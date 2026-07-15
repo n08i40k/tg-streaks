@@ -2,6 +2,7 @@ package ru.n08i40k.streaks.chat_history_fetcher
 
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLRPC
@@ -12,10 +13,11 @@ import ru.n08i40k.streaks.extension.fmt
 import ru.n08i40k.streaks.extension.isPeerIdInvalid
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.sendRequestBlocking
-import ru.n08i40k.streaks.extension.toEpochSecondSystem
+import ru.n08i40k.streaks.extension.toEpochSeconds
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.RuntimeGuard
+import kotlin.time.Instant
 
 
 class RemoteChatHistoryFetcher : ChatHistoryFetcher {
@@ -126,16 +128,19 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
     override suspend fun fetchActivity(
         accountId: Int,
         peerUserId: Long,
+        timeZone: TimeZone,
         day: LocalDate,
         untilRevive: Boolean
-    ): ChatHistoryFetcher.Status {
-        val startLocalEpoch = day.toEpochSecondSystem().toInt()
-        var endLocalEpoch = day.next().toEpochSecondSystem().toInt()
+    ): ChatHistoryFetcher.DayActivity {
+        val startLocalEpoch = day.toEpochSeconds(timeZone).toInt()
+        var endLocalEpoch = day.next().toEpochSeconds(timeZone).toInt()
         var offsetId = 0
 
         var fromOwner = false
         var fromPeer = false
         var wasRevived = false
+        var lastOwnerAt: Instant? = null
+        var lastPeerAt: Instant? = null
 
         val inputPeer = MessagesController.getInstance(accountId).getInputPeer(peerUserId)
         val connectionsManager = ConnectionsManager.getInstance(accountId)
@@ -170,10 +175,15 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 if (ServiceMessage.isServiceText(message.message))
                     continue
 
-                if (message.out)
+                if (message.out) {
                     fromOwner = true
-                else
+                    if (lastOwnerAt == null)
+                        lastOwnerAt = Instant.fromEpochSeconds(message.date.toLong())
+                } else {
                     fromPeer = true
+                    if (lastPeerAt == null)
+                        lastPeerAt = Instant.fromEpochSeconds(message.date.toLong())
+                }
 
                 if (fromOwner && fromPeer && (!untilRevive || wasRevived))
                     break@reqLoop // no need to check other messages more
@@ -195,23 +205,26 @@ class RemoteChatHistoryFetcher : ChatHistoryFetcher {
                 break@reqLoop // no more messages for next request will be returned
         }
 
-        return when {
+        val status = when {
             fromOwner && fromPeer -> ChatHistoryFetcher.Status.FromBoth(wasRevived)
             fromOwner -> ChatHistoryFetcher.Status.FromOwner(wasRevived)
             fromPeer -> ChatHistoryFetcher.Status.FromPeer(wasRevived)
             else -> ChatHistoryFetcher.Status.NoActivity(wasRevived)
         }
+
+        return ChatHistoryFetcher.DayActivity(status, lastOwnerAt, lastPeerAt)
     }
 
     override suspend fun fetchRawMessages(
         accountId: Int,
         peerUserId: Long,
+        timeZone: TimeZone,
         day: LocalDate,
         fromOwnerMax: Int,
         fromPeerMax: Int,
     ): List<TLRPC.Message> {
-        val startLocalEpoch = day.toEpochSecondSystem().toInt()
-        var endLocalEpoch = day.next().toEpochSecondSystem().toInt()
+        val startLocalEpoch = day.toEpochSeconds(timeZone).toInt()
+        var endLocalEpoch = day.next().toEpochSeconds(timeZone).toInt()
         var offsetId = 0
 
         val messages = arrayListOf<TLRPC.Message>()

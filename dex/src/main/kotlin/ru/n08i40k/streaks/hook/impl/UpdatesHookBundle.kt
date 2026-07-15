@@ -6,20 +6,18 @@ import org.telegram.messenger.SendMessagesHelper
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.extension.now
-import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.TLCompat
 import ru.n08i40k.streaks.util.getFieldValue
+import kotlin.time.Clock
 import kotlin.time.Instant
-import kotlinx.datetime.LocalDate
 
 class UpdatesHookBundle : HookBundle() {
     private data class PendingIncomingUpdate(
         val peerUserId: Long,
-        val at: LocalDate,
+        val at: Instant,
         val out: Boolean,
         val messageId: Int,
         val message: String?
@@ -47,7 +45,7 @@ class UpdatesHookBundle : HookBundle() {
                 listOf(
                     PendingIncomingUpdate(
                         updates.user_id,
-                        Instant.fromEpochSeconds(updates.date.toLong()).toLocalDate(),
+                        Instant.fromEpochSeconds(updates.date.toLong()),
                         updates.out,
                         updates.id,
                         updates.message
@@ -65,7 +63,7 @@ class UpdatesHookBundle : HookBundle() {
 
                     PendingIncomingUpdate(
                         peerUserId,
-                        Instant.fromEpochSeconds(message.date.toLong()).toLocalDate(),
+                        Instant.fromEpochSeconds(message.date.toLong()),
                         message.out,
                         message.id,
                         message.message
@@ -83,7 +81,7 @@ class UpdatesHookBundle : HookBundle() {
 
                     PendingIncomingUpdate(
                         peerUserId,
-                        Instant.fromEpochSeconds(message.date.toLong()).toLocalDate(),
+                        Instant.fromEpochSeconds(message.date.toLong()),
                         message.out,
                         message.id,
                         message.message
@@ -168,7 +166,7 @@ class UpdatesHookBundle : HookBundle() {
             // TODO: fill message id
             val update = PendingIncomingUpdate(
                 sendMessageParams.peer,
-                LocalDate.now(),
+                Clock.System.now(),
                 true,
                 0,
                 sendMessageParams.message

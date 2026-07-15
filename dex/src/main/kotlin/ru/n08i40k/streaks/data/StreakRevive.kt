@@ -5,10 +5,11 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import kotlinx.datetime.LocalDate
+import kotlin.time.Instant
 
 @Entity(
     tableName = "streak_revive",
-    primaryKeys = ["owner_user_id", "peer_user_id", "revived_at"],
+    primaryKeys = ["owner_user_id", "peer_user_id", "revive_date"],
     foreignKeys = [
         ForeignKey(
             entity = Streak::class,
@@ -23,5 +24,7 @@ data class StreakRevive(
     @ColumnInfo(name = "owner_user_id") val ownerUserId: Long,
     @ColumnInfo(name = "peer_user_id") val peerUserId: Long,
 
-    @ColumnInfo(name = "revived_at") val revivedAt: LocalDate,
+    @ColumnInfo(name = "revive_date") val reviveDate: LocalDate,
+    @ColumnInfo(name = "revived_at") val revivedAt: Instant,
+    @ColumnInfo(name = "manual") val manual: Boolean = false,
 )

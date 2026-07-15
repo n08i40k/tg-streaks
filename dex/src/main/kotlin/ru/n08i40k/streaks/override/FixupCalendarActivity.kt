@@ -5,7 +5,6 @@ import android.graphics.Paint
 import android.os.Bundle
 import android.util.SparseArray
 import android.util.SparseBooleanArray
-import android.util.SparseIntArray
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -19,9 +18,9 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.controller.StreaksController
-import ru.n08i40k.streaks.data.StreakActivityStatus
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.extension.next
+import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.setFieldValue
 import kotlinx.datetime.LocalDate
@@ -31,7 +30,6 @@ import java.util.concurrent.atomic.AtomicReference
 class FixupCalendarActivity : CalendarActivity {
     companion object {
         private const val BOTH_ACTIVITY_COLOR = 0xFF34C759.toInt()
-        private const val ONE_SIDED_OR_EMPTY_ACTIVITY_COLOR = 0xFFFF3B30.toInt()
         private const val PRE_REVIVE_ACTIVITY_COLOR = 0xFFFFCC00.toInt()
         private const val REVIVE_ACTIVITY_COLOR = 0xFF5AC8FA.toInt()
         private const val ACTIVITY_COLOR_ALPHA = 170
@@ -78,7 +76,7 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private val peerUserId: Long
-    private val cachedStatusesByMonthKey = SparseArray<SparseIntArray>()
+    private val activeDaysByMonthKey = SparseArray<SparseBooleanArray>()
     private val cachedRevivesByMonthKey = SparseArray<SparseBooleanArray>()
     private val decoratedListViewRef = AtomicReference<RecyclerListView?>()
     private val interceptedListViewRef = AtomicReference<RecyclerListView?>()
@@ -88,7 +86,6 @@ class FixupCalendarActivity : CalendarActivity {
         }
     private var messagesByYearMonthProxy: MessagesByYearMonthProxy? = null
     private var cachedSnapshotLoaded = false
-    private var streakStartDate: LocalDate? = null
     private var manualRevivesUsed = 0
     private val activityStatusDecoration =
         object : RecyclerView.ItemDecoration() {
@@ -246,7 +243,7 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private fun handleDayTap(day: LocalDate) {
-        if (peerUserId <= 0L || streakStartDate?.let { day < it } == true) {
+        if (peerUserId <= 0L) {
             return
         }
 
@@ -389,43 +386,46 @@ class FixupCalendarActivity : CalendarActivity {
                     .streaksController
                     .getCalendarInteractionSnapshot(accountId, peerUserId)
 
-            val newStatusesByMonthKey = SparseArray<SparseIntArray>()
+            val newActiveByMonthKey = SparseArray<SparseBooleanArray>()
             val newRevivesByMonthKey = SparseArray<SparseBooleanArray>()
 
             fun monthKey(day: LocalDate): Int =
                 day.year * 100 + (day.month.number - 1)
 
-            for (record in snapshot.cachedActivity) {
-                val monthKey = monthKey(record.day)
-                val dayIndex = record.day.day - 1
-                val statusesForMonth =
-                    newStatusesByMonthKey.get(monthKey) ?: SparseIntArray().also {
-                        newStatusesByMonthKey.put(monthKey, it)
-                    }
+            fun markDay(map: SparseArray<SparseBooleanArray>, day: LocalDate) {
+                val monthKey = monthKey(day)
+                val daysForMonth =
+                    map.get(monthKey) ?: SparseBooleanArray().also { map.put(monthKey, it) }
 
-                statusesForMonth.put(dayIndex, record.status)
+                daysForMonth.put(day.day - 1, true)
+            }
+
+            snapshot.streak?.let { streak ->
+                val start = streak.createdAt.toLocalDate(snapshot.timeZone)
+                val lastAliveDay = minOf(
+                    streak.updateFromOwnerAt.toLocalDate(snapshot.timeZone),
+                    streak.updateFromPeerAt.toLocalDate(snapshot.timeZone),
+                )
+
+                var day = start
+                while (day <= lastAliveDay) {
+                    markDay(newActiveByMonthKey, day)
+                    day = day.next()
+                }
             }
 
             for (revivedDay in snapshot.revivedDays) {
-                val monthKey = monthKey(revivedDay)
-                val dayIndex = revivedDay.day - 1
-                val revivesForMonth =
-                    newRevivesByMonthKey.get(monthKey) ?: SparseBooleanArray().also {
-                        newRevivesByMonthKey.put(monthKey, it)
-                    }
-
-                revivesForMonth.put(dayIndex, true)
+                markDay(newRevivesByMonthKey, revivedDay)
             }
 
             AndroidUtilities.runOnUIThread {
-                cachedStatusesByMonthKey.clear()
+                activeDaysByMonthKey.clear()
                 cachedRevivesByMonthKey.clear()
                 manualRevivesUsed = snapshot.manualRevivesUsed
-                streakStartDate = snapshot.streak?.createdAt
 
-                for (index in 0 until newStatusesByMonthKey.size()) {
-                    val monthKey = newStatusesByMonthKey.keyAt(index)
-                    cachedStatusesByMonthKey.put(monthKey, newStatusesByMonthKey.valueAt(index))
+                for (index in 0 until newActiveByMonthKey.size()) {
+                    val monthKey = newActiveByMonthKey.keyAt(index)
+                    activeDaysByMonthKey.put(monthKey, newActiveByMonthKey.valueAt(index))
                 }
 
                 for (index in 0 until newRevivesByMonthKey.size()) {
@@ -473,15 +473,8 @@ class FixupCalendarActivity : CalendarActivity {
         return LocalDate(year, monthIndex + 1, dayIndex + 1)
     }
 
-    private fun getCachedActivityStatus(monthKey: Int, dayIndex: Int): StreakActivityStatus? {
-        val monthStatuses = cachedStatusesByMonthKey.get(monthKey) ?: return null
-        val code = monthStatuses.get(dayIndex, Int.MIN_VALUE)
-        if (code == Int.MIN_VALUE) {
-            return null
-        }
-
-        return StreakActivityStatus.fromCode(code)
-    }
+    private fun isActiveDay(monthKey: Int, dayIndex: Int): Boolean =
+        activeDaysByMonthKey.get(monthKey)?.get(dayIndex, false) ?: false
 
     private fun isCachedRevived(monthKey: Int, dayIndex: Int): Boolean =
         cachedRevivesByMonthKey.get(monthKey)?.get(dayIndex, false) ?: false
@@ -494,27 +487,13 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private fun shouldDecorateDay(year: Int, monthIndex: Int, dayIndex: Int): Boolean {
-        val day = LocalDate(year, monthIndex + 1, dayIndex + 1)
-        if (streakStartDate?.let { day < it } == true) {
-            return false
-        }
-
         val monthKey = year * 100 + monthIndex
-        if (isCachedRevived(monthKey, dayIndex)) {
-            return true
-        }
-        if (isNextDayRevived(year, monthIndex, dayIndex)) {
-            return true
-        }
-
-        return getCachedActivityStatus(monthKey, dayIndex) != null
+        return isCachedRevived(monthKey, dayIndex) ||
+                isNextDayRevived(year, monthIndex, dayIndex) ||
+                isActiveDay(monthKey, dayIndex)
     }
 
     private fun resolveActivityColor(year: Int, monthIndex: Int, dayIndex: Int): Int? {
-        if (!shouldDecorateDay(year, monthIndex, dayIndex)) {
-            return null
-        }
-
         val monthKey = year * 100 + monthIndex
         if (isCachedRevived(monthKey, dayIndex)) {
             return REVIVE_ACTIVITY_COLOR
@@ -522,14 +501,11 @@ class FixupCalendarActivity : CalendarActivity {
         if (isNextDayRevived(year, monthIndex, dayIndex)) {
             return PRE_REVIVE_ACTIVITY_COLOR
         }
-
-        return when (getCachedActivityStatus(monthKey, dayIndex) ?: return null) {
-            StreakActivityStatus.BOTH -> BOTH_ACTIVITY_COLOR
-            StreakActivityStatus.NO_ACTIVITY,
-            StreakActivityStatus.OWNER,
-            StreakActivityStatus.PEER,
-                -> ONE_SIDED_OR_EMPTY_ACTIVITY_COLOR
+        if (isActiveDay(monthKey, dayIndex)) {
+            return BOTH_ACTIVITY_COLOR
         }
+
+        return null
     }
 
     private fun installMessagesByYearMonthProxy() {

@@ -1,13 +1,12 @@
 package ru.n08i40k.streaks.extension
 
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
-fun Instant.toLocalDateTime(): LocalDateTime =
-    this.toLocalDateTime(TimeZone.currentSystemDefault())
+fun Instant.toLocalDate(timeZone: TimeZone): LocalDate =
+    this.toLocalDateTime(timeZone).date
 
-fun Instant.toLocalDate(): LocalDate =
-    this.toLocalDateTime().date
+fun Instant.toEpochDays(timeZone: TimeZone): Long =
+    this.toLocalDate(timeZone).toEpochDays()

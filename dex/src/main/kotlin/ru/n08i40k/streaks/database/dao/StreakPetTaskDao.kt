@@ -7,27 +7,27 @@ import androidx.room.OnConflictStrategy.Companion.IGNORE
 import androidx.room.OnConflictStrategy.Companion.REPLACE
 import androidx.room.Query
 import androidx.room.Update
+import kotlinx.datetime.LocalDate
 import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskType
-import kotlinx.datetime.LocalDate
 
 @Dao
 interface StreakPetTaskDao {
-    @Query("SELECT * FROM streak_pet_task WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId ORDER BY created_at DESC, type ASC")
+    @Query("SELECT * FROM streak_pet_task WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId ORDER BY created_date DESC, type ASC")
     suspend fun findAllByRelation(ownerUserId: Long, peerUserId: Long): List<StreakPetTask>
 
-    @Query("SELECT * FROM streak_pet_task WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId AND created_at = :createdAt ORDER BY type ASC")
+    @Query("SELECT * FROM streak_pet_task WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId AND created_date = :createdDate ORDER BY type ASC")
     suspend fun findAllByRelationAndDay(
         ownerUserId: Long,
         peerUserId: Long,
-        createdAt: LocalDate
+        createdDate: LocalDate
     ): List<StreakPetTask>
 
-    @Query("SELECT * FROM streak_pet_task WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId AND created_at = :createdAt AND is_completed = 0 ORDER BY type ASC")
+    @Query("SELECT * FROM streak_pet_task WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId AND created_date = :createdDate AND is_completed = 0 ORDER BY type ASC")
     suspend fun findNotCompletedByRelationAndDay(
         ownerUserId: Long,
         peerUserId: Long,
-        createdAt: LocalDate
+        createdDate: LocalDate
     ): List<StreakPetTask>
 
     @Query(
@@ -35,7 +35,7 @@ interface StreakPetTaskDao {
         SELECT * FROM streak_pet_task
         WHERE owner_user_id = :ownerUserId
           AND peer_user_id = :peerUserId
-          AND created_at = :createdAt
+          AND created_date = :createdDate
           AND type = :type
         LIMIT 1
         """
@@ -43,7 +43,7 @@ interface StreakPetTaskDao {
     suspend fun findByKey(
         ownerUserId: Long,
         peerUserId: Long,
-        createdAt: LocalDate,
+        createdDate: LocalDate,
         type: StreakPetTaskType,
     ): StreakPetTask?
 
