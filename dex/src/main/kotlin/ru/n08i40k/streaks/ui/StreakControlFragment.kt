@@ -309,7 +309,8 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
 
                 Row.DANGER_ZONE_REBUILD_PET_BTN.ordinal, Row.DANGER_ZONE_DELETE_PET_BTN.ordinal -> viewState.hasPet
 
-                Row.PET_FAB_SW.ordinal,
+                Row.PET_FAB_SW.ordinal -> viewState.hasPet
+
                 Row.PET_CREATE_BTN.ordinal -> !viewState.hasPet
 
                 Row.ACTIONS_REVIVE_STREAK_BTN.ordinal -> viewState.canReviveStreak
