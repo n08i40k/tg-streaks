@@ -54,8 +54,6 @@ REPO_NAME = __id__
 
 # External resource urls
 
-RELEASE_ARTIFACTS_BASE_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}"
-
 DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
 RESOURCES_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/resources.zip"
 
