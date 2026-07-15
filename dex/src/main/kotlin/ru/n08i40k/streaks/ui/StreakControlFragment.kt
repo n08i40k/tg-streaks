@@ -292,7 +292,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         @Suppress("DEPRECATION")
         override fun isEnabled(holder: RecyclerView.ViewHolder): Boolean =
             when (holder.adapterPosition) {
-                Row.SYNC_OFFER_BTN.ordinal -> viewState.peerHasPluginInstalled
+                Row.SYNC_OFFER_BTN.ordinal -> false // viewState.peerHasPluginInstalled
 
                 Row.DANGER_ZONE_REBUILD_PET_BTN.ordinal, Row.DANGER_ZONE_DELETE_PET_BTN.ordinal -> viewState.hasPet
 
