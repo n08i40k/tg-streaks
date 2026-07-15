@@ -16,6 +16,8 @@ import org.telegram.ui.Cells.TextInfoPrivacyCell
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
+import ru.n08i40k.streaks.extension.setSectionsCompat
+import ru.n08i40k.streaks.extension.setTextAndValueAndCheckCompat
 import ru.n08i40k.streaks.i18n.Strings
 
 class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragment() {
@@ -57,7 +59,7 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
         })
 
         val listView = RecyclerListView(context)
-        listView.setSections()
+        listView.setSectionsCompat()
         listView.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         listView.isVerticalScrollBarEnabled = true
         listView.itemAnimator = AlphaAwareItemAnimator()
@@ -81,9 +83,9 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
     private fun onRowClicked(view: View, position: Int) {
         when (position) {
             Row.LEVEL_UP_SW.ordinal -> {
-                val newState = !adapter.isCategoryEnabled(ServiceMessageCategory.LEVEL_UP)
-                adapter.setCategoryEnabled(ServiceMessageCategory.LEVEL_UP, newState)
-                (view as TextCheckCell).isChecked = newState
+                val cell = view as TextCheckCell
+                cell.isChecked = !cell.isChecked
+                adapter.setCategoryEnabled(ServiceMessageCategory.LEVEL_UP, cell.isChecked)
             }
         }
     }
@@ -124,7 +126,7 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
                     .setText(Strings.menu_service_categories_header())
 
                 Row.LIFECYCLE_SW.ordinal -> (holder.itemView as TextCheckCell)
-                    .setTextAndValueAndCheck(
+                    .setTextAndValueAndCheckCompat(
                         Strings.menu_service_categories_lifecycle_title(),
                         Strings.menu_service_categories_lifecycle_desc(),
                         adapter.isCategoryEnabled(ServiceMessageCategory.LIFECYCLE),
@@ -133,7 +135,7 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
                     )
 
                 Row.LEVEL_UP_SW.ordinal -> (holder.itemView as TextCheckCell)
-                    .setTextAndValueAndCheck(
+                    .setTextAndValueAndCheckCompat(
                         Strings.menu_service_categories_level_up_title(),
                         Strings.menu_service_categories_level_up_desc(),
                         adapter.isCategoryEnabled(ServiceMessageCategory.LEVEL_UP),
@@ -142,7 +144,7 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
                     )
 
                 Row.PET_SW.ordinal -> (holder.itemView as TextCheckCell)
-                    .setTextAndValueAndCheck(
+                    .setTextAndValueAndCheckCompat(
                         Strings.menu_service_categories_pet_title(),
                         Strings.menu_service_categories_pet_desc(),
                         adapter.isCategoryEnabled(ServiceMessageCategory.PET),

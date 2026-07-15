@@ -9,6 +9,7 @@ import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
+import org.telegram.ui.ActionBar.ActionBarLayout
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
@@ -20,6 +21,7 @@ import ru.n08i40k.streaks.ui.StreakControlFragment
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.getFieldValue
 import kotlin.time.Clock
 
 class ChatContextMenuActions(private val plugin: Plugin) {
@@ -347,8 +349,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val fragment = StreakControlFragment(viewModel)
 
             AndroidUtilities.runOnUIThread {
-                LaunchActivity.instance
-                    ?.actionBarLayout
+                getFieldValue<ActionBarLayout>(LaunchActivity.instance, "actionBarLayout")
                     ?.presentFragment(fragment)
             }
 

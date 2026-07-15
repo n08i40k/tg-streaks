@@ -26,6 +26,7 @@ import org.telegram.ui.Components.RadioButton
 import org.telegram.ui.Components.RecyclerListView
 import kotlinx.datetime.TimeZone
 import ru.n08i40k.streaks.extension.rawOffset
+import ru.n08i40k.streaks.extension.setSectionsCompat
 import ru.n08i40k.streaks.extension.toDisplayName
 import ru.n08i40k.streaks.extension.toLocalStartString
 import ru.n08i40k.streaks.extension.toOffsetString
@@ -275,7 +276,7 @@ class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
             false
         )
 
-        listView.setSections()
+        listView.setSectionsCompat()
         listView.setOnItemClickListener { view, position ->
             if (!view.isEnabled) return@setOnItemClickListener
             onRowClicked(position)

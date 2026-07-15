@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -27,7 +28,10 @@ import org.telegram.ui.Cells.TextInfoPrivacyCell
 import org.telegram.ui.Cells.TextSettingsCell
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RecyclerListView
+import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
+import ru.n08i40k.streaks.extension.setSectionsCompat
+import ru.n08i40k.streaks.extension.setTextAndValueAndCheckCompat
 import ru.n08i40k.streaks.extension.toOffsetString
 import ru.n08i40k.streaks.i18n.Strings
 
@@ -87,6 +91,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         COUNT
     }
 
+    private lateinit var listView: RecyclerListView
     private lateinit var listAdapter: ListAdapter
     private val viewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -111,8 +116,8 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
             }
         })
 
-        val listView = RecyclerListView(context)
-        listView.setSections()
+        listView = RecyclerListView(context)
+        listView.setSectionsCompat()
         listView.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         listView.isVerticalScrollBarEnabled = true
         listView.itemAnimator = AlphaAwareItemAnimator()
@@ -147,16 +152,24 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
 
         viewModel.state()
             .observe { state ->
-                viewState = state
+                Plugin.getInstance().backgroundScope.launch {
+                    while (listView.isComputingLayout) {
+                        delay(100)
+                    }
 
-                listAdapter.notifyRowChanged(Row.PET_CREATE_BTN)
-                listAdapter.notifyRowChanged(Row.DANGER_ZONE_REBUILD_PET_BTN)
-                listAdapter.notifyRowChanged(Row.DANGER_ZONE_DELETE_PET_BTN)
-                listAdapter.notifyRowChanged(Row.TIME_ZONE_SELECTOR)
-                listAdapter.notifyRowChanged(Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW)
-                listAdapter.notifyRowChanged(Row.SYNC_OFFER_BTN)
-                listAdapter.notifyRowChanged(Row.PET_FAB_SW)
-                listAdapter.notifyRowChanged(Row.ACTIONS_REVIVE_STREAK_BTN)
+                    listView.post {
+                        viewState = state
+
+                        listView.stopScroll()
+                        listAdapter.notifyRowChanged(Row.DANGER_ZONE_REBUILD_PET_BTN)
+                        listAdapter.notifyRowChanged(Row.DANGER_ZONE_DELETE_PET_BTN)
+                        listAdapter.notifyRowChanged(Row.TIME_ZONE_SELECTOR)
+                        listAdapter.notifyRowChanged(Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW)
+                        listAdapter.notifyRowChanged(Row.SYNC_OFFER_BTN)
+                        listAdapter.notifyRowChanged(Row.PET_FAB_SW)
+                        listAdapter.notifyRowChanged(Row.ACTIONS_REVIVE_STREAK_BTN)
+                    }
+                }
             }
     }
 
@@ -334,138 +347,120 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             when (position) {
-                Row.TIME_HEADER.ordinal -> (holder.itemView as HeaderCell).setText(
-                    Strings.menu_control_time_zone_header()
-                )
+                Row.TIME_HEADER.ordinal -> (holder.itemView as HeaderCell)
+                    .setText(Strings.menu_control_time_zone_header())
 
-                Row.TIME_ZONE_SELECTOR.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setTextAndValue(
-                        Strings.menu_control_time_zone_selector(),
-                        viewState.timeZone.toOffsetString(),
+                Row.TIME_ZONE_SELECTOR.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setTextAndValue(
+                            Strings.menu_control_time_zone_selector(),
+                            viewState.timeZone.toOffsetString(),
+                            true
+                        )
+                        setIcon(R.drawable.msg_arrowright)
+                    }
+
+                Row.TIME_ZONE_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell)
+                    .text = Strings.menu_control_time_zone_desc()
+
+                Row.SYNC_HEADER.ordinal -> (holder.itemView as HeaderCell)
+                    .setText(Strings.menu_control_sync_header())
+
+                Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW.ordinal -> (holder.itemView as TextCheckCell)
+                    .setTextAndCheck(
+                        Strings.menu_control_sync_peer_has_plugin_toggle(),
+                        viewState.peerHasPluginInstalled,
                         true
                     )
-                    setIcon(R.drawable.msg_arrowright)
-                }
 
-                Row.TIME_ZONE_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell).text =
-                    Strings.menu_control_time_zone_desc()
+                Row.SYNC_OFFER_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_sync_offer_button(), true)
+                        setIcon(0)
+                    }
 
-                Row.SYNC_HEADER.ordinal -> (holder.itemView as HeaderCell).setText(
-                    Strings.menu_control_sync_header()
-                )
+                Row.SYNC_OFFER_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell)
+                    .text = Strings.menu_control_sync_offer_desc()
 
-                Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW.ordinal -> (holder.itemView as TextCheckCell).setTextAndCheck(
-                    Strings.menu_control_sync_peer_has_plugin_toggle(),
-                    viewState.peerHasPluginInstalled,
-                    true
-                )
+                Row.SERVICE_MESSAGES_HEADER.ordinal -> (holder.itemView as HeaderCell)
+                    .setText(Strings.menu_control_service_messages_header())
 
-                Row.SYNC_OFFER_BTN.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_sync_offer_button(),
+                Row.SERVICE_MESSAGES_CATS_LINK.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_service_messages_categories_link(), true)
+                        setIcon(R.drawable.msg_arrowright)
+                    }
+
+                Row.SERVICE_MESSAGES_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell)
+                    .text = Strings.menu_control_service_messages_desc()
+
+                Row.PET_HEADER.ordinal -> (holder.itemView as HeaderCell)
+                    .setText(Strings.menu_control_pet_header())
+
+                Row.PET_FAB_SW.ordinal -> (holder.itemView as TextCheckCell)
+                    .setTextAndValueAndCheckCompat(
+                        Strings.menu_control_pet_fab_toggle(),
+                        Strings.menu_control_pet_fab_toggle_desc(),
+                        viewState.petFabEnabled,
+                        false,
                         true
                     )
-                    setIcon(0)
-                }
 
-                Row.SYNC_OFFER_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell).text =
-                    Strings.menu_control_sync_offer_desc()
+                Row.PET_CREATE_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_pet_create_button(), true)
+                        setIcon(0)
+                    }
 
-                Row.SERVICE_MESSAGES_HEADER.ordinal -> (holder.itemView as HeaderCell).setText(
-                    Strings.menu_control_service_messages_header()
-                )
+                Row.ACTIONS_HEADER.ordinal -> (holder.itemView as HeaderCell)
+                    .setText(Strings.menu_control_actions_header())
 
-                Row.SERVICE_MESSAGES_CATS_LINK.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_service_messages_categories_link(),
-                        true
-                    )
-                    setIcon(R.drawable.msg_arrowright)
-                }
+                Row.ACTIONS_REVIVE_STREAK_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_actions_revive_streak_button(), true)
+                        setIcon(0)
+                    }
 
-                Row.SERVICE_MESSAGES_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell).text =
-                    Strings.menu_control_service_messages_desc()
+                Row.ACTIONS_GO_TO_STREAK_START_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_actions_go_to_streak_link(), true)
+                        setIcon(R.drawable.msg_arrowright)
+                    }
 
-                Row.PET_HEADER.ordinal -> (holder.itemView as HeaderCell).setText(
-                    Strings.menu_control_pet_header()
-                )
+                Row.DANGER_ZONE_HEADER.ordinal -> (holder.itemView as HeaderCell)
+                    .setText(Strings.menu_control_danger_zone_header())
 
-                Row.PET_FAB_SW.ordinal -> (holder.itemView as TextCheckCell).setTextAndValueAndCheck(
-                    Strings.menu_control_pet_fab_toggle(),
-                    Strings.menu_control_pet_fab_toggle_desc(),
-                    viewState.petFabEnabled,
-                    false,
-                    true
-                )
+                Row.DANGER_ZONE_REBUILD_BOTH_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_danger_zone_rebuild_streak_button(), true)
+                        setIcon(0)
+                    }
 
-                Row.PET_CREATE_BTN.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_pet_create_button(),
-                        true
-                    )
-                    setIcon(0)
-                }
+                Row.DANGER_ZONE_REBUILD_PET_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_danger_zone_rebuild_pet_button(), true)
+                        setIcon(0)
+                    }
 
-                Row.ACTIONS_HEADER.ordinal -> (holder.itemView as HeaderCell).setText(
-                    Strings.menu_control_actions_header()
-                )
+                Row.DANGER_ZONE_DELETE_BOTH_BTH.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(
+                            Strings.menu_control_danger_zone_delete_streak_with_pet_button(),
+                            true
+                        )
+                        setTextColor(Theme.getColor(Theme.key_color_red))
+                        setIcon(0)
+                    }
 
-                Row.ACTIONS_REVIVE_STREAK_BTN.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_actions_revive_streak_button(),
-                        true
-                    )
-                    setIcon(0)
-                }
+                Row.DANGER_ZONE_DELETE_PET_BTN.ordinal -> (holder.itemView as TextSettingsCell)
+                    .apply {
+                        setText(Strings.menu_control_danger_zone_delete_pet_button(), true)
+                        setTextColor(Theme.getColor(Theme.key_color_red))
+                        setIcon(0)
+                    }
 
-                Row.ACTIONS_GO_TO_STREAK_START_BTN.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_actions_go_to_streak_link(),
-                        true
-                    )
-                    setIcon(R.drawable.msg_arrowright)
-                }
-
-                Row.DANGER_ZONE_HEADER.ordinal -> (holder.itemView as HeaderCell).setText(
-                    Strings.menu_control_danger_zone_header()
-                )
-
-                Row.DANGER_ZONE_REBUILD_BOTH_BTN.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_danger_zone_rebuild_streak_button(),
-                        true
-                    )
-                    setIcon(0)
-                }
-
-                Row.DANGER_ZONE_REBUILD_PET_BTN.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_danger_zone_rebuild_pet_button(),
-                        true
-                    )
-                    setIcon(0)
-                }
-
-                Row.DANGER_ZONE_DELETE_BOTH_BTH.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_danger_zone_delete_streak_with_pet_button(),
-                        true
-                    )
-                    setTextColor(Theme.getColor(Theme.key_color_red))
-                    setIcon(0)
-                }
-
-                Row.DANGER_ZONE_DELETE_PET_BTN.ordinal -> (holder.itemView as TextSettingsCell).apply {
-                    setText(
-                        Strings.menu_control_danger_zone_delete_pet_button(),
-                        true
-                    )
-                    setTextColor(Theme.getColor(Theme.key_color_red))
-                    setIcon(0)
-                }
-
-                Row.DANGER_ZONE_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell).text =
-                    Strings.menu_control_danger_zone_desc()
+                Row.DANGER_ZONE_DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell)
+                    .text = Strings.menu_control_danger_zone_desc()
             }
 
             holder.itemView.isEnabled = isEnabled(holder)
