@@ -263,37 +263,20 @@ class FixupCalendarActivity : CalendarActivity {
                             Strings.dialog_calendar_fix_limit_reached_message(),
                         )
 
-                    is StreaksController.CalendarTapDecision.WarnTapNextDay ->
-                        showInfoOnlyDialog(
-                            Strings.dialog_calendar_fix_warning_next_day_title(),
-                            Strings.dialog_calendar_fix_warning_next_day_message(),
-                        )
-
                     is StreaksController.CalendarTapDecision.OfferManualRevive ->
-                        showManualReviveOfferDialog(decision.reviveDay, decision.reason)
+                        showManualReviveOfferDialog(decision.reviveDay)
                 }
             }
         }
     }
 
-    private fun showManualReviveOfferDialog(
-        day: LocalDate,
-        reason: StreaksController.CalendarTapDecision.Reason,
-    ) {
+    private fun showManualReviveOfferDialog(day: LocalDate) {
         val context = context ?: parentActivity ?: return
-        val messageKey =
-            when (reason) {
-                StreaksController.CalendarTapDecision.Reason.FIRST_LIVE_DAY_AFTER_UNRESTORED_GAP ->
-                    Strings.dialog_calendar_fix_manual_revive_message_gap
-
-                StreaksController.CalendarTapDecision.Reason.DEAD_CHAIN_RESTORE ->
-                    Strings.dialog_calendar_fix_manual_revive_message_dead_chain
-            }
 
         showDialog(
             AlertDialog.Builder(context)
                 .setTitle(Strings.dialog_calendar_fix_manual_revive_title())
-                .setMessage(messageKey())
+                .setMessage(Strings.dialog_calendar_fix_manual_revive_message())
                 .setPositiveButton(Strings.dialog_calendar_fix_confirm()) { _, _ ->
                     persistManualRevive(day)
                 }

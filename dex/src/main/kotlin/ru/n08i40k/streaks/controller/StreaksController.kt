@@ -77,17 +77,10 @@ class StreaksController(
     sealed class CalendarTapDecision {
         object Ignore : CalendarTapDecision()
         object LimitReached : CalendarTapDecision()
-        object WarnTapNextDay : CalendarTapDecision()
 
         data class OfferManualRevive(
             val reviveDay: LocalDate,
-            val reason: Reason,
         ) : CalendarTapDecision()
-
-        enum class Reason {
-            FIRST_LIVE_DAY_AFTER_UNRESTORED_GAP,
-            DEAD_CHAIN_RESTORE,
-        }
     }
 
     enum class AddManualCalendarReviveResult {
@@ -930,30 +923,16 @@ class StreaksController(
         peerUserId: Long,
         day: LocalDate,
     ): CalendarTapDecision = with(getCalendarInteractionSnapshot(accountId, peerUserId)) {
-        val streak = streak ?: return CalendarTapDecision.Ignore
+        if (streak == null)
+            return CalendarTapDecision.Ignore
 
         if (revivedDays.contains(day))
-            return CalendarTapDecision.Ignore
-
-        val streakStart = streak.createdAt.toLocalDate(timeZone)
-        val lastAliveDay = minOf(
-            streak.updateFromOwnerAt.toLocalDate(timeZone),
-            streak.updateFromPeerAt.toLocalDate(timeZone),
-        )
-
-        if (day in streakStart..lastAliveDay)
-            return CalendarTapDecision.Ignore
-
-        if (day >= streakStart)
             return CalendarTapDecision.Ignore
 
         return if (manualRevivesUsed >= MAX_MANUAL_CALENDAR_REVIVES_PER_CHAT)
             CalendarTapDecision.LimitReached
         else
-            CalendarTapDecision.OfferManualRevive(
-                day,
-                CalendarTapDecision.Reason.DEAD_CHAIN_RESTORE,
-            )
+            CalendarTapDecision.OfferManualRevive(day)
     }
 
     suspend fun addManualCalendarRevive(
