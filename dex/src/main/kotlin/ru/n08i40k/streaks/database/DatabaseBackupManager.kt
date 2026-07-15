@@ -3,8 +3,11 @@ package ru.n08i40k.streaks.database
 import android.content.Context
 import android.os.Environment
 import androidx.room.RoomDatabase
+import androidx.room.useWriterConnection
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format
@@ -40,9 +43,9 @@ class DatabaseBackupManager(
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     }
 
-    private val lock = Any()
+    private val lock = Mutex()
 
-    fun exportNow(): File = synchronized(lock) {
+    suspend fun exportNow(): File = lock.withLock {
         val backup = createBackup("manual")
         logger("Database backup exported: ${backup.absolutePath}")
         backup
@@ -62,7 +65,7 @@ class DatabaseBackupManager(
         }
     }
 
-    private fun ensureAutoBackupIfDue() {
+    private suspend fun ensureAutoBackupIfDue() {
         val now = Clock.System.now()
         val lastAutoBackupAt = lastAutoBackupAt()
 
@@ -73,7 +76,7 @@ class DatabaseBackupManager(
             return
         }
 
-        synchronized(lock) {
+        lock.withLock {
             val refreshedLastAutoBackupAt = lastAutoBackupAt()
             val refreshedNow = Clock.System.now()
 
@@ -81,7 +84,7 @@ class DatabaseBackupManager(
                 refreshedLastAutoBackupAt != null &&
                 refreshedNow - refreshedLastAutoBackupAt < AUTO_BACKUP_INTERVAL
             ) {
-                return@synchronized
+                return@withLock
             }
 
             val backup = createBackup("auto")
@@ -109,7 +112,7 @@ class DatabaseBackupManager(
         return remaining.inWholeMilliseconds.coerceAtLeast(60_000L)
     }
 
-    private fun createBackup(source: String): File {
+    private suspend fun createBackup(source: String): File {
         val backupsDir = backupsDir()
         val timestamp = Clock.System.now().toLocalDateTime(TimeZone.UTC).format(BACKUP_NAME_FORMAT)
         val backup = File(
@@ -117,11 +120,15 @@ class DatabaseBackupManager(
             "tg-streaks-$timestamp-$source.$BACKUP_EXTENSION"
         )
         val target = context.getDatabasePath(DATABASE_NAME)
-        val sqliteDb = db.openHelper.writableDatabase
 
-        sqliteDb.query("PRAGMA wal_checkpoint(FULL)").close()
+        // Hold Room's writer connection for the whole checkpoint + copy so
+        // concurrent write transactions wait instead of failing with SQLITE_BUSY,
+        // and the copied file can't be modified mid-copy.
+        db.useWriterConnection { transactor ->
+            transactor.usePrepared("PRAGMA wal_checkpoint(FULL)") { it.step() }
+            target.copyTo(backup, overwrite = true)
+        }
 
-        target.copyTo(backup, overwrite = true)
         pruneOldBackups(backupsDir)
         return backup
     }
