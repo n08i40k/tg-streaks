@@ -1245,7 +1245,7 @@ class TgStreaksPlugin(BasePlugin):
             Text(
                 text=self._t("settings.help.docs.title"),
                 icon="msg_info",
-                on_click=lambda _: self._open_telegram_url(PLUGIN_DOCS_URL),
+                on_click=lambda _: self._open_browser_url(PLUGIN_DOCS_URL),
             ),
             Divider(text=self._t("settings.help.docs.description")),
         ]
@@ -1779,6 +1779,23 @@ class TgStreaksPlugin(BasePlugin):
                 context = None
 
         return context
+
+    def _open_browser_url(self, url: str):
+        def open_url():
+            try:
+                context = self._resolve_popup_context()
+                if context is None:
+                    raise RuntimeError("no context")
+
+                intent = Intent()
+                intent.setAction(String(Intent.ACTION_VIEW))
+                intent.setData(Uri.parse(String(url)))
+                intent.addFlags(int(Intent.FLAG_ACTIVITY_NEW_TASK))
+                context.startActivity(intent)
+            except Exception as e:
+                self.log_exception(f"Failed to open Telegram url {url}", e)
+
+        run_on_ui_thread(open_url)
 
     def _open_telegram_url(self, url: str):
         def open_url():
