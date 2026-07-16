@@ -48,10 +48,10 @@ interface StreakPetTaskDao {
     ): StreakPetTask?
 
     @Insert(onConflict = IGNORE)
-    suspend fun insertIfNotExistsAll(vararg records: StreakPetTask)
+    suspend fun insertIfNotExistsAll(records: Collection<StreakPetTask>)
 
     @Insert(onConflict = REPLACE)
-    suspend fun insertOrUpdateAll(vararg records: StreakPetTask)
+    suspend fun insertOrReplaceAll(records: Collection<StreakPetTask>)
 
     @Update
     suspend fun update(record: StreakPetTask)

@@ -119,7 +119,7 @@ class StreaksController(
             .toList()
 
         if (autos.isNotEmpty())
-            restoreDao.insertAll(autos)
+            restoreDao.insertOrReplaceAll(autos)
     }
 
     private suspend fun removeInvalidPeerStreak(accountId: Int, peerUserId: Long) {
@@ -444,7 +444,7 @@ class StreaksController(
                 sourceStreak = dao.findByRelation(ownerUserId, peerUserId)
 
                 dao.insertOrReplace(targetStreak)
-                restoreDao.insertAll(manualRestores)
+                restoreDao.insertOrReplaceAll(manualRestores)
                 persistAutoRestores(ownerUserId, peerUserId, timeZone, restores, manualDates)
             }
 

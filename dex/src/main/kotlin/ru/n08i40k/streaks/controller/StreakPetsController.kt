@@ -259,9 +259,9 @@ class StreakPetsController(
 
         db.withTransaction {
             dao.deleteByRelation(ownerUserId, peerUserId)
-            dao.insert(targetPet)
+            dao.insertOrReplace(targetPet)
 
-            tasks.forEach { taskDao.insertOrUpdateAll(it) }
+            taskDao.insertOrReplaceAll(tasks)
         }
 
         return sourcePet to targetPet
@@ -482,7 +482,7 @@ class StreakPetsController(
                             points = this.points + points
                         )
                     )
-                    tasks.forEach { taskDao.insertOrUpdateAll(it) }
+                    taskDao.insertOrReplaceAll(tasks)
                 }
             }
         }
@@ -506,11 +506,11 @@ class StreakPetsController(
                     ).isEmpty()
                 ) {
                     taskDao.insertIfNotExistsAll(
-                        *StreakPetTask.getNewTasksList(
+                        StreakPetTask.getNewTasksList(
                             ownerUserId,
                             streakPet.peerUserId,
                             now
-                        ).toTypedArray()
+                        )
                     )
                 }
 
@@ -716,10 +716,10 @@ class StreakPetsController(
 
         db.withTransaction {
             if (missingTasksForTargetDay.isNotEmpty())
-                taskDao.insertIfNotExistsAll(*missingTasksForTargetDay.toTypedArray())
+                taskDao.insertIfNotExistsAll(missingTasksForTargetDay)
 
             if (backfillTasks.isNotEmpty())
-                taskDao.insertIfNotExistsAll(*backfillTasks.toTypedArray())
+                taskDao.insertIfNotExistsAll(backfillTasks)
 
             dao.update(
                 streakPet.copy(
@@ -729,7 +729,7 @@ class StreakPetsController(
             )
 
             if (updatedTask != null)
-                taskDao.insertOrUpdateAll(updatedTask)
+                taskDao.insertOrReplaceAll(listOf(updatedTask))
         }
     }
 
@@ -761,7 +761,7 @@ class StreakPetsController(
         )
 
         db.withTransaction {
-            dao.insert(streakPet)
+            dao.insertOrReplace(streakPet)
 
             var currentDay = atDay
 
@@ -769,8 +769,13 @@ class StreakPetsController(
                 if (currentDay > LocalDate.now(timeZone))
                     break
 
-                StreakPetTask.getNewTasksList(ownerUserId, peerUserId, currentDay)
-                    .forEach { taskDao.insertIfNotExistsAll(it) }
+                taskDao.insertIfNotExistsAll(
+                    StreakPetTask.getNewTasksList(
+                        ownerUserId,
+                        peerUserId,
+                        currentDay
+                    )
+                )
 
                 currentDay = currentDay.next()
             }

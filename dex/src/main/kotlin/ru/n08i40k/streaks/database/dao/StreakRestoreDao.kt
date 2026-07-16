@@ -25,7 +25,7 @@ interface StreakRestoreDao {
     suspend fun insert(record: StreakRestore)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(records: Collection<StreakRestore>)
+    suspend fun insertOrReplaceAll(records: Collection<StreakRestore>)
 
     @Query("DELETE FROM streak_revive WHERE owner_user_id = :ownerUserId AND peer_user_id = :peerUserId AND manual = 0")
     suspend fun deleteAutoByRelation(ownerUserId: Long, peerUserId: Long)

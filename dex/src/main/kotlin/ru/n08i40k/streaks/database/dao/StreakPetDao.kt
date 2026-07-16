@@ -26,7 +26,7 @@ interface StreakPetDao {
     suspend fun updateFabEnabled(ownerUserId: Long, peerUserId: Long, enabled: Boolean)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(record: StreakPet)
+    suspend fun insertOrReplace(record: StreakPet)
 
     @Update
     suspend fun update(record: StreakPet)
