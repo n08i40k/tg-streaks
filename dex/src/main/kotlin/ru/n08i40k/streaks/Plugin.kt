@@ -258,15 +258,23 @@ class Plugin {
             this.databaseBackupManager = DatabaseBackupManager(this.db, Logger::info)
 
             // controllers
-            this.timeZonesController = TimeZonesController(this.db)
+            this.timeZonesController =
+                TimeZonesController(this.db)
+
             this.streaksController =
                 StreaksController(this.db, this.timeZonesController, this.resourcesProvider)
+
             this.streakPetsController =
                 StreakPetsController(this.db, this.streaksController, this.timeZonesController)
-            this.pluginRelationController = PluginRelationController(this.db)
-            this.serviceMessageCategoriesController = ServiceMessageCategoriesController(this.db)
 
-            this.petUiManager = StreakPetUiManager()
+            this.serviceMessageCategoriesController =
+                ServiceMessageCategoriesController(this.db)
+
+            this.pluginRelationController =
+                PluginRelationController(this.db, this.serviceMessageCategoriesController)
+
+            this.petUiManager =
+                StreakPetUiManager()
         } catch (e: Throwable) {
             this.db.close()
             throw e
@@ -462,15 +470,6 @@ class Plugin {
                                 return@collectWith
 
                             if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
-                                return@collectWith
-
-                            val allowSend = serviceMessageCategoriesController.isEnabled(
-                                record.ownerUserId,
-                                record.peerUserId,
-                                ServiceMessageCategory.LIFECYCLE
-                            )
-
-                            if (!allowSend)
                                 return@collectWith
 
                             serviceMessagesController

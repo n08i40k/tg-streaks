@@ -96,7 +96,9 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
         @Suppress("DEPRECATION")
         override fun isEnabled(holder: RecyclerView.ViewHolder): Boolean =
             when (holder.adapterPosition) {
+                Row.LIFECYCLE_SW.ordinal,
                 Row.LEVEL_UP_SW.ordinal -> true
+
                 else -> false
             }
 

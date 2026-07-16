@@ -138,15 +138,6 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     ) {
                         pluginRelationController.setHasPlugin(ownerUserId, peerUserId, value)
 
-                        serviceMessageCategoriesController.setEnabledBatch(
-                            ownerUserId,
-                            peerUserId,
-                            mapOf(
-                                ServiceMessageCategory.LEVEL_UP to value,
-                                ServiceMessageCategory.PET to value,
-                            )
-                        )
-
                         refreshState()
                     }
                 }
@@ -277,7 +268,6 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                             return@enqueue
 
                         if (pluginRelationController.hasPlugin(ownerUserId, peerUserId)) {
-                            serviceMessagesController.setEnabled(accountId, peerUserId, true)
                             serviceMessagesController.sendPetInvite(accountId, peerUserId)
 
                             BulletinHelper.show(Strings.status_success_pet_invite_sent())

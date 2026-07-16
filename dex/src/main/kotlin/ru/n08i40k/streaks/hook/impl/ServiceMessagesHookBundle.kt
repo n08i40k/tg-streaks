@@ -360,6 +360,7 @@ class ServiceMessagesHookBundle : HookBundle() {
             val streaksController = plugin.streaksController
             val serviceMessagesController = plugin.serviceMessagesController
             val streakPetsController = plugin.streakPetsController
+            val pluginRelationController = plugin.pluginRelationController
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
@@ -392,7 +393,11 @@ class ServiceMessagesHookBundle : HookBundle() {
                         accountId,
                         "try to accept streak-pet invitation from notification"
                     ) {
-                        serviceMessagesController.setEnabled(accountId, peerUserId, true)
+                        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+                        if (!pluginRelationController.hasPlugin(ownerUserId, peerUserId))
+                            pluginRelationController.setHasPlugin(ownerUserId, peerUserId, true)
+
                         serviceMessagesController.sendPetInviteAccepted(accountId, peerUserId)
 
                         if (!streakPetsController.create(accountId, peerUserId, byInvite = true)) {
