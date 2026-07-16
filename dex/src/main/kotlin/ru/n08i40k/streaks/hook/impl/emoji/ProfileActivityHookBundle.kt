@@ -6,6 +6,7 @@ import org.telegram.messenger.UserConfig
 import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.ProfileActivity
+import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakEmoji
@@ -49,7 +50,11 @@ class ProfileActivityHookBundle : HookBundle() {
             nameTextView.setRightDrawableOnClick { view ->
                 val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
 
-                if (userId <= 0) {
+                val streakViewData = Plugin.getInstance()
+                    .streaksController
+                    .getViewDataBlocking(UserConfig.selectedAccount, userId)
+
+                if (streakViewData == null) {
                     rightDrawableOnClick?.onClick(view)
                     return@setRightDrawableOnClick
                 }
