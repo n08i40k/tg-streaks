@@ -3,7 +3,6 @@ package ru.n08i40k.streaks
 import android.graphics.Color
 import android.webkit.ValueCallback
 import androidx.room.Room
-import androidx.room.RoomDatabase
 import de.comahe.i18n4k.config.I18n4kConfigDefault
 import de.comahe.i18n4k.createLocale
 import de.comahe.i18n4k.i18n4k
@@ -23,7 +22,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import org.telegram.messenger.AndroidUtilities
-import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -37,19 +35,11 @@ import ru.n08i40k.streaks.controller.TimeZonesController
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
-import ru.n08i40k.streaks.database.MIGRATION_10_11
-import ru.n08i40k.streaks.database.MIGRATION_1_2
-import ru.n08i40k.streaks.database.MIGRATION_2_3
-import ru.n08i40k.streaks.database.MIGRATION_3_5
-import ru.n08i40k.streaks.database.MIGRATION_5_6
-import ru.n08i40k.streaks.database.MIGRATION_6_7
-import ru.n08i40k.streaks.database.MIGRATION_7_8
-import ru.n08i40k.streaks.database.MIGRATION_8_9
-import ru.n08i40k.streaks.database.MIGRATION_9_10
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.event.eject.EjectNotifier
+import ru.n08i40k.streaks.extension.buildPluginDatabase
 import ru.n08i40k.streaks.extension.collectOnUIThread
 import ru.n08i40k.streaks.extension.collectWith
 import ru.n08i40k.streaks.extension.collectWithOnUIThread
@@ -225,16 +215,7 @@ class Plugin {
         })
 
     // database
-    private val db: PluginDatabase = Room.databaseBuilder(
-        ApplicationLoader.applicationContext,
-        PluginDatabase::class.java,
-        "tg-streaks"
-    )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_5, MIGRATION_5_6)
-        .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
-        .addMigrations(MIGRATION_10_11)
-        .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        .build()
+    private val db: PluginDatabase = Room.buildPluginDatabase()
 
     internal val databaseBackupManager: DatabaseBackupManager
     private val taskQueue: TaskQueue
