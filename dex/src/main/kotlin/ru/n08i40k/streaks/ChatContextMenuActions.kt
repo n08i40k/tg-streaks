@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks
 
+import android.net.Uri
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -151,8 +152,16 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 }
 
                 override fun offerSync() {
-                    // TODO: implement feature
-                    Logger.info("Sync offered!")
+                    AccountTaskExecutor.enqueue(accountId, "send sync") {
+                        val swapped =
+                            databaseBackupManager.exportSwappedNow(ownerUserId, peerUserId)
+
+                        serviceMessagesController.sendSyncOffer(
+                            accountId,
+                            peerUserId,
+                            Uri.fromFile(swapped)
+                        )
+                    }
                 }
 
                 override fun setServiceMessagesCategoryEnabled(

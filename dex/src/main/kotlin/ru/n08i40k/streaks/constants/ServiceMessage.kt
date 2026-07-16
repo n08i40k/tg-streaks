@@ -2,6 +2,10 @@ package ru.n08i40k.streaks.constants
 
 @Suppress("FunctionName")
 object ServiceMessage {
+    // sync
+    const val SYNC_OFFER = "tg-streaks:sync:offer"
+    const val SYNC_APPLIED = "tg-streaks:sync:applied"
+
     // streak
     const val CREATE_TEXT = "tg-streaks:create"
     const val DEATH_TEXT = "tg-streaks:death"

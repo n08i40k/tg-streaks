@@ -57,6 +57,7 @@ private val RELOCATION_EXCLUDED_PREFIXES: List<String> by lazy {
 
 // Individual classes excluded from relocation (use when excluding the whole package is too broad)
 private val RELOCATION_EXCLUDED_CLASSES = setOf(
+    "androidx/core/view/inputmethod/InputContentInfoCompat",
     "androidx/collection/LongSparseArray",
 )
 

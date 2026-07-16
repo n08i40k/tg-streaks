@@ -37,6 +37,13 @@ sealed interface PluginEvent {
         val peerUserId: Long
     }
 
+    data class SyncDatabaseSnapshotAppliedEvent(
+        override val accountId: Int,
+        override val peerUserId: Long,
+        val hasVisibleStreak: Boolean,
+        val hasPet: Boolean
+    ) : PeerEvent
+
     sealed interface StreakEvent : PeerEvent, TimestampEvent, RecordEvent<Streak> {
         override val peerUserId: Long
             get() = record.peerUserId

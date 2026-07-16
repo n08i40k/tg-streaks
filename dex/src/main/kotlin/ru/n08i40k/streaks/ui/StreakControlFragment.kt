@@ -203,7 +203,10 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
                     Strings.dialog_control_sync_offer_title(),
                     Strings.dialog_control_sync_offer_message(),
                     Strings.dialog_control_sync_offer_button(),
-                ) { viewModel.offerSync() }
+                ) {
+                    viewModel.offerSync()
+                    finishFragment()
+                }
             }
 
             Row.SERVICE_MESSAGES_CATS_LINK.ordinal -> {
@@ -305,7 +308,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         @Suppress("DEPRECATION")
         override fun isEnabled(holder: RecyclerView.ViewHolder): Boolean =
             when (holder.adapterPosition) {
-                Row.SYNC_OFFER_BTN.ordinal -> false // viewState.peerHasPluginInstalled
+                Row.SYNC_OFFER_BTN.ordinal -> viewState.peerHasPluginInstalled
 
                 Row.DANGER_ZONE_REBUILD_PET_BTN.ordinal, Row.DANGER_ZONE_DELETE_PET_BTN.ordinal -> viewState.hasPet
 

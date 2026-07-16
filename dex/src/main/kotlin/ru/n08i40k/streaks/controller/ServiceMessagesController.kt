@@ -1,6 +1,7 @@
 package ru.n08i40k.streaks.controller
 
 import android.content.Context
+import android.net.Uri
 import org.telegram.messenger.ApplicationLoader
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.util.MessageSender
@@ -20,6 +21,7 @@ class ServiceMessagesController {
         )
     }
 
+    // todo: remove
     fun isEnabled(accountId: Int, peerUserId: Long): Boolean {
         if (accountId < 0 || peerUserId <= 0L)
             return false
@@ -85,5 +87,13 @@ class ServiceMessagesController {
             return
 
         MessageSender.send(accountId, peerUserId, ServiceMessage.RESTORE_TEXT)
+    }
+
+    fun sendSyncOffer(accountId: Int, peerUserId: Long, db: Uri) {
+        MessageSender.sendDocument(accountId, peerUserId, ServiceMessage.SYNC_OFFER, db)
+    }
+
+    fun sendSyncApplied(accountId: Int, peerUserId: Long) {
+        MessageSender.send(accountId, peerUserId, ServiceMessage.SYNC_APPLIED)
     }
 }

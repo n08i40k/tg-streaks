@@ -354,6 +354,26 @@ class Plugin {
                 .collectOnUIThread { streakEmojiRegistry.refreshDialogCells() }
         }
 
+        // sync
+        backgroundScope.launch {
+            EventBus.stream
+                .filterIsInstance<PluginEvent.SyncDatabaseSnapshotAppliedEvent>()
+                .collectWithOnUIThread {
+                    if (hasVisibleStreak)
+                        UserPatcher.patchUser(accountId, peerUserId)
+                    else
+                        UserPatcher.restoreUser(accountId, peerUserId)
+
+                    alertNotificationHelper.cancelNearDeath(peerUserId)
+                    alertNotificationHelper.cancelDeath(peerUserId)
+
+                    petUiManager.refreshFabForOpenChat()
+                    petUiManager.refreshOpenedDialog(accountId, peerUserId)
+
+                    streakEmojiRegistry.refreshDialogCells()
+                }
+        }
+
         // pre-death notification
         backgroundScope.launch {
             EventBus.stream
@@ -700,7 +720,7 @@ class Plugin {
             PetFabHookBundle(),
             PremiumPreviewBottomSheetHookBundle(),
             ServiceMessagesHookBundle(),
-            UpdatesHookBundle()
+            UpdatesHookBundle(),
         )
 
         bundles.forEach { it.inject(::before, ::after) }
