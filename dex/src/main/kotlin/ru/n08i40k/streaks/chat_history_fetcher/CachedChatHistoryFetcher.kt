@@ -2,7 +2,7 @@ package ru.n08i40k.streaks.chat_history_fetcher
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import org.telegram.messenger.AccountInstance
+import org.telegram.messenger.MessagesStorage
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.NativeByteBuffer
 import org.telegram.tgnet.TLRPC
@@ -56,7 +56,7 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         val startLocalEpoch = day.toEpochSeconds(timeZone)
         val endLocalEpoch = day.next().toEpochSeconds(timeZone)
 
-        val db = AccountInstance.getInstance(accountId).messagesStorage.database
+        val db = MessagesStorage.getInstance(accountId).database
         val cursor = db.queryFinalized(QUERY, peerUserId, startLocalEpoch, endLocalEpoch)
 
         var fromOwner = false
@@ -123,7 +123,7 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         val startLocalEpoch = day.toEpochSeconds(timeZone)
         val endLocalEpoch = day.next().toEpochSeconds(timeZone)
 
-        val db = AccountInstance.getInstance(accountId).messagesStorage.database
+        val db = MessagesStorage.getInstance(accountId).database
         val cursor = db.queryFinalized(QUERY, peerUserId, startLocalEpoch, endLocalEpoch)
 
         val messages = mutableListOf<TLRPC.Message>()
