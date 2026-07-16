@@ -84,32 +84,6 @@ class StreakPopupController(
         }
     }
 
-    suspend fun enqueueCreated(accountId: Int, peerUserId: Long, days: Int, level: StreakLevel) {
-        if (days < 3) {
-            return
-        }
-
-        enqueue(
-            accountId = accountId,
-            peerUserId = peerUserId,
-            kind = POPUP_KIND_CREATED,
-            days = days,
-            level = level,
-            dedupeKey = "created:$accountId:$peerUserId:${level.length}"
-        )
-    }
-
-    suspend fun enqueueUpgrade(accountId: Int, peerUserId: Long, days: Int, level: StreakLevel) {
-        enqueue(
-            accountId = accountId,
-            peerUserId = peerUserId,
-            kind = POPUP_KIND_UPGRADED,
-            days = days,
-            level = level,
-            dedupeKey = "upgraded:$accountId:$peerUserId:${level.length}"
-        )
-    }
-
     suspend fun flushCurrentChat() {
         val relation = resolveOpenChatRelation() ?: return
         flushRelation(relation.accountId, relation.peerUserId)
