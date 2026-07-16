@@ -54,6 +54,9 @@ class ServiceMessagesHookBundle : HookBundle() {
             if (message.message == null)
                 return@before
 
+            if (!ServiceMessage.isServiceText(message.message))
+                return@before
+
             val tryStreakCreate = streakCreate@{
                 if (message.message != ServiceMessage.CREATE_TEXT)
                     return@streakCreate null
