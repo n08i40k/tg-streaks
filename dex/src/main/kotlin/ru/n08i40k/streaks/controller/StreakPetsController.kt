@@ -761,7 +761,7 @@ class StreakPetsController(
         )
 
         db.withTransaction {
-            dao.insertOrReplace(streakPet)
+            dao.insertOrIgnore(streakPet)
 
             var currentDay = atDay
 

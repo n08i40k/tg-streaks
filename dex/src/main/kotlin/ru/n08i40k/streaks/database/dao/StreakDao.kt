@@ -24,6 +24,9 @@ interface StreakDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(record: Streak)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertOrIgnore(record: Streak)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrReplace(record: Streak)
 

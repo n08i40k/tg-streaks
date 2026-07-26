@@ -115,7 +115,15 @@ class StreaksController(
     ) {
         val autos = restoreDates.asSequence()
             .filterNot { it in manualDates }
-            .map { StreakRestore(ownerUserId, peerUserId, it, it.toInstant(timeZone), manual = false) }
+            .map {
+                StreakRestore(
+                    ownerUserId,
+                    peerUserId,
+                    it,
+                    it.toInstant(timeZone),
+                    manual = false
+                )
+            }
             .toList()
 
         if (autos.isNotEmpty())
@@ -423,7 +431,14 @@ class StreaksController(
                 fetchStreakActionForDay(accountId, peerUser, timeZone, rebuildTo, restores, false)
             val boundaryFrom =
                 if (rebuildFrom == rebuildTo) boundaryTo
-                else fetchStreakActionForDay(accountId, peerUser, timeZone, rebuildFrom, restores, false)
+                else fetchStreakActionForDay(
+                    accountId,
+                    peerUser,
+                    timeZone,
+                    rebuildFrom,
+                    restores,
+                    false
+                )
 
             val createdAt =
                 listOfNotNull(boundaryFrom.lastOwnerAt, boundaryFrom.lastPeerAt).minOrNull()
@@ -810,7 +825,7 @@ class StreaksController(
                 timeZone = timeZone
             )
 
-            dao.insert(streak)
+            dao.insertOrIgnore(streak)
 
             EventBus.emit(
                 PluginEvent.StreakCreatedEvent(
@@ -831,7 +846,7 @@ class StreaksController(
             if (peerType == PeerType.VALID
                 && message == ServiceMessage.RESTORE_TEXT
                 && streak.canRestore
-            ) restore( accountId, peerUserId, at, !out )
+            ) restore(accountId, peerUserId, at, !out)
 
             return
         }
@@ -853,28 +868,13 @@ class StreaksController(
             return handleUpdate(accountId, peerUserId, at, out, message, sendServiceMessages)
         }
 
-        if (out) {
-            if (streak.updateFromOwnerAt.toLocalDate(timeZone) != now) {
-                dao.update(
-                    streak.copy(
-                        updateFromOwnerAt = at,
-                        deathNotified = false
-                    )
-                )
-            }
-        } else {
-            if (streak.updateFromPeerAt.toLocalDate(timeZone) != now) {
-                dao.update(
-                    streak.copy(
-                        updateFromPeerAt = at,
-                        deathNotified = false
-                    )
-                )
-            }
-        }
+        if (out && streak.updateFromOwnerAt.toLocalDate(timeZone) != now)
+            dao.update(streak.copy(updateFromOwnerAt = at, deathNotified = false))
+        else if (!out && streak.updateFromPeerAt.toLocalDate(timeZone) != now)
+            dao.update(streak.copy(updateFromPeerAt = at, deathNotified = false))
 
-        dao.findByRelation(ownerUserId, peerUserId)!!
-            .takeIf { it.length > streak.length }
+        dao.findByRelation(ownerUserId, peerUserId)
+            ?.takeIf { it.length > streak.length }
             ?.let {
                 EventBus.emit(
                     PluginEvent.StreakGrowUpEvent(
