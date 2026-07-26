@@ -481,10 +481,6 @@ class JvmPluginBridge:
             try:
                 dex_data = self._download(show_bulletins=True)
             except DownloadFailedError:
-                self.plugin.log(
-                    "DEX download failed in debug mode. Falling back to cached DEX if available..."
-                )
-                self._load_cached_file()
                 return
 
             self._write_dex_file(dex_data)
@@ -508,11 +504,6 @@ class JvmPluginBridge:
         try:
             dex_data = self._download(show_bulletins=True)
         except DownloadFailedError:
-            if cached_sha256 is not None:
-                self.plugin.log(
-                    "DEX download failed. Falling back to stale cached DEX (version mismatch possible)..."
-                )
-                self._load_cached_file()
             return
 
         downloaded_sha256 = _sha256_hex(dex_data)
@@ -610,18 +601,19 @@ class ZipResourcesBridge:
             self.plugin.log("Resources ZIP update is already in progress. Waiting...")
             lock_fd = self._acquire_lock(blocking=True)
             self._release_lock(lock_fd)
-            # Another process finished: re-check what it produced
+
+            if self._compute_file_sha256(self.zip_path) != expected_sha256:
+                self.plugin.log(
+                    "Resources ZIP update finished, but SHA256 still mismatches. Aborting..."
+                )
+                return None
+
             return self.resources_root if os.path.isdir(self.resources_root) else None
 
         try:
             try:
                 zip_data = self._download(show_bulletins=True)
             except DownloadFailedError:
-                if os.path.isdir(self.resources_root):
-                    self.plugin.log(
-                        "Resources ZIP download failed. Falling back to stale extracted resources (version mismatch possible)..."
-                    )
-                    return self.resources_root
                 return None
 
             downloaded_sha256 = _sha256_hex(zip_data)
@@ -647,10 +639,11 @@ class ZipResourcesBridge:
                 )
                 try:
                     zip_data = self._download(show_bulletins=True)
-                    self._write_zip_file(zip_data)
-                    self._extract_zip()
                 except DownloadFailedError:
-                    pass
+                    return None
+
+                self._write_zip_file(zip_data)
+                self._extract_zip()
             finally:
                 self._release_lock(lock_fd)
         else:
