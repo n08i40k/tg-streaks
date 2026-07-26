@@ -469,16 +469,21 @@ class ServiceMessagesHookBundle : HookBundle() {
                                 destroy()
 
                             fun destroy() {
-                                nc.removeObserver(this, NotificationCenter.fileLoaded)
-                                nc.removeObserver(this, NotificationCenter.fileLoadFailed)
+                                AndroidUtilities.runOnUIThread {
+                                    nc.removeObserver(this, NotificationCenter.fileLoaded)
+                                    nc.removeObserver(this, NotificationCenter.fileLoadFailed)
+                                }
+
                                 unsubscribe()
 
                                 result.complete(null)
                             }
                         }
 
-                        nc.addObserver(observer, NotificationCenter.fileLoaded)
-                        nc.addObserver(observer, NotificationCenter.fileLoadFailed)
+                        AndroidUtilities.runOnUIThread {
+                            nc.addObserver(observer, NotificationCenter.fileLoaded)
+                            nc.addObserver(observer, NotificationCenter.fileLoadFailed)
+                        }
 
                         fileLoader.loadFile(document, message, FileLoader.PRIORITY_HIGH, 0)
 
