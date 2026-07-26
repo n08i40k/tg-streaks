@@ -34,11 +34,9 @@ class ProfileActivityHookBundle : HookBundle() {
                 return@after
 
             val nameTextView =
-                getFieldValue<Array<SimpleTextView>>(
-                    thisClass,
-                    thisObject,
-                    "nameTextView"
-                )!![1]
+                getFieldValue<Array<SimpleTextView?>>(thisClass, thisObject, "nameTextView")
+                    ?.get(1)
+                    ?: return@after
 
             val rightDrawableOnClick =
                 getFieldValue<View.OnClickListener>(
