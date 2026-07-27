@@ -1180,6 +1180,7 @@ class PluginUpdateChecker:
 class TgStreaksPlugin(BasePlugin):
     _reinitialize_lock = threading.Lock()
     _full_load_lock = threading.Lock()
+    _eject_lock = threading.Lock()
 
     settings_actions: SettingsActions
 
@@ -1337,7 +1338,7 @@ class TgStreaksPlugin(BasePlugin):
 
             class RetryClickListener(dynamic_proxy(AlertDialog.OnButtonClickListener)):
                 def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
-                    self_outer._schedule_continue_plugin_load()
+                    self_outer._continue_plugin_load()
 
             try:
                 fragment.showDialog(
@@ -1392,7 +1393,7 @@ class TgStreaksPlugin(BasePlugin):
             class LaterClickListener(dynamic_proxy(AlertDialog.OnButtonClickListener)):
                 def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
                     self_outer._persist_current_loaded_version()
-                    self_outer._schedule_continue_plugin_load()
+                    self_outer._continue_plugin_load()
 
             try:
                 fragment.showDialog(
@@ -1438,12 +1439,15 @@ class TgStreaksPlugin(BasePlugin):
         timer.daemon = True
         timer.start()
 
-    def _schedule_continue_plugin_load(self):
-        threading.Thread(
-            target=self._continue_plugin_load,
+    def _continue_plugin_load(self) -> threading.Thread:
+        thread = threading.Thread(
+            target=self._run_plugin_load,
             name="tg-streaks-continue-plugin-load",
             daemon=True,
-        ).start()
+        )
+        thread.start()
+
+        return thread
 
     def _reset_load_log_buffer(self):
         self._load_log_buffer: list[str] = []
@@ -1521,7 +1525,7 @@ class TgStreaksPlugin(BasePlugin):
             except Exception as e:
                 self.log_exception("Failed to restart client", e)
                 self._show_error(self._t("status.error.update.restart_failed"))
-                self._schedule_continue_plugin_load()
+                self.on_plugin_load()
 
         run_on_ui_thread(restart)
 
@@ -1807,9 +1811,9 @@ class TgStreaksPlugin(BasePlugin):
 
         run_on_ui_thread(open_url)
 
-    def _register_streak_levels(self):
+    def _register_streak_levels(self) -> bool:
         if self.jvm_plugin.klass is None:
-            return
+            return False
 
         try:
             register_method = self.jvm_plugin.klass.getDeclaredMethod(
@@ -1832,11 +1836,15 @@ class TgStreaksPlugin(BasePlugin):
 
             self.log(f"Registered {len(StreakLevels)} streak levels")
         except Exception as e:
-            self.log_exception("Failed to register streak levels", e)
+            self._handle_load_failure("registerStreakLevel", e)
+            self.on_plugin_eject()
+            return False
 
-    def _register_streak_pet_levels(self):
+        return True
+
+    def _register_streak_pet_levels(self) -> bool:
         if self.jvm_plugin.klass is None:
-            return
+            return False
 
         try:
             register_method = self.jvm_plugin.klass.getDeclaredMethod(
@@ -1867,9 +1875,13 @@ class TgStreaksPlugin(BasePlugin):
 
             self.log(f"Registered {len(StreakPetLevels)} streak pet levels")
         except Exception as e:
-            self.log_exception("Failed to register streak pet levels", e)
+            self._handle_load_failure("registerStreakPetLevel", e)
+            self.on_plugin_eject()
+            return False
 
-    def _finalize_jvm_plugin_inject(self):
+        return True
+
+    def _finalize_jvm_plugin_inject(self) -> bool:
         try:
             self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("finalizeInject")
@@ -1879,6 +1891,10 @@ class TgStreaksPlugin(BasePlugin):
             self.log("JVM plugin finalizeInject completed")
         except Exception as e:
             self._handle_load_failure("finalizeInject", e)
+            self.on_plugin_eject()
+            return False
+
+        return True
 
     def _prepare_jvm_plugin(self) -> bool:
         """Verifies/downloads the DEX and resources. Any download failure is
@@ -1893,7 +1909,7 @@ class TgStreaksPlugin(BasePlugin):
         self.resources_root = self.resources_bridge.load()
         return self.resources_root is not None
 
-    def _inject_jvm_plugin(self):
+    def _inject_jvm_plugin(self) -> bool:
         try:
             build_date = self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("getBuildDate")
@@ -1925,6 +1941,10 @@ class TgStreaksPlugin(BasePlugin):
             self._apply_pet_fab_size_dp(self._get_pet_fab_size_dp())
         except Exception as e:
             self._handle_load_failure("inject", e)
+            self.on_plugin_eject()
+            return False
+
+        return True
 
     def _database_file_paths(self) -> list[str]:
         base_path = ApplicationLoader.applicationContext.getDatabasePath(
@@ -2169,12 +2189,15 @@ class TgStreaksPlugin(BasePlugin):
                     return
 
                 try:
-                    self.on_plugin_load()
+                    load_thread = self.on_plugin_load(allow_update_pause=False)
                 except BaseException as e:
                     self.log_exception(
                         "Failed during plugin load after backup restore", e
                     )
                     return
+
+                if load_thread is not None:
+                    load_thread.join()
 
                 self._show_success(
                     self._t(
@@ -2223,10 +2246,13 @@ class TgStreaksPlugin(BasePlugin):
                 self._show_success(self._t("status.success.database.reset_started"))
 
                 try:
-                    self.on_plugin_load()
+                    load_thread = self.on_plugin_load(allow_update_pause=False)
                 except BaseException as e:
                     self.log_exception("Failed during plugin load after DB reset", e)
                     return
+
+                if load_thread is not None:
+                    load_thread.join()
 
                 self.log("Database reset and plugin reinitialization completed")
             finally:
@@ -2238,7 +2264,7 @@ class TgStreaksPlugin(BasePlugin):
             daemon=True,
         ).start()
 
-    def _continue_plugin_load(self):
+    def _run_plugin_load(self):
         with self._full_load_lock:
             if getattr(self, "_full_load_started", False):
                 return
@@ -2250,16 +2276,20 @@ class TgStreaksPlugin(BasePlugin):
                     self._full_load_started = False
                 return
 
-            self._inject_jvm_plugin()
+            if not self._inject_jvm_plugin():
+                return
 
-            self._register_streak_levels()
-            self._register_streak_pet_levels()
+            if not self._register_streak_levels():
+                return
+            if not self._register_streak_pet_levels():
+                return
 
             self.settings_actions = SettingsActions(self)
             self.chat_context_menu = ChatContextMenu(self)
             self.chat_context_menu.register()
 
-            self._finalize_jvm_plugin_inject()
+            if not self._finalize_jvm_plugin_inject():
+                return
 
             self.update_checker = PluginUpdateChecker(self)
             self.update_checker.start()
@@ -2269,19 +2299,23 @@ class TgStreaksPlugin(BasePlugin):
 
         self._stop_load_logging()
 
-    def on_plugin_load(self):
+    def on_plugin_load(
+        self, allow_update_pause: bool = True
+    ) -> threading.Thread | None:
         self._reset_load_log_buffer()
+        self._ejected = False
 
         try:
             self.resources_bridge = ZipResourcesBridge(self)
             self._full_load_started = False
 
-            if self._should_pause_full_load_for_update():
-                return
+            if allow_update_pause and self._should_pause_full_load_for_update():
+                return None
 
-            self._continue_plugin_load()
+            return self._continue_plugin_load()
         except BaseException as e:
             self._handle_load_failure("plugin load", e)
+            return None
 
     def on_plugin_unload(self):
         try:
@@ -2289,14 +2323,16 @@ class TgStreaksPlugin(BasePlugin):
         except Exception:
             pass
 
-        try:
-            self.chat_context_menu.unregister()
-        except Exception as e:
-            self.log_exception("Failed to unregister chat context menu", e)
-
         jvm_plugin = getattr(self, "jvm_plugin", None)
+
         if jvm_plugin is None or jvm_plugin.klass is None:
             return
+
+        try:
+            if getattr(self, "chat_context_menu", None) is not None:
+                self.chat_context_menu.unregister()
+        except Exception as e:
+            self.log_exception("Failed to unregister chat context menu", e)
 
         try:
             jvm_plugin.klass.getDeclaredMethod(String("eject")).invoke(None)
@@ -2305,3 +2341,30 @@ class TgStreaksPlugin(BasePlugin):
             self.log_exception("Failed to eject JVM plugin", e)
 
         jvm_plugin.klass = None
+
+    def on_plugin_eject(self):
+        # guarded: a concurrent reload can trigger this from more than one bridge call
+        with self._eject_lock:
+            if getattr(self, "_ejected", False):
+                return
+            self._ejected = True
+
+        self.log("JVM plugin instance lost: ejected by a concurrent reload")
+
+        try:
+            if getattr(self, "chat_context_menu", None) is not None:
+                self.chat_context_menu.unregister()
+        except Exception as e:
+            self.log_exception(
+                "Failed to unregister chat context menu after eject", e
+            )
+
+        try:
+            if getattr(self, "update_checker", None) is not None:
+                self.update_checker.stop()
+        except Exception:
+            pass
+
+        jvm_plugin = getattr(self, "jvm_plugin", None)
+        if jvm_plugin is not None:
+            jvm_plugin.klass = None

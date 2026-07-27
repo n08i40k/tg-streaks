@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.ui
 
+import androidx.annotation.AnyThread
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -23,11 +24,13 @@ class StreakPetUiManager {
     private var fabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
     private var pendingFabRefresh: Job? = null
 
+    @AnyThread
     fun dismissAll() {
         dismissDialog()
         dismissFab()
     }
 
+    @AnyThread
     fun dismissFab() {
         pendingFabRefresh?.cancel()
         pendingFabRefresh = null
@@ -179,6 +182,7 @@ class StreakPetUiManager {
         }
     }
 
+    @AnyThread
     private fun dismissDialog(dialog: StreakPetDialog? = null) {
         if (dialog != null && openedDialog !== dialog) {
             return

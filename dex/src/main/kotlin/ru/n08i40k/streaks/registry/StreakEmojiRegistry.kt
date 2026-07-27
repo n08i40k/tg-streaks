@@ -1,6 +1,7 @@
 package ru.n08i40k.streaks.registry
 
 import android.view.View
+import androidx.annotation.UiThread
 import org.telegram.ui.ActionBar.ActionBarLayout
 import org.telegram.ui.ActionBar.INavigationLayout
 import org.telegram.ui.DialogsActivity
@@ -16,6 +17,7 @@ class StreakEmojiRegistry {
 
     fun add(data: StreakEmoji.EjectData) = elements.add(data)
 
+    @UiThread
     fun restoreAll() {
         elements.forEach {
             Logger.tryOrFatal("restore original streak emoji") {

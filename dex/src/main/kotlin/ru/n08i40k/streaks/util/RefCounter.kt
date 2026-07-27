@@ -8,7 +8,7 @@ import kotlin.concurrent.atomics.incrementAndFetch
 
 @OptIn(ExperimentalAtomicApi::class)
 object RefCounter {
-    private val lock = Unit
+    private val lock = Any()
 
     private var counter = AtomicInt(0)
 

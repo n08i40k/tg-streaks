@@ -28,9 +28,4 @@ open class LockableRegistry<T> {
         return map[key]
             ?: throw IllegalArgumentException("Registry doesn't contains value with provided key")
     }
-
-    fun clear() {
-        frozen = false
-        map.clear()
-    }
 }

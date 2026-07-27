@@ -88,6 +88,8 @@ import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.UserPatcher
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.lang.reflect.Member
+import java.util.function.Supplier
+import kotlin.concurrent.thread
 import kotlin.time.Instant
 
 typealias LogReceiver = ValueCallback<String>
@@ -95,14 +97,19 @@ typealias LogReceiver = ValueCallback<String>
 class Plugin {
     @Suppress("unused")
     companion object {
+        private const val HANDLE_KEY = "ru.n08i40k.streaks.handle"
+
+        @Volatile
+        private var WAS_INJECTED = false
+
+        @Volatile
         private var INSTANCE: Plugin? = null
+
         private var VERSION: String? = null
 
         fun isInjected(): Boolean = INSTANCE != null
 
-        // should not be called from python
-        @JvmStatic
-        fun getInstance(): Plugin = INSTANCE!!
+        internal fun getInstance(): Plugin = INSTANCE!!
 
         @JvmStatic
         fun getBuildDate(): String = Instant
@@ -112,6 +119,8 @@ class Plugin {
         @JvmStatic
         fun getVersion(): String? = VERSION
 
+        @Synchronized
+        @Blocking
         @JvmStatic
         fun inject(
             version: String,
@@ -121,32 +130,44 @@ class Plugin {
             if (INSTANCE != null)
                 return
 
+            if (WAS_INJECTED)
+                throw IllegalStateException("Cannot inject plugin from same class-loader twice")
+
             VERSION = version
+            WAS_INJECTED = true
 
             Logger.setReceiver(logReceiver)
 
-            i18n4k = I18n4kConfigDefault().apply {
-                locale = createLocale(
-                    LocaleController
-                        .getInstance()
-                        .resolveLanguageCode()
-                )
-            }
-            MessageFormatterDefault.registerMessageValueFormatters(MessagePluralFormatter)
+            val props = System.getProperties()
 
-            try {
-                INSTANCE = Plugin(ResourcesProvider(resourcesRootPath))
-            } catch (e: Throwable) {
-                logReceiver.onReceiveValue("Failed to create plugin instance")
-                logReceiver.onReceiveValue(e.toString())
-                logReceiver.onReceiveValue(e.stackTrace.joinToString("\n"))
-                return
-            }
+            // prevent two plugin injects concurrently (from different class-loaders)
+            synchronized(props) {
+                @Suppress("UNCHECKED_CAST")
+                (props.put(HANDLE_KEY, Supplier { ejectPromise() }) as? Supplier<Thread>)
+                    ?.apply {
+                        Logger.info("Plugin is probably injected in different class loader!")
 
-            Logger.tryOrFatal(
-                "Failed to inject plugin",
-                INSTANCE!!::onInject
-            )
+                        Logger.info("Ejecting old plugin...")
+                        get().join()
+                    }
+
+
+                i18n4k = I18n4kConfigDefault().apply {
+                    locale = createLocale(
+                        LocaleController
+                            .getInstance()
+                            .resolveLanguageCode()
+                    )
+                }
+                MessageFormatterDefault.registerMessageValueFormatters(MessagePluralFormatter)
+
+                Logger.tryOrFatal("Failed to create and inject plugin") {
+                    val plugin = Plugin(ResourcesProvider(resourcesRootPath))
+                        .also { INSTANCE = it }
+
+                    plugin.onInject()
+                }
+            }
         }
 
         @JvmStatic
@@ -204,14 +225,26 @@ class Plugin {
             petUiManager.setFabSizeDp(sizeDp)
         }
 
-        @AnyThread
-        @JvmStatic
-        fun eject() = AndroidUtilities.runOnUIThread {
+        @Synchronized
+        private fun ejectSynchronized() {
             Logger.tryOrFatal("Failed to eject plugin") {
                 INSTANCE?.onEject()
             }
 
             INSTANCE = null
+        }
+
+        @AnyThread
+        private fun ejectPromise(): Thread =
+            thread(
+                contextClassLoader = Plugin::class.java.classLoader,
+                block = ::ejectSynchronized
+            )
+
+        @AnyThread
+        @JvmStatic
+        fun eject() {
+            ejectPromise()
         }
     }
 
@@ -635,17 +668,14 @@ class Plugin {
 
     @Blocking
     private fun onEject() {
+        Logger.info("onEject called!")
+
         Logger.tryOrFatal(
             "remove plugin badges",
             PluginBadges::remove
         )
 
-        taskQueue.stopWorker()
-
-        backgroundScope.cancel()
-
-        petUiManager.dismissAll()
-
+        // hooks
         hooks.forEach {
             Logger.tryOrFatal(
                 "unhook method ${it.hookedMethod}",
@@ -654,11 +684,15 @@ class Plugin {
         }
         hooks.clear()
 
-        streakEmojiRegistry.restoreAll()
+        // bg
+        taskQueue.stopWorker()
+        backgroundScope.cancel()
 
-        chatContextMenuCallbackRegistry.clear()
-        settingsActionCallbackRegistry.clear()
+        // ui
+        petUiManager.dismissAll()
+        runOnMainThread { streakEmojiRegistry.restoreAll() }
 
+        // database (will be closed after notifying all subscribers except logger)
         EjectNotifier.subscribe(999) {
             Logger.info("Waiting for ref counter to be zero..")
             runBlocking { RefCounter.wait() }
@@ -667,6 +701,7 @@ class Plugin {
             db.close()
         }
 
+        // subscribers
         EjectNotifier.fire()
     }
 
