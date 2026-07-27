@@ -1,6 +1,6 @@
 package ru.n08i40k.streaks.ui
 
-import androidx.annotation.AnyThread
+import androidx.annotation.UiThread
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -24,13 +24,17 @@ class StreakPetUiManager {
     private var fabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
     private var pendingFabRefresh: Job? = null
 
-    @AnyThread
+    // Документация пиздит.
+    //
+    // При попытке сделать dismiss не из того же потока в котором он был создан (ui),
+    // будет вызвано исключение
+    @UiThread
     fun dismissAll() {
         dismissDialog()
         dismissFab()
     }
 
-    @AnyThread
+    @UiThread
     fun dismissFab() {
         pendingFabRefresh?.cancel()
         pendingFabRefresh = null
@@ -182,7 +186,7 @@ class StreakPetUiManager {
         }
     }
 
-    @AnyThread
+    @UiThread
     private fun dismissDialog(dialog: StreakPetDialog? = null) {
         if (dialog != null && openedDialog !== dialog) {
             return

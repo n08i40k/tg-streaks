@@ -702,8 +702,10 @@ class Plugin {
         Logger.info("Background coroutines finished!")
 
         // ui
-        petUiManager.dismissAll()
-        runOnMainThread { streakEmojiRegistry.restoreAll() }
+        runOnMainThread {
+            petUiManager.dismissAll()
+            streakEmojiRegistry.restoreAll()
+        }
 
         // database (will be closed after notifying all subscribers except logger)
         EjectNotifier.subscribe(999) {
