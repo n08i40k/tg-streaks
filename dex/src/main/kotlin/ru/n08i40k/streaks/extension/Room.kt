@@ -25,3 +25,10 @@ fun Room.buildPluginDatabase(path: String = "tg-streaks"): PluginDatabase =
         .addMigrations(MIGRATION_10_11)
         .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
         .build()
+
+inline fun <R> RoomDatabase.closeAfter(block: () -> R): R =
+    try {
+        block()
+    } finally {
+        close()
+    }

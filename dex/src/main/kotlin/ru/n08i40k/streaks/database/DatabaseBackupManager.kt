@@ -20,6 +20,7 @@ import ru.n08i40k.streaks.data.PluginRelation
 import ru.n08i40k.streaks.data.ServiceMessageCategories
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.extension.buildPluginDatabase
+import ru.n08i40k.streaks.extension.closeAfter
 import ru.n08i40k.streaks.util.RuntimeGuard
 import java.io.File
 import kotlin.time.Clock
@@ -72,111 +73,115 @@ class DatabaseBackupManager(
         val source = db
         val target = Room.buildPluginDatabase(backup.path)
 
-        // relation
-        // we can skip relation check, because sync can't be sent to user without plugin
-        target
-            .pluginRelationDao()
-            .insertOrReplace(PluginRelation(peerUserId, ownerUserId, true))
+        target.closeAfter {
+            // relation
+            // we can skip relation check, because sync can't be sent to user without plugin
+            target
+                .pluginRelationDao()
+                .insertOrReplace(PluginRelation(peerUserId, ownerUserId, true))
 
-        // time zone
-        val timeZone = source
-            .peerTimeZoneDao()
-            .findByRelation(ownerUserId, peerUserId)
-            ?: PeerTimeZone(ownerUserId, peerUserId, TimeZone.currentSystemDefault())
+            // time zone
+            val timeZone = source
+                .peerTimeZoneDao()
+                .findByRelation(ownerUserId, peerUserId)
+                ?: PeerTimeZone(ownerUserId, peerUserId, TimeZone.currentSystemDefault())
 
-        target.peerTimeZoneDao()
-            .insertOrReplace(timeZone.copy(ownerUserId = peerUserId, peerUserId = ownerUserId))
+            target.peerTimeZoneDao()
+                .insertOrReplace(timeZone.copy(ownerUserId = peerUserId, peerUserId = ownerUserId))
 
-        // service message cats
-        val serviceMessageCategories = source
-            .serviceMessageCategoriesDao()
-            .findByRelation(ownerUserId, peerUserId)
-            ?: ServiceMessageCategories(
-                ownerUserId,
-                peerUserId,
-                lifecycle = true,
-                levelUp = true,
-                pet = true,
-                sync = true
-            )
-
-        target
-            .serviceMessageCategoriesDao()
-            .insertOrReplace(
-                serviceMessageCategories.copy(
-                    ownerUserId = peerUserId,
-                    peerUserId = ownerUserId
+            // service message cats
+            val serviceMessageCategories = source
+                .serviceMessageCategoriesDao()
+                .findByRelation(ownerUserId, peerUserId)
+                ?: ServiceMessageCategories(
+                    ownerUserId,
+                    peerUserId,
+                    lifecycle = true,
+                    levelUp = true,
+                    pet = true,
+                    sync = true
                 )
-            )
 
-        // streak
-        source
-            .streakDao()
-            .findByRelation(ownerUserId, peerUserId)
-            ?.let {
-                it.copy(
-                    ownerUserId = peerUserId,
-                    peerUserId = ownerUserId,
-                    updateFromOwnerAt = it.updateFromPeerAt,
-                    updateFromPeerAt = it.updateFromOwnerAt
+            target
+                .serviceMessageCategoriesDao()
+                .insertOrReplace(
+                    serviceMessageCategories.copy(
+                        ownerUserId = peerUserId,
+                        peerUserId = ownerUserId
+                    )
                 )
-            }
-            ?.let { target.streakDao().insertOrReplace(it) }
 
-        // + restores
-        source
-            .streakRestoreDao()
-            .findByRelation(ownerUserId, peerUserId)
-            .map { it.copy(ownerUserId = peerUserId, peerUserId = ownerUserId) }
-            .let { target.streakRestoreDao().insertOrReplaceAll(it) }
-
-        // streak pet
-        source
-            .streakPetDao()
-            .findByRelation(ownerUserId, peerUserId)
-            ?.copy(ownerUserId = peerUserId, peerUserId = ownerUserId)
-            ?.let { target.streakPetDao().insertOrReplace(it) }
-
-        // + tasks
-        source
-            .streakPetTaskDao()
-            .findAllByRelation(ownerUserId, peerUserId)
-            .map {
-                val dbPayload = it.dbPayload?.let { p ->
-                    when (p) {
-                        is StreakPetTaskPayload.ExchangeOneMessage ->
-                            p.copy(
-                                fromOwnerMessageId = p.fromPeerMessageId,
-                                fromPeerMessageId = p.fromOwnerMessageId
-                            )
-
-                        is StreakPetTaskPayload.SendFourMessagesEach ->
-                            p.copy(
-                                fromOwnerMessagesCount = p.fromPeerMessagesCount,
-                                fromOwnerLastMessageId = p.fromPeerLastMessageId,
-                                fromPeerMessagesCount = p.fromOwnerMessagesCount,
-                                fromPeerLastMessageId = p.fromOwnerLastMessageId
-                            )
-
-                        is StreakPetTaskPayload.SendTenMessagesEach ->
-                            p.copy(
-                                fromOwnerMessagesCount = p.fromPeerMessagesCount,
-                                fromOwnerLastMessageId = p.fromPeerLastMessageId,
-                                fromPeerMessagesCount = p.fromOwnerMessagesCount,
-                                fromPeerLastMessageId = p.fromOwnerLastMessageId
-                            )
-                    }
+            // streak
+            source
+                .streakDao()
+                .findByRelation(ownerUserId, peerUserId)
+                ?.let {
+                    it.copy(
+                        ownerUserId = peerUserId,
+                        peerUserId = ownerUserId,
+                        updateFromOwnerAt = it.updateFromPeerAt,
+                        updateFromPeerAt = it.updateFromOwnerAt
+                    )
                 }
+                ?.let { target.streakDao().insertOrReplace(it) }
 
-                it.copy(ownerUserId = peerUserId, peerUserId = ownerUserId, dbPayload = dbPayload)
+            // + restores
+            source
+                .streakRestoreDao()
+                .findByRelation(ownerUserId, peerUserId)
+                .map { it.copy(ownerUserId = peerUserId, peerUserId = ownerUserId) }
+                .let { target.streakRestoreDao().insertOrReplaceAll(it) }
+
+            // streak pet
+            source
+                .streakPetDao()
+                .findByRelation(ownerUserId, peerUserId)
+                ?.copy(ownerUserId = peerUserId, peerUserId = ownerUserId)
+                ?.let { target.streakPetDao().insertOrReplace(it) }
+
+            // + tasks
+            source
+                .streakPetTaskDao()
+                .findAllByRelation(ownerUserId, peerUserId)
+                .map {
+                    val dbPayload = it.dbPayload?.let { p ->
+                        when (p) {
+                            is StreakPetTaskPayload.ExchangeOneMessage ->
+                                p.copy(
+                                    fromOwnerMessageId = p.fromPeerMessageId,
+                                    fromPeerMessageId = p.fromOwnerMessageId
+                                )
+
+                            is StreakPetTaskPayload.SendFourMessagesEach ->
+                                p.copy(
+                                    fromOwnerMessagesCount = p.fromPeerMessagesCount,
+                                    fromOwnerLastMessageId = p.fromPeerLastMessageId,
+                                    fromPeerMessagesCount = p.fromOwnerMessagesCount,
+                                    fromPeerLastMessageId = p.fromOwnerLastMessageId
+                                )
+
+                            is StreakPetTaskPayload.SendTenMessagesEach ->
+                                p.copy(
+                                    fromOwnerMessagesCount = p.fromPeerMessagesCount,
+                                    fromOwnerLastMessageId = p.fromPeerLastMessageId,
+                                    fromPeerMessagesCount = p.fromOwnerMessagesCount,
+                                    fromPeerLastMessageId = p.fromOwnerLastMessageId
+                                )
+                        }
+                    }
+
+                    it.copy(
+                        ownerUserId = peerUserId,
+                        peerUserId = ownerUserId,
+                        dbPayload = dbPayload
+                    )
+                }
+                .let { target.streakPetTaskDao().insertOrReplaceAll(it) }
+
+            target.useWriterConnection { transactor ->
+                transactor.usePrepared("PRAGMA wal_checkpoint(FULL)") { it.step() }
             }
-            .let { target.streakPetTaskDao().insertOrReplaceAll(it) }
-
-        target.useWriterConnection { transactor ->
-            transactor.usePrepared("PRAGMA wal_checkpoint(FULL)") { it.step() }
         }
-
-        target.close()
 
         return backup
     }
@@ -289,47 +294,47 @@ class DatabaseBackupManager(
         val source = Room.buildPluginDatabase(sourceFile.path)
         val target = db
 
-        target.withTransaction {
-            target.pluginRelationDao().apply {
-                source.pluginRelationDao().findByRelation(ownerUserId, peerUserId)
-                    ?.let { insertOrReplace(it) }
-            }
+        source.closeAfter {
+            target.withTransaction {
+                target.pluginRelationDao().apply {
+                    source.pluginRelationDao().findByRelation(ownerUserId, peerUserId)
+                        ?.let { insertOrReplace(it) }
+                }
 
-            target.peerTimeZoneDao().apply {
-                source.peerTimeZoneDao().findByRelation(ownerUserId, peerUserId)
-                    ?.let { insertOrReplace(it) }
-            }
+                target.peerTimeZoneDao().apply {
+                    source.peerTimeZoneDao().findByRelation(ownerUserId, peerUserId)
+                        ?.let { insertOrReplace(it) }
+                }
 
-            target.serviceMessageCategoriesDao().apply {
-                source.serviceMessageCategoriesDao().findByRelation(ownerUserId, peerUserId)
-                    ?.let { insertOrReplace(it) }
-            }
+                target.serviceMessageCategoriesDao().apply {
+                    source.serviceMessageCategoriesDao().findByRelation(ownerUserId, peerUserId)
+                        ?.let { insertOrReplace(it) }
+                }
 
-            target.streakDao().apply {
-                source.streakDao().findByRelation(ownerUserId, peerUserId)
-                    ?.let { insertOrReplace(it) }
-            }
+                target.streakDao().apply {
+                    source.streakDao().findByRelation(ownerUserId, peerUserId)
+                        ?.let { insertOrReplace(it) }
+                }
 
-            target.streakRestoreDao().apply {
-                deleteByRelation(ownerUserId, peerUserId)
+                target.streakRestoreDao().apply {
+                    deleteByRelation(ownerUserId, peerUserId)
 
-                source.streakRestoreDao().findByRelation(ownerUserId, peerUserId)
-                    .let { insertOrReplaceAll(it) }
-            }
+                    source.streakRestoreDao().findByRelation(ownerUserId, peerUserId)
+                        .let { insertOrReplaceAll(it) }
+                }
 
-            target.streakPetDao().apply {
-                source.streakPetDao().findByRelation(ownerUserId, peerUserId)
-                    ?.let { insertOrReplace(it) }
-            }
+                target.streakPetDao().apply {
+                    source.streakPetDao().findByRelation(ownerUserId, peerUserId)
+                        ?.let { insertOrReplace(it) }
+                }
 
-            target.streakPetTaskDao().apply {
-                deleteByRelation(ownerUserId, peerUserId)
+                target.streakPetTaskDao().apply {
+                    deleteByRelation(ownerUserId, peerUserId)
 
-                source.streakPetTaskDao().findAllByRelation(ownerUserId, peerUserId)
-                    .let { insertOrReplaceAll(it) }
+                    source.streakPetTaskDao().findAllByRelation(ownerUserId, peerUserId)
+                        .let { insertOrReplaceAll(it) }
+                }
             }
         }
-
-        source.close()
     }
 }
