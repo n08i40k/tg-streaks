@@ -70,6 +70,10 @@ object Logger : EjectNotifier.Delegate {
 
     override fun onEject() {
         suppressFatal = true
+
+        // as logger last who will be notified about eject
+        info("Ejected!")
+
         receiver = null
     }
 }
