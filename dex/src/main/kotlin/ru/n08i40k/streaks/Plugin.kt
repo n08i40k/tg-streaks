@@ -215,9 +215,16 @@ class Plugin {
             )
         }
 
+        @Blocking
+        @Synchronized
         @JvmStatic
-        fun finalizeInject() = with(INSTANCE!!) {
-            onFinalizeInject()
+        fun finalizeInject() {
+            // safely return as eject was called before finalizeInject
+            if (WAS_INJECTED && INSTANCE == null)
+                return
+
+            // NPE is a bug, then it should not be silenced
+            INSTANCE!!.onFinalizeInject()
         }
 
         @JvmStatic
