@@ -5,6 +5,7 @@ import android.webkit.ValueCallback
 import androidx.annotation.AnyThread
 import androidx.annotation.UiThread
 import androidx.room.Room
+import androidx.room.useWriterConnection
 import de.comahe.i18n4k.config.I18n4kConfigDefault
 import de.comahe.i18n4k.createLocale
 import de.comahe.i18n4k.i18n4k
@@ -704,6 +705,14 @@ class Plugin {
             Logger.info("Waiting for ref counter to be zero..")
             runBlocking { RefCounter.wait() }
             Logger.info("No more refs from other threads!")
+
+            Logger.tryOrFatal("checkpoint database WAL") {
+                runBlocking {
+                    db.useWriterConnection { transactor ->
+                        transactor.usePrepared("PRAGMA wal_checkpoint(TRUNCATE)") { it.step() }
+                    }
+                }
+            }
 
             db.close()
         }
