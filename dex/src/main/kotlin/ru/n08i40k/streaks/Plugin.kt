@@ -21,6 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -695,6 +696,10 @@ class Plugin {
         // bg
         taskQueue.stopWorker()
         backgroundScope.cancel()
+
+        Logger.info("Waiting for background coroutines to finish..")
+        runBlocking { backgroundScope.coroutineContext.job.join() }
+        Logger.info("Background coroutines finished!")
 
         // ui
         petUiManager.dismissAll()

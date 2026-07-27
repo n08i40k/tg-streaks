@@ -5,6 +5,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
+import org.jetbrains.annotations.Blocking
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import java.util.concurrent.ConcurrentHashMap
 
@@ -17,9 +20,12 @@ object AccountTaskExecutor : EjectNotifier.Delegate {
         val scope: CoroutineScope,
         val taskQueue: TaskQueue,
     ) {
+        @Blocking
         fun stop() {
             scope.cancel()
             taskQueue.stopWorker()
+
+            runBlocking { scope.coroutineContext.job.join() }
         }
     }
 
@@ -30,8 +36,10 @@ object AccountTaskExecutor : EjectNotifier.Delegate {
     fun enqueue(accountId: Int, name: String, callback: suspend () -> Unit) =
         getOrCreate(accountId).taskQueue.enqueueTask(name, callback)
 
+    @Blocking
     fun stop(accountId: Int) = runners.remove(accountId)?.stop()
 
+    @Blocking
     fun stopAll(exceptAccountId: Int? = null) =
         runners.keys
             .toList()
