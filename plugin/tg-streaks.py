@@ -38,7 +38,7 @@ __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Аналог стриков TikTok для Telegram"
 __author__ = "@n08i40k_extera & @RoflPlugins"
-__version__ = "2.16.0"
+__version__ = "2.16.1"
 __icon__ = "tiktok_streak/4"
 __min_version__ = "12.1.1"
 
@@ -59,8 +59,8 @@ RESOURCES_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/
 
 # Resource hashes
 
-DEX_SHA256 = "c9df4f90e479f73ef5b7fa3e153316ed28f1eac46f6f0943127ee47a481c54af"
-RESOURCES_SHA256 = "268cde673c98d59778384f16ca356cde3203faf328d2fdaa747200e9b6ca52b5"
+DEX_SHA256 = "1bebb130c1c595310fd3ded967f8c5ed1e5a0e5ee9c96edfb3686eab1da1be13"
+RESOURCES_SHA256 = "0c3837ea387804b3e41273cf3dc9fe701d6c016e344c3a59180703a043f34eb7"
 
 # Plugin official resource links
 
