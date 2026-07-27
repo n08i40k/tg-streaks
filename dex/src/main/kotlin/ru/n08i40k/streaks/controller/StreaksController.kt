@@ -825,7 +825,8 @@ class StreaksController(
                 timeZone = timeZone
             )
 
-            dao.insertOrIgnore(streak)
+            if (dao.insertOrIgnore(streak) == -1L)
+                return
 
             EventBus.emit(
                 PluginEvent.StreakCreatedEvent(

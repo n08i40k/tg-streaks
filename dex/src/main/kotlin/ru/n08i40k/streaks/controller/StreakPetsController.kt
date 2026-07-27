@@ -760,8 +760,9 @@ class StreakPetsController(
             timeZone = timeZone
         )
 
-        db.withTransaction {
-            dao.insertOrIgnore(streakPet)
+        val created = db.withTransaction {
+            if (dao.insertOrIgnore(streakPet) == -1L)
+                return@withTransaction false
 
             var currentDay = atDay
 
@@ -779,7 +780,12 @@ class StreakPetsController(
 
                 currentDay = currentDay.next()
             }
+
+            true
         }
+
+        if (!created)
+            return false
 
         EventBus.emit(
             PluginEvent.StreakPetCreatedEvent(

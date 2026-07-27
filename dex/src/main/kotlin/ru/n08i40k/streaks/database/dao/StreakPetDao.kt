@@ -29,7 +29,7 @@ interface StreakPetDao {
     suspend fun insertOrReplace(record: StreakPet)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertOrIgnore(record: StreakPet)
+    suspend fun insertOrIgnore(record: StreakPet): Long
 
     @Update
     suspend fun update(record: StreakPet)
