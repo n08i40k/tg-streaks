@@ -449,7 +449,9 @@ class Plugin {
                         }
 
                         is PluginEvent.StreakLostEvent -> {
-                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
+                            if (LocalDate.now(record.timeZone)
+                                    .diff(timestamp.toLocalDate(record.timeZone)) > 1
+                            )
                                 return@collectWith
 
                             val allowSend = serviceMessageCategoriesController.isEnabled(
