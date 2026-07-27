@@ -5,11 +5,23 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.format
 import ru.n08i40k.streaks.ui.CrashBottomSheet
+import java.util.concurrent.ThreadLocalRandom
 
 object Logger : EjectNotifier.Delegate {
     init {
         EjectNotifier.subscribe(this, priority = 1000)
     }
+
+    private val ID = ThreadLocalRandom.current()
+        .nextInt()
+        .toHexString(HexFormat {
+            upperCase = true
+
+            number {
+                minLength = 4
+            }
+        })
+        .take(4)
 
     @Volatile
     private var receiver: LogReceiver? = null
@@ -19,7 +31,7 @@ object Logger : EjectNotifier.Delegate {
 
     fun info(message: String) {
         try {
-            receiver?.onReceiveValue(message)
+            receiver?.onReceiveValue("DEX:$ID $message")
         } catch (_: Throwable) {
             Plugin.eject()
         }
@@ -34,8 +46,8 @@ object Logger : EjectNotifier.Delegate {
         val formattedException = e.format()
 
         try {
-            receiver?.onReceiveValue(message)
-            receiver?.onReceiveValue(formattedException)
+            receiver?.onReceiveValue("DEX:$ID $message")
+            receiver?.onReceiveValue("DEX:$ID $formattedException")
         } catch (_: Throwable) {
             Plugin.eject()
         }
