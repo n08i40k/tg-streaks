@@ -3,7 +3,6 @@ package ru.n08i40k.streaks.controller
 import androidx.room.withTransaction
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
@@ -35,6 +34,7 @@ import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.fetchPeerUsers
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -321,7 +321,8 @@ class StreakPetsController(
             val rebuiltPet = get(accountId, peerUser.id)
             states[0] = UserRebuildState.Done(peerUser, rebuiltPet)
             sheet.notifyUserStateChanged(0)
-            sheet.let { AndroidUtilities.runOnUIThread(it::showResults) }
+
+            runOnMainThread(sheet::showResults)
         } finally {
             rebuildLock.set(false)
         }

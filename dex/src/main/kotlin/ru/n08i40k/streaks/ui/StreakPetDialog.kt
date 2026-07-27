@@ -33,6 +33,7 @@ import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -257,12 +258,7 @@ class StreakPetDialog(
                 put("renameSave", Strings.sheet_pet_rename_save())
                 put("renameCancel", Strings.sheet_pet_rename_cancel())
                 put("maxLevel", Strings.sheet_pet_max_level())
-                put(
-                    "pointsToEvolution",
-                    // "{count}" is a JS-side template placeholder, substituted with the
-                        // real count in the webview later — not resolved here.
-                        Strings.sheet_pet_points_to_next_stage("{count}")
-                )
+                put("pointsToEvolution", Strings.sheet_pet_points_to_next_stage("{count}"))
             }
         )
 
@@ -421,23 +417,20 @@ class StreakPetDialog(
     private inner class Bridge {
         @JavascriptInterface
         fun close() {
-            AndroidUtilities.runOnUIThread {
-                if (isShowing) {
+            runOnMainThread {
+                if (isShowing)
                     dismiss()
-                }
             }
         }
 
         @JavascriptInterface
         fun rename(value: String?) {
             val normalized = value?.trim()?.take(20).orEmpty()
-            if (normalized.isEmpty()) {
-                return
-            }
 
-            AndroidUtilities.runOnUIThread {
-                onRenameRequested(normalized)
-            }
+            if (normalized.isEmpty())
+                return
+
+            runOnMainThread { onRenameRequested(normalized) }
         }
 
         @JavascriptInterface

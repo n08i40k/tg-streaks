@@ -13,10 +13,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.ActionBar.AlertDialog
@@ -30,6 +28,7 @@ import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
+import ru.n08i40k.streaks.extension.collectOnUIThread
 import ru.n08i40k.streaks.extension.setSectionsCompat
 import ru.n08i40k.streaks.extension.setTextAndValueAndCheckCompat
 import ru.n08i40k.streaks.extension.toOffsetString
@@ -140,11 +139,8 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         return fragmentView
     }
 
-    private fun <T> Flow<T>.observe(action: (T) -> Unit) {
-        viewScope.launch {
-            collectLatest { value -> AndroidUtilities.runOnUIThread { action(value) } }
-        }
-    }
+    private fun <T> Flow<T>.observe(action: (T) -> Unit) =
+        viewScope.launch { collectOnUIThread(action::invoke) }
 
     private fun observeState() {
         fun ListAdapter.notifyRowChanged(row: Row) =

@@ -6,7 +6,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -43,6 +42,7 @@ import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.fetchPeerUsers
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -528,8 +528,7 @@ class StreaksController(
                 sheet.notifyUserStateChanged(index)
             }
 
-
-            AndroidUtilities.runOnUIThread(sheet::showResults)
+            runOnMainThread(sheet::showResults)
 
             return RebuildAllResult(peers.size)
         } finally {

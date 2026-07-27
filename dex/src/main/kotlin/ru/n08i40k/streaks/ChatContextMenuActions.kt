@@ -6,7 +6,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.datetime.TimeZone
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
@@ -23,6 +22,7 @@ import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.runOnMainThread
 import kotlin.time.Clock
 
 class ChatContextMenuActions(private val plugin: Plugin) {
@@ -305,14 +305,14 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                         // wait for dialog activity appear
                         delay(2000)
 
-                        AndroidUtilities.runOnUIThread {
+                        runOnMainThread {
                             val chatActivity =
                                 (LaunchActivity.getSafeLastFragment() as? ChatActivity)
                                     ?.takeIf { it.dialogId == peerUserId }
 
                             if (chatActivity == null) {
                                 BulletinHelper.show(Strings.status_error_chat_open_context_failed())
-                                return@runOnUIThread
+                                return@runOnMainThread
                             }
 
                             chatActivity.jumpToDate(jumpTs)
@@ -347,7 +347,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
             val fragment = StreakControlFragment(viewModel)
 
-            AndroidUtilities.runOnUIThread {
+            runOnMainThread {
                 getFieldValue<ActionBarLayout>(LaunchActivity.instance, "actionBarLayout")
                     ?.presentFragment(fragment)
             }
@@ -362,7 +362,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     return@add
                 }
 
-            AndroidUtilities.runOnUIThread {
+            runOnMainThread {
                 chatActivity.presentFragment(
                     FixupCalendarActivity.create(
                         chatActivity.dialogId,

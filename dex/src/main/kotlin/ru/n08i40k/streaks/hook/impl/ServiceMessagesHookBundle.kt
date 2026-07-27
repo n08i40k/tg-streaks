@@ -27,6 +27,7 @@ import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
 import java.util.AbstractMap
 import kotlin.time.Clock
@@ -469,7 +470,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                                 destroy()
 
                             fun destroy() {
-                                AndroidUtilities.runOnUIThread {
+                                runOnMainThread {
                                     nc.removeObserver(this, NotificationCenter.fileLoaded)
                                     nc.removeObserver(this, NotificationCenter.fileLoadFailed)
                                 }
@@ -480,7 +481,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                             }
                         }
 
-                        AndroidUtilities.runOnUIThread {
+                        runOnMainThread {
                             nc.addObserver(observer, NotificationCenter.fileLoaded)
                             nc.addObserver(observer, NotificationCenter.fileLoadFailed)
                         }

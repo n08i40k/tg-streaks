@@ -1,7 +1,8 @@
 package ru.n08i40k.streaks.ui
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
@@ -9,6 +10,7 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
+import ru.n08i40k.streaks.util.runOnMainThread
 
 class StreakPetUiManager {
     companion object {
@@ -19,7 +21,7 @@ class StreakPetUiManager {
     private var openedDialog: StreakPetDialog? = null
     private var fabDialog: StreakPetFabDialog? = null
     private var fabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
-    private var pendingFabRefresh: Runnable? = null
+    private var pendingFabRefresh: Job? = null
 
     fun dismissAll() {
         dismissDialog()
@@ -27,23 +29,20 @@ class StreakPetUiManager {
     }
 
     fun dismissFab() {
-        pendingFabRefresh?.let(AndroidUtilities::cancelRunOnUIThread)
+        pendingFabRefresh?.cancel()
         pendingFabRefresh = null
         fabDialog?.dismiss()
         fabDialog = null
     }
 
-    fun scheduleFabRefreshForOpenChat(delayMs: Long = PET_FAB_OPEN_DELAY_MS) {
-        pendingFabRefresh?.let(AndroidUtilities::cancelRunOnUIThread)
-
-        val runnable = Runnable {
-            pendingFabRefresh = null
-            refreshFabForOpenChat()
+    fun scheduleFabRefreshForOpenChat(delayMs: Long = PET_FAB_OPEN_DELAY_MS): Unit =
+        with(Plugin.getInstance()) {
+            pendingFabRefresh?.cancel()
+            pendingFabRefresh = backgroundScope.launch {
+                delay(delayMs)
+                refreshFabForOpenChat()
+            }
         }
-
-        pendingFabRefresh = runnable
-        AndroidUtilities.runOnUIThread(runnable, delayMs)
-    }
 
     fun setFabSizeDp(sizeDp: Int) {
         if (this.fabSizeDp == sizeDp) {
@@ -52,9 +51,11 @@ class StreakPetUiManager {
 
         this.fabSizeDp = sizeDp
 
-        AndroidUtilities.runOnUIThread {
-            fabDialog?.updateSizeDp(sizeDp)
-            fabDialog?.configureWindow()
+        runOnMainThread {
+            fabDialog?.apply {
+                updateSizeDp(sizeDp)
+                configureWindow()
+            }
         }
     }
 
@@ -66,19 +67,18 @@ class StreakPetUiManager {
                     return@launch
                 }
 
-            AndroidUtilities.runOnUIThread {
+            runOnMainThread {
                 val fragment = LaunchActivity.getSafeLastFragment()
                 if (fragment == null) {
                     BulletinHelper.show(Strings.status_error_chat_open_context_failed())
-                    return@runOnUIThread
+                    return@runOnMainThread
                 }
 
-                if (
-                    openedDialog?.isShowing == true
+                if (openedDialog?.isShowing == true
                     && openedDialog?.matches(accountId, peerUserId) == true
                 ) {
                     openedDialog?.updateState(uiState)
-                    return@runOnUIThread
+                    return@runOnMainThread
                 }
 
                 dismissDialog()
@@ -118,7 +118,7 @@ class StreakPetUiManager {
     fun refreshFabForOpenChat(): Unit = with(Plugin.getInstance()) {
         val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
             ?: run {
-                AndroidUtilities.runOnUIThread { dismissFab() }
+                runOnMainThread(::dismissFab)
                 return@with
             }
 
@@ -126,14 +126,15 @@ class StreakPetUiManager {
         val peerUserId = chatActivity.dialogId
 
         if (peerUserId <= 0L) {
-            AndroidUtilities.runOnUIThread { dismissFab() }
+            runOnMainThread(::dismissFab)
             return
         }
 
         backgroundScope.launch {
             val uiState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
-            AndroidUtilities.runOnUIThread {
+
+            runOnMainThread {
                 val currentChat = LaunchActivity.getSafeLastFragment() as? ChatActivity
 
                 if (currentChat == null
@@ -142,7 +143,7 @@ class StreakPetUiManager {
                     || !uiState.pet.fabEnabled
                 ) {
                     dismissFab()
-                    return@runOnUIThread
+                    return@runOnMainThread
                 }
 
                 fabDialog?.apply {
@@ -150,14 +151,14 @@ class StreakPetUiManager {
                         return@apply
 
                     updateState(uiState)
-                    return@runOnUIThread
+                    return@runOnMainThread
                 }
 
                 dismissFab()
 
                 val context = currentChat.parentActivity
                     ?: currentChat.context
-                    ?: return@runOnUIThread
+                    ?: return@runOnMainThread
 
                 val newDialog = StreakPetFabDialog(
                     context,
@@ -201,18 +202,18 @@ class StreakPetUiManager {
         backgroundScope.launch {
             val refreshedState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
 
-            AndroidUtilities.runOnUIThread {
+            runOnMainThread {
                 val dialog = openedDialog
-                    ?: return@runOnUIThread
+                    ?: return@runOnMainThread
 
                 if (!dialog.matches(accountId, peerUserId) || !dialog.isShowing) {
                     dismissDialog(dialog)
-                    return@runOnUIThread
+                    return@runOnMainThread
                 }
 
                 if (refreshedState == null) {
                     dismissDialog(dialog)
-                    return@runOnUIThread
+                    return@runOnMainThread
                 }
 
                 dialog.updateState(refreshedState)

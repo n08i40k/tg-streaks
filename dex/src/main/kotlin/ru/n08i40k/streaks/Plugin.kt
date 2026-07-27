@@ -2,6 +2,8 @@ package ru.n08i40k.streaks
 
 import android.graphics.Color
 import android.webkit.ValueCallback
+import androidx.annotation.AnyThread
+import androidx.annotation.UiThread
 import androidx.room.Room
 import de.comahe.i18n4k.config.I18n4kConfigDefault
 import de.comahe.i18n4k.createLocale
@@ -19,9 +21,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
-import org.telegram.messenger.AndroidUtilities
+import org.jetbrains.annotations.Blocking
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -79,9 +82,11 @@ import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.CheckNotificationHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
+import ru.n08i40k.streaks.util.RefCounter
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.UserPatcher
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.lang.reflect.Member
 import kotlin.time.Instant
 
@@ -199,6 +204,7 @@ class Plugin {
             petUiManager.setFabSizeDp(sizeDp)
         }
 
+        @AnyThread
         @JvmStatic
         fun eject() = AndroidUtilities.runOnUIThread {
             Logger.tryOrFatal("Failed to eject plugin") {
@@ -555,7 +561,7 @@ class Plugin {
 
             perAccountPeerIds.forEach(UserPatcher::patchUsers)
 
-            AndroidUtilities.runOnUIThread { streakEmojiRegistry.refreshDialogCells() }
+            runOnMainThread { streakEmojiRegistry.refreshDialogCells() }
         }
 
         AccountTaskExecutor.enqueue(
@@ -627,6 +633,7 @@ class Plugin {
         Logger.info("Inject finalized!")
     }
 
+    @Blocking
     private fun onEject() {
         Logger.tryOrFatal(
             "remove plugin badges",
@@ -652,7 +659,13 @@ class Plugin {
         chatContextMenuCallbackRegistry.clear()
         settingsActionCallbackRegistry.clear()
 
-        db.close()
+        EjectNotifier.subscribe(999) {
+            Logger.info("Waiting for ref counter to be zero..")
+            runBlocking { RefCounter.wait() }
+            Logger.info("No more refs from other threads!")
+
+            db.close()
+        }
 
         EjectNotifier.fire()
     }
@@ -660,7 +673,7 @@ class Plugin {
     fun enqueueRebuildForPeer(
         accountId: Int,
         peerUserId: Long,
-        onComplete: (() -> Unit)? = null,
+        @UiThread onComplete: (() -> Unit)? = null,
     ) {
         val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
@@ -675,9 +688,8 @@ class Plugin {
         ) {
             streaksController.rebuild(accountId, peerUser)
 
-            if (onComplete != null) {
-                AndroidUtilities.runOnUIThread { onComplete() }
-            }
+            if (onComplete != null)
+                runOnMainThread(onComplete)
         }
     }
 

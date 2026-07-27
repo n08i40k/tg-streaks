@@ -25,6 +25,7 @@ import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.setFieldValue
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.number
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.concurrent.atomic.AtomicReference
 
 class FixupCalendarActivity : CalendarActivity {
@@ -254,7 +255,7 @@ class FixupCalendarActivity : CalendarActivity {
                     .streaksController
                     .analyzeCalendarTap(accountId, peerUserId, day)
 
-            AndroidUtilities.runOnUIThread {
+            runOnMainThread {
                 when (decision) {
                     is StreaksController.CalendarTapDecision.Ignore -> Unit
                     is StreaksController.CalendarTapDecision.LimitReached ->
@@ -294,7 +295,7 @@ class FixupCalendarActivity : CalendarActivity {
                     .streaksController
                     .addManualCalendarRestore(accountId, peerUserId, day)
 
-            AndroidUtilities.runOnUIThread {
+            runOnMainThread {
                 when (result) {
                     StreaksController.AddManualCalendarRestoreResult.Added,
                     StreaksController.AddManualCalendarRestoreResult.AlreadyExists -> {
@@ -401,7 +402,7 @@ class FixupCalendarActivity : CalendarActivity {
                 markDay(newRestoresByMonthKey, restoreDay)
             }
 
-            AndroidUtilities.runOnUIThread {
+            runOnMainThread {
                 activeDaysByMonthKey.clear()
                 cachedRestoresByMonthKey.clear()
                 manualRestoresUsed = snapshot.manualRestoresUsed

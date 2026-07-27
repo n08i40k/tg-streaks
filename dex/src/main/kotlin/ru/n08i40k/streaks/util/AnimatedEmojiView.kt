@@ -2,7 +2,6 @@ package ru.n08i40k.streaks.util
 
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.DocumentObject
 import org.telegram.messenger.FileLoader
 import org.telegram.messenger.ImageLoader
@@ -66,9 +65,7 @@ object AnimatedEmojiView {
         AnimatedEmojiDrawable
             .getDocumentFetcher(UserConfig.selectedAccount)
             .fetchDocument(documentId) { document ->
-                AndroidUtilities.runOnUIThread {
-                    applyDocument(document)
-                }
+                runOnMainThread { applyDocument(document) }
             }
     }
 }

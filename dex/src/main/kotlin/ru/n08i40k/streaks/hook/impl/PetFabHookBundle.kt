@@ -1,10 +1,10 @@
 package ru.n08i40k.streaks.hook.impl
 
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.ui.ChatActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
+import ru.n08i40k.streaks.util.runOnMainThread
 
 class PetFabHookBundle : HookBundle() {
     override fun inject(
@@ -17,6 +17,6 @@ class PetFabHookBundle : HookBundle() {
 
         after(
             ChatActivity::class.java.getDeclaredMethod("onPause")
-        ) { AndroidUtilities.runOnUIThread { Plugin.getInstance().petUiManager.dismissFab() } }
+        ) { runOnMainThread { Plugin.getInstance().petUiManager.dismissFab() } }
     }
 }

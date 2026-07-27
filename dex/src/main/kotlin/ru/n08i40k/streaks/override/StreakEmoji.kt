@@ -17,6 +17,7 @@ import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 
@@ -368,7 +369,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
         refreshViews(cachedStreakViewData)
 
-        AndroidUtilities.runOnUIThread { this@StreakEmoji.invalidateSelf() }
+        runOnMainThread(this@StreakEmoji::invalidateSelf)
     }
 
     fun refresh(clearStreak: Boolean = false) =

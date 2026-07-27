@@ -20,7 +20,6 @@ import androidx.annotation.UiThread
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.suspendCancellableCoroutine
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
@@ -39,6 +38,7 @@ import ru.n08i40k.streaks.extension.name
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AnimatedEmojiView
 import ru.n08i40k.streaks.util.LinearProgressView
+import ru.n08i40k.streaks.util.runOnMainThread
 import kotlin.coroutines.resume
 
 private fun withAlpha(color: Int, alpha: Int): Int =
@@ -58,7 +58,7 @@ class RebuildBottomSheet(
             userRebuildStates: List<UserRebuildState>
         ): RebuildBottomSheet =
             suspendCancellableCoroutine { cont ->
-                AndroidUtilities.runOnUIThread {
+                runOnMainThread {
                     val fragment = LaunchActivity.getSafeLastFragment()
 
                     val sheet = RebuildBottomSheet(fragment, type, userRebuildStates)
@@ -697,8 +697,9 @@ class RebuildBottomSheet(
 
     @AnyThread
     fun notifyUserStateChanged(index: Int) {
-        AndroidUtilities.runOnUIThread {
-            val progressView = progressView ?: return@runOnUIThread
+        runOnMainThread {
+            val progressView = progressView
+                ?: return@runOnMainThread
 
             if (userRebuildStates[index] is UserRebuildState.InProcess)
                 progressView.setCurrentUser(index)

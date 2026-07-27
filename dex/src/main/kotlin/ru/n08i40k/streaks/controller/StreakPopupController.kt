@@ -17,6 +17,8 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.MessagesController
@@ -31,6 +33,7 @@ import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -140,11 +143,12 @@ class StreakPopupController(
         }
 
         val shown = showPopup(popup) {
-            Plugin.getInstance().enqueueTask("delete pending popup from database") {
-                dao.delete(popup)
-                isShowing.set(false)
-                flushCurrentChat()
-            }
+            Plugin.getInstance()
+                .enqueueTask("delete pending popup from database") {
+                    dao.delete(popup)
+                    isShowing.set(false)
+                    flushCurrentChat()
+                }
         }
 
         if (!shown) {
@@ -163,7 +167,7 @@ class StreakPopupController(
 
         val context = resolvePopupContext() ?: return false
 
-        AndroidUtilities.runOnUIThread {
+        runOnMainThread {
             val result = Logger.tryOrFatal("show streak popup") {
                 val dialog = Dialog(context)
                 dialog.requestWindowFeature(1)
@@ -292,17 +296,19 @@ class StreakPopupController(
 
                 dialog.show()
 
-                AndroidUtilities.runOnUIThread(
-                    {
-                        try {
-                            if (dialog.isShowing) {
-                                dialog.dismiss()
+                Plugin.getInstance()
+                    .backgroundScope
+                    .launch {
+                        delay(POPUP_AUTO_DISMISS_MS)
+
+                        runOnMainThread {
+                            try {
+                                if (dialog.isShowing)
+                                    dialog.dismiss()
+                            } catch (_: Throwable) {
                             }
-                        } catch (_: Throwable) {
                         }
-                    },
-                    POPUP_AUTO_DISMISS_MS
-                )
+                    }
             }
 
             if (result == null) onDismiss()
@@ -338,7 +344,10 @@ class StreakPopupController(
 
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    view?.evaluateJavascript("window.startPlayback && window.startPlayback();", null)
+                    view?.evaluateJavascript(
+                        "window.startPlayback && window.startPlayback();",
+                        null
+                    )
                 }
             }
 
