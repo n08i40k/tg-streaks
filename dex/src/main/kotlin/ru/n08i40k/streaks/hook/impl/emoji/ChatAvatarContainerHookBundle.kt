@@ -9,14 +9,28 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakEmoji
+import ru.n08i40k.streaks.util.getAs
+import ru.n08i40k.streaks.util.getAsUnchecked
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
 
 class ChatAvatarContainerHookBundle : HookBundle() {
+    companion object Fields {
+        private val CLASS = ChatAvatarContainer::class.java
+
+        val PARENT_FRAGMENT = getField(CLASS, "parentFragment")
+        val TITLE_TEXT_VIEW = getField(CLASS, "titleTextView")
+        val EMOJI_STATUS_DRAWABLE = getField(CLASS, "emojiStatusDrawable")
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
     ) {
+        val plugin = Plugin.getInstance()
+
+        val backgroundScope = plugin.backgroundScope
+        val streaksController = plugin.streaksController
+
         // Заголовок открытого лс с пользователем
         after(
             ChatAvatarContainer::class.java
@@ -24,23 +38,18 @@ class ChatAvatarContainerHookBundle : HookBundle() {
                 .filter { it.name == "setTitle" }
                 .maxByOrNull { it.parameterCount }!!
         ) { param ->
-            val thisObject = param.thisObject as ChatAvatarContainer
-            val thisClass = ChatAvatarContainer::class.java
+            val thisObject = param.thisObject
 
-            val dialogId =
-                getFieldValue<ChatActivity>(thisClass, thisObject, "parentFragment")?.dialogId
-                    ?: return@after
+            val dialogId = PARENT_FRAGMENT.getAs<ChatActivity>(thisObject)
+                ?.dialogId
+                ?.takeIf { it >= 0 }
+                ?: return@after
 
-            if (dialogId < 0)
-                return@after
-
-            val titleTextView =
-                getFieldValue<SimpleTextView>(thisClass, thisObject, "titleTextView")
-                    ?: return@after
+            val titleTextView = TITLE_TEXT_VIEW.getAsUnchecked<SimpleTextView>(thisObject)
 
             val newDrawable = StreakEmoji.encapsulate(
                 thisObject,
-                getField(thisClass, "emojiStatusDrawable"),
+                EMOJI_STATUS_DRAWABLE,
                 null,
                 dialogId
             ) ?: return@after
@@ -48,9 +57,7 @@ class ChatAvatarContainerHookBundle : HookBundle() {
             if (titleTextView.rightDrawable !== newDrawable && titleTextView.rightDrawable is AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable)
                 titleTextView.rightDrawable = newDrawable
 
-            Plugin.getInstance().apply {
-                backgroundScope.launch { streaksController.flushCurrentChatPopup() }
-            }
+            backgroundScope.launch { streaksController.flushCurrentChatPopup() }
         }
     }
 }

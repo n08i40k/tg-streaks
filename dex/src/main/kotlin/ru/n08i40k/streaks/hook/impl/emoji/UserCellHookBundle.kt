@@ -6,10 +6,19 @@ import org.telegram.ui.Cells.UserCell
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakEmoji
+import ru.n08i40k.streaks.util.getAs
+import ru.n08i40k.streaks.util.getAsUnchecked
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
 
 class UserCellHookBundle : HookBundle() {
+    companion object Fields {
+        private val CLASS = UserCell::class.java
+
+        val CURRENT_OBJECT = getField(CLASS, "currentObject")
+        val NAME_TEXT_VIEW = getField(CLASS, "nameTextView")
+        val EMOJI_STATUS = getField(CLASS, "emojiStatus")
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -22,17 +31,15 @@ class UserCellHookBundle : HookBundle() {
             )
         ) { param ->
             val thisObject = param.thisObject as UserCell
-            val thisClass = UserCell::class.java
 
-            val currentUser = getFieldValue<TLRPC.User>(thisClass, thisObject, "currentObject")
+            val currentUser = CURRENT_OBJECT.getAs<TLRPC.User>(thisObject)
                 ?: return@after
 
-            val nameTextView =
-                getFieldValue<SimpleTextView>(thisClass, thisObject, "nameTextView")!!
+            val nameTextView = NAME_TEXT_VIEW.getAsUnchecked<SimpleTextView>(thisObject)
 
             val emoji = StreakEmoji.encapsulate(
                 thisObject,
-                getField(thisClass, "emojiStatus"),
+                EMOJI_STATUS,
                 null,
                 currentUser.id,
                 simpleTextView = nameTextView

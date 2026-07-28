@@ -3,10 +3,39 @@ package ru.n08i40k.streaks.override
 import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.constants.TrustedSources
-import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.getAs
+import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.isClientVersionBelow
 
 object PluginBadges {
+    // все классы принадлежат клиенту и могут отсутствовать, поэтому резолв ленивый
+    private object Fields {
+        val INSTANCE by lazy {
+            getField(
+                Class.forName("com.exteragram.messenger.badges.BadgesController"),
+                "INSTANCE"
+            )
+        }
+
+        val API_BADGE_SOURCE by lazy {
+            getField(INSTANCE.type, "apiBadgeSource")
+        }
+
+        val CACHE by lazy {
+            getField(API_BADGE_SOURCE.type, "cache")
+        }
+    }
+
+    private fun resolveCache(): Any? {
+        val controller = Fields.INSTANCE.getAs<Any>(null)
+            ?: return null
+
+        val apiBadgeSource = Fields.API_BADGE_SOURCE.getAs<Any>(controller)
+            ?: return null
+
+        return Fields.CACHE.getAs<Any>(apiBadgeSource)
+    }
+
     val TRUSTED_IDS = mapOf(
         Pair(TrustedSources.LEAD.id, Strings.badge_me_text),          // me
         Pair(TrustedSources.CHANNEL.id, Strings.badge_channel_text),  // channel
@@ -21,18 +50,7 @@ object PluginBadges {
         val BadgeDTO = Class.forName("com.exteragram.messenger.api.dto.BadgeDTO")
         val ProfileStatus = Class.forName("com.exteragram.messenger.api.model.ProfileStatus")
 
-        val cache = run {
-            val BadgesController = Class.forName("com.exteragram.messenger.badges.BadgesController")
-
-            val controller = getFieldValue<Any>(BadgesController, null, "INSTANCE")
-                ?: return
-
-            val apiBadgeSource = getFieldValue<Any>(controller, "apiBadgeSource")
-                ?: return
-
-            getFieldValue<Any>(apiBadgeSource, "cache")
-                ?: return
-        }
+        val cache = resolveCache() ?: return
 
         // на версии 12.1.1 ConcurrentHashMap почему-то в неймспейсе $j, вместо java
         val cache_set = cache::class.java
@@ -69,18 +87,7 @@ object PluginBadges {
 
     @Suppress("LocalVariableName")
     fun remove() {
-        val cache = run {
-            val BadgesController = Class.forName("com.exteragram.messenger.badges.BadgesController")
-
-            val controller = getFieldValue<Any>(BadgesController, null, "INSTANCE")
-                ?: return
-
-            val apiBadgeSource = getFieldValue<Any>(controller, "apiBadgeSource")
-                ?: return
-
-            getFieldValue<Any>(apiBadgeSource, "cache")
-                ?: return
-        }
+        val cache = resolveCache() ?: return
 
         val cache_remove = cache::class.java
             .getDeclaredMethod("remove", Any::class.java)

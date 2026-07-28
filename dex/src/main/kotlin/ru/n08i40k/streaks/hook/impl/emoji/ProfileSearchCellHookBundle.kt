@@ -8,6 +8,12 @@ import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.util.getField
 
 class ProfileSearchCellHookBundle : HookBundle() {
+    companion object Fields {
+        private val CLASS = ProfileSearchCell::class.java
+
+        val STATUS_DRAWABLE = getField(CLASS, "statusDrawable")
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -20,14 +26,13 @@ class ProfileSearchCellHookBundle : HookBundle() {
         )
         { param ->
             val thisObject = param.thisObject as ProfileSearchCell
-            val thisClass = ProfileSearchCell::class.java
 
             val user = param.args[2] as? TLRPC.User
                 ?: return@after
 
             StreakEmoji.encapsulate(
                 thisObject,
-                getField(thisClass, "statusDrawable"),
+                STATUS_DRAWABLE,
                 null,
                 user.id,
                 canDrawBadge = true

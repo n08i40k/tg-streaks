@@ -9,6 +9,12 @@ import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.util.getField
 
 class StatusBadgeComponentHookBundle : HookBundle() {
+    companion object Fields {
+        private val CLASS = StatusBadgeComponent::class.java
+
+        val STATUS_DRAWABLE = getField(CLASS, "statusDrawable")
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -21,11 +27,10 @@ class StatusBadgeComponentHookBundle : HookBundle() {
             )
         ) { param ->
             val thisObject = param.thisObject as StatusBadgeComponent
-            val thisClass = StatusBadgeComponent::class.java
 
             StreakEmoji.encapsulate(
                 thisObject,
-                getField(thisClass, "statusDrawable"),
+                STATUS_DRAWABLE,
                 null,
                 0,
                 canDrawBadge = true
@@ -43,7 +48,6 @@ class StatusBadgeComponentHookBundle : HookBundle() {
         )
         { param ->
             val thisObject = param.thisObject as StatusBadgeComponent
-            val thisClass = StatusBadgeComponent::class.java
 
             val user = param.args[0] as? TLRPC.User
                 ?: return@after
@@ -51,7 +55,7 @@ class StatusBadgeComponentHookBundle : HookBundle() {
             // update user id
             StreakEmoji.encapsulate(
                 thisObject,
-                getField(thisClass, "statusDrawable"),
+                STATUS_DRAWABLE,
                 null,
                 user.id,
                 canDrawBadge = true,

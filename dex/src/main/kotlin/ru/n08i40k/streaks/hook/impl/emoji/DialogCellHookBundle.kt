@@ -2,19 +2,30 @@ package ru.n08i40k.streaks.hook.impl.emoji
 
 import android.content.Context
 import android.view.View
-import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.DialogCell
-import org.telegram.ui.Components.AnimatedEmojiDrawable
+import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable
 import org.telegram.ui.DialogsActivity
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakEmoji
+import ru.n08i40k.streaks.util.getAs
+import ru.n08i40k.streaks.util.getAsUnchecked
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
 
 class DialogCellHookBundle : HookBundle() {
+    companion object Fields {
+        private val CLASS = DialogCell::class.java
+
+        val EMOJI_STATUS = getField(CLASS, "emojiStatus")
+        val CURRENT_DIALOG_ID = getField(CLASS, "currentDialogId")
+
+        // отсутствует в клиентах ниже 12.2.6
+        val EMOJI_STATUS_VIEW by lazy { getField(CLASS, "emojiStatusView") }
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -31,12 +42,9 @@ class DialogCellHookBundle : HookBundle() {
             )
         )
         { param ->
-            val thisObject = param.thisObject as DialogCell
-            val thisClass = DialogCell::class.java
-
             StreakEmoji.encapsulate(
-                thisObject,
-                getField(thisClass, "emojiStatus"),
+                param.thisObject,
+                EMOJI_STATUS,
                 null,
                 0,
                 source = StreakEmoji.Source.DIALOG_CELL,
@@ -50,16 +58,10 @@ class DialogCellHookBundle : HookBundle() {
                 "buildLayout",
             )
         ) { param ->
-            val thisObject = param.thisObject as DialogCell
-            val thisClass = DialogCell::class.java
+            val obj = param.thisObject as DialogCell
 
-            val currentDialogId = getFieldValue<Long>(thisClass, thisObject, "currentDialogId")!!
-
-            getFieldValue<StreakEmoji>(
-                thisClass,
-                thisObject,
-                "emojiStatus"
-            )?.setPeerUserId(currentDialogId)
+            EMOJI_STATUS.getAs<StreakEmoji>(obj)
+                ?.setPeerUserId(CURRENT_DIALOG_ID.getLong(obj))
         }
 
         // Фикс отрисовки текста в местах, где размер view ограничен по x.
@@ -76,23 +78,17 @@ class DialogCellHookBundle : HookBundle() {
                     Int::class.java,
                 )
             ) { param ->
-                val thisObject = param.thisObject as DialogCell
-                val thisClass = DialogCell::class.java
+                val obj = param.thisObject as DialogCell
 
-                val emojiStatusView =
-                    getFieldValue<View>(thisClass, thisObject, "emojiStatusView")!!
-                val emojiStatus =
-                    getFieldValue<AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable>(
-                        thisClass,
-                        thisObject,
-                        "emojiStatus"
-                    )
+                val emojiStatusView = EMOJI_STATUS_VIEW.getAsUnchecked<View>(obj)
+                val emojiStatus = EMOJI_STATUS.getAsUnchecked<SwapAnimatedEmojiDrawable>(obj)
 
-                val height = AndroidUtilities.dp(22f)
+                val height = dp(22f)
+
                 emojiStatusView.layout(
                     0,
                     0,
-                    maxOf(height * 4, emojiStatus?.intrinsicWidth ?: 0),
+                    maxOf(height * 4, emojiStatus.intrinsicWidth),
                     height
                 )
             }

@@ -3,11 +3,9 @@ package ru.n08i40k.streaks.util
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 
-fun cloneFields(
-    src: Any,
-    dest: Any,
-    klass: Class<*>
-) {
+fun getAccessibleFields(klass: Class<*>): Set<Field> {
+    val fields = hashSetOf<Field>()
+
     var c: Class<*>? = klass
 
     while (c != null && c != Any::class.java) {
@@ -15,10 +13,22 @@ fun cloneFields(
             if (Modifier.isStatic(f.modifiers)) continue
 
             f.isAccessible = true
-            f.set(dest, f.get(src))
+            fields.add(f)
         }
 
         c = c.superclass
+    }
+
+    return fields
+}
+fun cloneFields(
+    src: Any,
+    dest: Any,
+    // can be got by calling getAccessibleFields
+    fields: Collection<Field>
+) {
+    for (field in fields) {
+       field.set(dest, field.get(src))
     }
 }
 
@@ -29,24 +39,12 @@ fun getField(klass: Class<*>, name: String): Field {
     return field
 }
 
-inline fun <reified T> getFieldValue(obj: Any, name: String): T? =
-    getField(obj.javaClass, name).get(obj) as? T
+inline fun <reified T> Field.getAs(obj: Any?): T? =
+    this.get(obj) as? T
 
-inline fun <reified T> getFieldValue(klass: Class<*>, obj: Any?, name: String): T? =
-    getField(klass, name).get(obj) as? T
+inline fun <reified T> Field.getAsUnchecked(obj: Any?): T =
+    this.get(obj) as T
 
-fun setFieldValue(obj: Any, name: String, value: Any?) =
-    getField(obj.javaClass, name).set(obj, value)
+fun Field.addInt(obj: Any?, value: Int) =
+    set(obj, getAs<Int>(obj)!! + value)
 
-fun setFieldValue(klass: Class<*>, obj: Any?, name: String, value: Any?) =
-    getField(klass, name).set(obj, value)
-
-fun addIntFieldValue(klass: Class<*>, obj: Any?, name: String, value: Int) {
-    val field = getField(klass, name)
-    field.set(obj, field.get(obj) as Int + value)
-}
-
-fun addIntFieldValue(obj: Any, name: String, value: Int) {
-    val field = getField(obj.javaClass, name)
-    field.set(obj, field.get(obj) as Int + value)
-}

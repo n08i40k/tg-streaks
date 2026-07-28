@@ -10,10 +10,23 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakEmoji
+import ru.n08i40k.streaks.util.getAs
+import ru.n08i40k.streaks.util.getAsUnchecked
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
 
 class ProfileActivityHookBundle : HookBundle() {
+    companion object Fields {
+        private val CLASS = ProfileActivity::class.java
+
+        val USER_ID = getField(CLASS, "userId")
+        val NAME_TEXT_VIEW = getField(CLASS, "nameTextView")
+        val EMOJI_STATUS_DRAWABLE = getField(CLASS, "emojiStatusDrawable")
+
+        // SimpleTextView
+        val RIGHT_DRAWABLE_ON_CLICK_LISTENER =
+            getField(SimpleTextView::class.java, "rightDrawableOnClickListener")
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -28,27 +41,21 @@ class ProfileActivityHookBundle : HookBundle() {
             )
         ) { param ->
             val thisObject = param.thisObject as ProfileActivity
-            val thisClass = ProfileActivity::class.java
 
-            val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
+            val userId = USER_ID.getLong(thisObject)
 
             if (userId < 0)
                 return@after
 
-            val nameTextView =
-                getFieldValue<Array<SimpleTextView?>>(thisClass, thisObject, "nameTextView")
-                    ?.get(1)
-                    ?: return@after
+            val nameTextView = NAME_TEXT_VIEW
+                .getAsUnchecked<Array<SimpleTextView?>>(thisObject)[1]
+                ?: return@after
 
             val rightDrawableOnClick =
-                getFieldValue<View.OnClickListener>(
-                    SimpleTextView::class.java,
-                    nameTextView,
-                    "rightDrawableOnClickListener"
-                )
+                RIGHT_DRAWABLE_ON_CLICK_LISTENER.getAs<View.OnClickListener>(nameTextView)
 
             nameTextView.setRightDrawableOnClick { view ->
-                val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
+                val userId = USER_ID.getLong(thisObject)
 
                 val streakViewData = streaksController
                     .getViewData(UserConfig.selectedAccount, userId)
@@ -70,7 +77,7 @@ class ProfileActivityHookBundle : HookBundle() {
 
             param.result = StreakEmoji.encapsulate(
                 thisObject,
-                getField(thisClass, "emojiStatusDrawable"),
+                EMOJI_STATUS_DRAWABLE,
                 1,
                 userId,
             ) ?: param.result

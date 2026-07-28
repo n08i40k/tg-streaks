@@ -8,9 +8,13 @@ import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.util.UserPatcher
 import ru.n08i40k.streaks.util.UserPatcher.isPatched
-import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.getField
 
 class UserPutHookBundle : HookBundle() {
+    companion object Fields {
+        val CURRENT_ACCOUNT = getField(BaseController::class.java, "currentAccount")
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -34,9 +38,7 @@ class UserPutHookBundle : HookBundle() {
             if (user.isPatched())
                 return@before
 
-            val accountId =
-                getFieldValue<Int>(BaseController::class.java, messagesController, "currentAccount")
-                    ?: return@before
+            val accountId = CURRENT_ACCOUNT.getInt(messagesController)
 
             if (streaksController.getViewData(accountId, user.id) != null)
                 UserPatcher.patchUser(accountId, user)

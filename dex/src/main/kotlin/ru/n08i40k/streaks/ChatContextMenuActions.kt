@@ -21,11 +21,16 @@ import ru.n08i40k.streaks.ui.StreakControlFragment
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
-import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.getAs
+import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.runOnMainThread
 import kotlin.time.Clock
 
 class ChatContextMenuActions(private val plugin: Plugin) {
+    companion object Fields {
+        val ACTION_BAR_LAYOUT = getField(LaunchActivity::class.java, "actionBarLayout")
+    }
+
     @OptIn(DelicateCoroutinesApi::class)
     fun register() = with(plugin) {
         fun add(key: String, callback: (Long) -> Unit) {
@@ -348,7 +353,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
             val fragment = StreakControlFragment(viewModel)
 
             runOnMainThread {
-                getFieldValue<ActionBarLayout>(LaunchActivity.instance, "actionBarLayout")
+                ACTION_BAR_LAYOUT.getAs<ActionBarLayout>(LaunchActivity.instance)
                     ?.presentFragment(fragment)
             }
 

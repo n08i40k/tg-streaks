@@ -14,8 +14,9 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.cloneFields
+import ru.n08i40k.streaks.util.getAccessibleFields
+import ru.n08i40k.streaks.util.getAs
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
 import ru.n08i40k.streaks.util.isClientVersionBelow
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.lang.ref.WeakReference
@@ -43,22 +44,15 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
             val pseudoOriginal = SwapAnimatedEmojiDrawable(null, 0)
 
-            cloneFields(
-                drawable,
-                pseudoOriginal,
-                SwapAnimatedEmojiDrawable::class.java
-            )
+            cloneFields(drawable, pseudoOriginal, EMOJI_FIELDS)
 
             if (arrayIndex == null) {
                 targetField.set(targetObject, pseudoOriginal)
                 nameTextView?.get()?.let { textView ->
-                    val rightDrawableField = getField(SimpleTextView::class.java, "rightDrawable")
-                    val rightDrawable2Field = getField(SimpleTextView::class.java, "rightDrawable2")
-
-                    if (rightDrawableField.get(textView) === drawable)
+                    if (RIGHT_DRAWABLE.get(textView) === drawable)
                         textView.rightDrawable = pseudoOriginal
 
-                    if (rightDrawable2Field.get(textView) === drawable)
+                    if (RIGHT_DRAWABLE_2.get(textView) === drawable)
                         textView.rightDrawable2 = pseudoOriginal
                 }
                 return
@@ -71,7 +65,18 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         }
     }
 
-    companion object {
+    companion object Reflection {
+        private val CLASS = SwapAnimatedEmojiDrawable::class.java
+
+        val PARENT_VIEW = getField(CLASS, "parentView")
+        val SIZE = getField(CLASS, "size")
+
+        // SimpleTextView
+        val RIGHT_DRAWABLE = getField(SimpleTextView::class.java, "rightDrawable")
+        val RIGHT_DRAWABLE_2 = getField(SimpleTextView::class.java, "rightDrawable2")
+
+        val EMOJI_FIELDS = getAccessibleFields(SwapAnimatedEmojiDrawable::class.java)
+
         fun encapsulate(
             obj: Any,
             field: Field,
@@ -238,9 +243,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             return
         }
 
-        val parentView =
-            getFieldValue<View>(SwapAnimatedEmojiDrawable::class.java, this, "parentView")
-                ?: return
+        val parentView = PARENT_VIEW.getAs<View>(this)
+            ?: return
 
         replaceStreakView(
             object : SwapAnimatedEmojiDrawable(parentView, size) {
@@ -278,9 +282,8 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             return
         }
 
-        val parentView =
-            getFieldValue<View>(SwapAnimatedEmojiDrawable::class.java, this, "parentView")
-                ?: return
+        val parentView = PARENT_VIEW.getAs<View>(this)
+            ?: return
 
         replaceBadgeView(
             SwapAnimatedEmojiDrawable(parentView, size).apply {
@@ -384,10 +387,10 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         null,
         0
     ) {
-        cloneFields(base, this, SwapAnimatedEmojiDrawable::class.java)
+        cloneFields(base, this, EMOJI_FIELDS)
         this.source = source
         this.canDrawBadge = canDrawBadge
-        this.size = getFieldValue<Int>(SwapAnimatedEmojiDrawable::class.java, this, "size")!!
+        this.size = SIZE.getInt(this)
 
         setPeerUserId(peerUserId)
     }

@@ -21,11 +21,24 @@ import org.telegram.ui.PremiumPreviewFragment
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.util.AnimatedEmojiView
+import ru.n08i40k.streaks.util.getAs
+import ru.n08i40k.streaks.util.getAsUnchecked
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
-import ru.n08i40k.streaks.util.setFieldValue
 
 class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
+    companion object Fields {
+        private val CLASS = PremiumPreviewBottomSheet::class.java
+
+        val FRAGMENT = getField(CLASS, "fragment")
+        val FIREWORKS_OVERLAY = getField(CLASS, "fireworksOverlay")
+        val BUTTON_CONTAINER = getField(CLASS, "buttonContainer")
+        val STAR_PARTICLES_VIEW = getField(CLASS, "starParticlesView")
+        val ICON_TEXTURE_VIEW = getField(CLASS, "iconTextureView")
+
+        // FireworksOverlay, статическое поле
+        val PAINT = getField(FireworksOverlay::class.java, "paint")
+    }
+
     private class StreakFireworksOverlay : FireworksOverlay {
         private val accentColor: Color
 
@@ -48,7 +61,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             this._colors[4] = Color.HSVToColor(buffer.apply { this[1] = saturation * 1.3f })
             this._colors[5] = Color.HSVToColor(buffer.apply { this[1] = saturation * 1.5f })
 
-            this._paint = getFieldValue<Array<Paint>>(FireworksOverlay::class.java, this, "paint")!!
+            this._paint = PAINT.getAsUnchecked<Array<Paint>>(null)
         }
 
         override fun start(withStars: Boolean) {
@@ -78,7 +91,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         user: TLRPC.User,
         streakViewData: StreakViewData
     ) : super(
-        getFieldValue<BaseFragment>(PremiumPreviewBottomSheet::class.java, base, "fragment")!!,
+        FRAGMENT.getAsUnchecked<BaseFragment>(base),
         base.currentAccount,
         user,
         base.resourcesProvider
@@ -148,19 +161,10 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
                 LayoutHelper.createFrame(-1, -1f)
             )
 
-            setFieldValue(
-                PremiumPreviewBottomSheet::class.java,
-                this,
-                "fireworksOverlay",
-                fireworksOverlay
-            )
+            FIREWORKS_OVERLAY.set(this, fireworksOverlay)
         }
 
-        getFieldValue<FrameLayout>(
-            PremiumPreviewBottomSheet::class.java,
-            this,
-            "buttonContainer"
-        )?.visibility = View.GONE
+        BUTTON_CONTAINER.getAs<FrameLayout>(this)?.visibility = View.GONE
     }
 
     override fun getTitle(): CharSequence =
@@ -169,11 +173,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     override fun onContainerDraw(canvas: Canvas?) {
         super.onContainerDraw(canvas)
 
-        val starParticlesView = getFieldValue<StarParticlesView>(
-            PremiumPreviewBottomSheet::class.java,
-            this,
-            "starParticlesView"
-        )
+        val starParticlesView = STAR_PARTICLES_VIEW.getAs<StarParticlesView>(this)
         starParticlesView?.drawable?.paint?.setColor(this.streakViewData.accentColor.toArgb())
         starParticlesView?.drawable?.init()
     }
@@ -227,20 +227,15 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             }
         }
 
-        getField(PremiumPreviewBottomSheet::class.java, "starParticlesView").let { field ->
-            val old = field.get(this)!! as StarParticlesView
+        val old = STAR_PARTICLES_VIEW.getAsUnchecked<StarParticlesView>(this)
 
-            parentView.removeView(old)
-            parentView.addView(starParticlesView, 0)
+        parentView.removeView(old)
+        parentView.addView(starParticlesView, 0)
 
-            getFieldValue<GLIconTextureView>(
-                PremiumPreviewBottomSheet::class.java,
-                this,
-                "iconTextureView"
-            )?.setStarParticlesView(starParticlesView)
+        ICON_TEXTURE_VIEW.getAs<GLIconTextureView>(this)
+            ?.setStarParticlesView(starParticlesView)
 
-            field.set(this, starParticlesView)
-        }
+        STAR_PARTICLES_VIEW.set(this, starParticlesView)
 
         super.afterCellCreated(viewType, view)
     }

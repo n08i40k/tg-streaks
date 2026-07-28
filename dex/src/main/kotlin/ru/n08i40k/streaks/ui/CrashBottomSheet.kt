@@ -71,21 +71,21 @@ class CrashBottomSheet(
             }
         }
 
+        private val CLASS = PluginsController::class.java
+
+        private val GET_INSTANCE by lazy { CLASS.getDeclaredMethod("getInstance") }
+
+        // в части клиентов геттера нет, тогда поле читается напрямую
+        private val GET_PLUGINS by lazy { CLASS.declaredMethods.find { it.name == "getPlugins" } }
+        private val PLUGINS by lazy { CLASS.getField("plugins") }
+
         @Suppress("UNCHECKED_CAST")
         val plugins: Collection<com.exteragram.messenger.plugins.Plugin>
             get() {
-                val klass = PluginsController::class.java
+                val controller = GET_INSTANCE.invoke(null) as PluginsController
 
-                val controller = klass
-                    .getDeclaredMethod("getInstance")
-                    .invoke(null) as PluginsController
-
-                val getPlugins = klass
-                    .declaredMethods
-                    .find { it.name == "getPlugins" }
-
-                val map = getPlugins?.invoke(controller)
-                    ?: klass.getField("plugins").get(controller)
+                val map = GET_PLUGINS?.invoke(controller)
+                    ?: PLUGINS.get(controller)
 
                 return map.javaClass.getDeclaredMethod("values")
                     .invoke(map) as Collection<com.exteragram.messenger.plugins.Plugin>

@@ -8,9 +8,16 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
-import ru.n08i40k.streaks.util.getFieldValue
+import ru.n08i40k.streaks.util.getAsUnchecked
+import ru.n08i40k.streaks.util.getField
 
 class PremiumPreviewBottomSheetHookBundle : HookBundle() {
+    companion object Fields {
+        private val CLASS = PremiumPreviewBottomSheet::class.java
+
+        val USER = getField(CLASS, "user")
+    }
+
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -25,11 +32,7 @@ class PremiumPreviewBottomSheetHookBundle : HookBundle() {
             val dialog = param.args[0] as? PremiumPreviewBottomSheet
                 ?: return@before
 
-            val user = getFieldValue<TLRPC.User>(
-                PremiumPreviewBottomSheet::class.java,
-                dialog,
-                "user"
-            )!!
+            val user = USER.getAsUnchecked<TLRPC.User>(dialog)
 
             val streakViewData = Plugin.getInstance().streaksController
                 .getViewData(

@@ -8,11 +8,28 @@ import org.telegram.ui.DialogsActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.override.StreakEmoji
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.getAs
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.getFieldValue
+import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
 class StreakEmojiRegistry {
+    companion object Reflection {
+        // DialogsActivity
+        val VIEW_PAGES = getField(DialogsActivity::class.java, "viewPages")
+
+        // LaunchActivity
+        val ACTION_BAR_LAYOUT = getField(LaunchActivity::class.java, "actionBarLayout")
+        val RIGHT_ACTION_BAR_LAYOUT = getField(LaunchActivity::class.java, "rightActionBarLayout")
+        val LAYERS_ACTION_BAR_LAYOUT = getField(LaunchActivity::class.java, "layersActionBarLayout")
+
+        // org.telegram.ui.MainTabsActivity, отсутствует в части клиентов
+        val GET_DIALOGS_ACTIVITY: Method by lazy {
+            Class.forName("org.telegram.ui.MainTabsActivity")
+                .getDeclaredMethod("getDialogsActivity")
+        }
+    }
+
     private val elements = ConcurrentHashMap.newKeySet<StreakEmoji.EjectData>(128)
 
     fun add(data: StreakEmoji.EjectData) = elements.add(data)
@@ -44,24 +61,8 @@ class StreakEmojiRegistry {
         }
     }
 
-    fun refreshAll() {
-        val it = elements.iterator()
-
-        while (it.hasNext()) {
-            val streakEmoji = it.next().drawable.get() ?: run {
-                it.remove()
-                continue
-            }
-
-            streakEmoji.refresh()
-        }
-
-        refreshDialogCells()
-    }
-
     fun refreshDialogCells() {
         val launchActivity = LaunchActivity.instance
-        val viewPagesField = getField(DialogsActivity::class.java, "viewPages")
         val dialogsActivities = mutableSetOf<DialogsActivity>()
 
         fun populateSet(layout: INavigationLayout) {
@@ -73,8 +74,7 @@ class StreakEmojiRegistry {
                 if (fragment is DialogsActivity)
                     dialogsActivities.add(fragment)
                 else if (fragment.javaClass.name == "org.telegram.ui.MainTabsActivity") {
-                    (fragment.javaClass.getDeclaredMethod("getDialogsActivity")
-                        .invoke(fragment) as? DialogsActivity)
+                    (GET_DIALOGS_ACTIVITY.invoke(fragment) as? DialogsActivity)
                         ?.let(dialogsActivities::add)
                 }
             }
@@ -82,13 +82,13 @@ class StreakEmojiRegistry {
 
         // Удивительно, что баг проявился только после обновления jar до версии 12.8.0
         // Как это вообще работало?
-        getFieldValue<ActionBarLayout>(launchActivity, "actionBarLayout")?.let(::populateSet)
-        getFieldValue<ActionBarLayout>(launchActivity, "rightActionBarLayout")?.let(::populateSet)
-        getFieldValue<ActionBarLayout>(launchActivity, "layersActionBarLayout")?.let(::populateSet)
+        ACTION_BAR_LAYOUT.getAs<ActionBarLayout>(launchActivity)?.let(::populateSet)
+        RIGHT_ACTION_BAR_LAYOUT.getAs<ActionBarLayout>(launchActivity)?.let(::populateSet)
+        LAYERS_ACTION_BAR_LAYOUT.getAs<ActionBarLayout>(launchActivity)?.let(::populateSet)
 
         @Suppress("UNCHECKED_CAST")
         val viewPages = dialogsActivities
-            .mapNotNull { viewPagesField.get(it) as? Array<View?> }
+            .mapNotNull { VIEW_PAGES.getAs<Array<View?>>(it) }
             .flatMap { it.toSet() }
 
         for (page in viewPages) {
