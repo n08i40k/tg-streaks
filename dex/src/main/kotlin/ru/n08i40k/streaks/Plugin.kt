@@ -163,7 +163,7 @@ class Plugin {
                 }
                 MessageFormatterDefault.registerMessageValueFormatters(MessagePluralFormatter)
 
-                Logger.tryOrFatal("Failed to create and inject plugin") {
+                Logger.tryOrFatal("create and inject plugin") {
                     val plugin = Plugin(ResourcesProvider(resourcesRootPath))
                         .also { INSTANCE = it }
 
