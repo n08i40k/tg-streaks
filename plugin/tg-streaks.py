@@ -274,15 +274,14 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "en": "Streaks plugin disabled",
         "ru": "Плагин Streaks отключён",
     },
-    "dialog.update_restart.later": {"en": "Later", "ru": "Позже"},
     "dialog.update_restart.message": {
         "en": "Streaks was updated from {previous} to {current}. Restart the client to finish the update.",
         "ru": "Streaks обновлён с {previous} до {current}. Перезапустите клиент, чтобы завершить обновление.",
     },
     "dialog.update_restart.restart": {"en": "Restart", "ru": "Перезапустить"},
     "dialog.update_restart.title": {
-        "en": "Restart client?",
-        "ru": "Перезапустить клиент?",
+        "en": "Client restart required",
+        "ru": "Требуется перезапуск клиента",
     },
 }
 
@@ -1390,10 +1389,10 @@ class TgStreaksPlugin(BasePlugin):
                     self_outer._persist_current_loaded_version()
                     self_outer._restart_client()
 
-            class LaterClickListener(dynamic_proxy(AlertDialog.OnButtonClickListener)):
-                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
+            class DismissListener(dynamic_proxy(DialogInterface.OnDismissListener)):
+                def onDismiss(self, var1) -> None:
                     self_outer._persist_current_loaded_version()
-                    self_outer._continue_plugin_load()
+                    self_outer._restart_client()
 
             try:
                 fragment.showDialog(
@@ -1412,10 +1411,8 @@ class TgStreaksPlugin(BasePlugin):
                         String(self._t("dialog.update_restart.restart")),
                         RestartClickListener(),
                     )
-                    .setNegativeButton(
-                        String(self._t("dialog.update_restart.later")),
-                        LaterClickListener(),
-                    )
+                    .setOnDismissListener(DismissListener())
+                    .setOnPreDismissListener(DismissListener())
                     .create()
                 )
             except Exception as e:
