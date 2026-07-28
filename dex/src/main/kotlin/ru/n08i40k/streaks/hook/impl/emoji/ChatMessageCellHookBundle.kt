@@ -29,6 +29,8 @@ class ChatMessageCellHookBundle : HookBundle() {
         before: InstallHook,
         after: InstallHook
     ) {
+        val streaksController = Plugin.getInstance().streaksController
+
         // Сообщение в группе
         before(
             ChatMessageCell::class.java.getDeclaredMethod(
@@ -96,13 +98,10 @@ class ChatMessageCellHookBundle : HookBundle() {
             val spannedText = nameLayout.text as? Spanned ?: return@before
             val extraPx = emoji.getAdditionalWidth()
 
-            spannedText.getSpans(
-                0,
-                spannedText.length,
-                DialogCell.FixedWidthSpan::class.java
-            ).lastOrNull()?.let {
-                addIntFieldValue(it, "width", extraPx)
-            } ?: return@before
+            spannedText.getSpans(0, spannedText.length, DialogCell.FixedWidthSpan::class.java)
+                .lastOrNull()
+                ?.let { addIntFieldValue(it, "width", extraPx) }
+                ?: return@before
 
             val nameLayoutWidth = getFieldValue<Int>(thisClass, thisObject, "nameLayoutWidth")!!
 
@@ -135,7 +134,7 @@ class ChatMessageCellHookBundle : HookBundle() {
                     String::class.java,
                 )
         ) { param ->
-            Plugin.getInstance().streaksController.getViewDataBlocking(
+            streaksController.getViewData(
                 UserConfig.selectedAccount,
                 (param.args[1] as TLRPC.User).id
             ) ?: return@before

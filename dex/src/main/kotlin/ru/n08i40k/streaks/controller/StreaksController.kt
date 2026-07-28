@@ -2,7 +2,6 @@ package ru.n08i40k.streaks.controller
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -10,7 +9,6 @@ import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.chat_history_fetcher.CachedChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
@@ -36,6 +34,7 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSeconds
 import ru.n08i40k.streaks.extension.toInstant
 import ru.n08i40k.streaks.extension.toLocalDate
+import ru.n08i40k.streaks.registry.StreakLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
@@ -43,6 +42,7 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.fetchPeerUsers
 import ru.n08i40k.streaks.util.runOnMainThread
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -52,6 +52,7 @@ import kotlin.time.Instant
 class StreaksController(
     private val db: PluginDatabase,
     private val timeZonesController: TimeZonesController,
+    private val streakLevelRegistry: StreakLevelRegistry,
     resourcesProvider: ResourcesProvider,
 ) {
     companion object {
@@ -98,6 +99,42 @@ class StreaksController(
     private val dao = db.streakDao()
     private val restoreDao = db.streakRestoreDao()
 
+    private val cache = ConcurrentHashMap<Pair<Long, Long>, Streak>()
+    private val viewCache = ConcurrentHashMap<Pair<Long, Long>, StreakViewData>()
+
+    suspend fun loadCaches() {
+        cache.clear()
+        viewCache.clear()
+
+        dao.getAll().forEach {
+            val key = Pair(it.ownerUserId, it.peerUserId)
+
+            cache[key] = it
+
+            if (!it.ended && it.isVisible)
+                viewCache[key] = StreakViewData.from(it)
+            else
+                viewCache.remove(key)
+        }
+    }
+
+    fun updateCache(ownerUserId: Long, peerUserId: Long, streak: Streak?) {
+        val key = Pair(ownerUserId, peerUserId)
+
+        if (streak == null) {
+            cache.remove(key)
+            viewCache.remove(key)
+            return
+        }
+
+        cache[key] = streak
+
+        if (!streak.ended && streak.isVisible)
+            viewCache[key] = StreakViewData.from(streak)
+        else
+            viewCache.remove(key)
+    }
+
     private suspend fun loadManualRestores(
         ownerUserId: Long,
         peerUserId: Long,
@@ -137,6 +174,8 @@ class StreaksController(
             val streak = dao.findByRelation(ownerUserId, peerUserId)
 
             dao.deleteByRelation(ownerUserId, peerUserId)
+
+            updateCache(ownerUserId, peerUserId, null)
 
             streak?.let {
                 EventBus.emit(
@@ -291,7 +330,7 @@ class StreaksController(
         accountId: Int,
         peerUser: TLRPC.User,
         onProgressUpdate: suspend (progress: RebuildProgress) -> Unit,
-    ) {
+    ): Streak? {
         try {
             val ownerUserId = UserConfig.getInstance(accountId).clientUserId
             val peerUserId = peerUser.id
@@ -409,6 +448,8 @@ class StreaksController(
                     dao.deleteByRelation(ownerUserId, peerUserId)
                 }
 
+                updateCache(ownerUserId, peerUserId, null)
+
                 sourceStreak
                     ?.takeIf { it.isVisible }
                     ?.let {
@@ -421,7 +462,7 @@ class StreaksController(
                         )
                     }
 
-                return
+                return null
             }
 
             var sourceStreak: Streak? =
@@ -463,6 +504,8 @@ class StreaksController(
                 persistAutoRestores(ownerUserId, peerUserId, timeZone, restores, manualDates)
             }
 
+            updateCache(ownerUserId, peerUserId, targetStreak)
+
             EventBus.emit(
                 PluginEvent.StreakRebuiltEvent(
                     accountId,
@@ -471,11 +514,15 @@ class StreaksController(
                     targetStreak
                 )
             )
+
+            return targetStreak
         } catch (_: InvalidPeerException) {
             removeInvalidPeerStreak(accountId, peerUser.id)
         } catch (e: Throwable) {
             Logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         }
+
+        return null
     }
 
     suspend fun rebuild(accountId: Int, peerUser: TLRPC.User) {
@@ -509,7 +556,7 @@ class StreaksController(
             for ((index, peerUser) in peers.withIndex()) {
                 var daysChecked = 0
 
-                withContext(RateLimitContext { throttlingClock ->
+                val rebuiltStreak = withContext(RateLimitContext { throttlingClock ->
                     states[index] =
                         UserRebuildState.InProcess(peerUser, daysChecked, throttlingClock)
                     sheet.notifyUserStateChanged(index)
@@ -518,11 +565,8 @@ class StreaksController(
                         daysChecked = progress.daysChecked
                         states[index] = UserRebuildState.InProcess(peerUser, daysChecked, null)
                         sheet.notifyUserStateChanged(index)
-                    }
+                    }?.takeIf(Streak::isVisible)
                 }
-
-                val rebuiltStreak = get(accountId, peerUser.id)
-                    ?.takeIf(Streak::isVisible)
 
                 states[index] = UserRebuildState.Done(peerUser, rebuiltStreak)
                 sheet.notifyUserStateChanged(index)
@@ -679,6 +723,8 @@ class StreaksController(
                             )
                         }
 
+                        updateCache(ownerUserId, peerUserId, resStreak)
+
                         if (dynStreak.isVisible && !dynStreak.deathNotified) {
                             EventBus.emit(
                                 PluginEvent.StreakLostEvent(
@@ -690,6 +736,7 @@ class StreaksController(
                         }
                     } else {
                         dao.deleteByRelation(ownerUserId, peerUserId)
+                        updateCache(ownerUserId, peerUserId, null)
 
                         if (dynStreak.isVisible && !dynStreak.deathNotified) {
                             EventBus.emit(
@@ -731,6 +778,8 @@ class StreaksController(
             dao.update(dynStreak)
             persistAutoRestores(ownerUserId, peerUserId, timeZone, restores, manualDates)
         }
+
+        updateCache(ownerUserId, peerUserId, dynStreak)
 
         if (streakGrew) {
             EventBus.emit(
@@ -796,7 +845,7 @@ class StreaksController(
 
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
-        val streak = get(accountId, peerUserId) ?: run {
+        val streak = dao.findByRelation(ownerUserId, peerUserId) ?: run {
             // forbid streak creation for bots
             if (peerType == PeerType.BOT)
                 return
@@ -826,6 +875,8 @@ class StreaksController(
 
             if (dao.insertOrIgnore(streak) == -1L)
                 return
+
+            updateCache(ownerUserId, peerUserId, streak)
 
             EventBus.emit(
                 PluginEvent.StreakCreatedEvent(
@@ -857,6 +908,8 @@ class StreaksController(
 
             dao.deleteByRelation(ownerUserId, peerUserId)
 
+            updateCache(ownerUserId, peerUserId, null)
+
             EventBus.emit(
                 PluginEvent.StreakDeletedEvent(
                     accountId,
@@ -873,7 +926,11 @@ class StreaksController(
         else if (!out && streak.updateFromPeerAt.toLocalDate(timeZone) != now)
             dao.update(streak.copy(updateFromPeerAt = at, deathNotified = false))
 
-        dao.findByRelation(ownerUserId, peerUserId)
+        val newStreak = dao.findByRelation(ownerUserId, peerUserId)
+
+        updateCache(ownerUserId, peerUserId, newStreak)
+
+        newStreak
             ?.takeIf { it.length > streak.length }
             ?.let {
                 EventBus.emit(
@@ -972,22 +1029,17 @@ class StreaksController(
         return result
     }
 
-    suspend fun get(accountId: Int, peerUserId: Long): Streak? =
-        dao.findByRelation(UserConfig.getInstance(accountId).clientUserId, peerUserId)
+    fun get(accountId: Int, peerUserId: Long): Streak? =
+        cache[Pair(UserConfig.getInstance(accountId).clientUserId, peerUserId)]
 
-    suspend fun exists(accountId: Int, peerUserId: Long): Boolean =
-        dao.exists(UserConfig.getInstance(accountId).clientUserId, peerUserId)
+    fun exists(accountId: Int, peerUserId: Long): Boolean =
+        cache.contains(Pair(UserConfig.getInstance(accountId).clientUserId, peerUserId))
 
     suspend fun getAllVisible(): List<Streak> = dao.getAll()
         .filter { !it.ended && it.isVisible }
 
-    suspend fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? =
-        get(accountId, peerUserId)
-            ?.takeIf { !it.ended && it.isVisible }
-            ?.let(StreakViewData::from)
-
-    fun getViewDataBlocking(accountId: Int, peerUserId: Long): StreakViewData? =
-        runBlocking { getViewData(accountId, peerUserId) }
+    fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? =
+        viewCache[Pair(UserConfig.getInstance(accountId).clientUserId, peerUserId)]
 
     private fun buildDebugStreak(
         ownerUserId: Long,
@@ -1027,6 +1079,8 @@ class StreaksController(
             dao.insert(streak)
         }
 
+        updateCache(ownerUserId, peerUserId, streak)
+
         EventBus.emit(
             PluginEvent.StreakCreatedEvent(
                 accountId,
@@ -1039,18 +1093,19 @@ class StreaksController(
     }
 
     suspend fun debugUpgradeStreak(accountId: Int, peerUserId: Long): Int? {
-        val streak = get(accountId, peerUserId) ?: return null
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
-        val nextLevelLength = Plugin.getInstance()
-            .streakLevelRegistry
+        val streak = dao.findByRelation(ownerUserId, peerUserId) ?: return null
+
+        val nextLevelLength = streakLevelRegistry
             .levels()
             .firstOrNull { it.length > streak.level.length }
             ?.length
             ?: return streak.level.length
 
         val upgraded = buildDebugStreak(
-            streak.ownerUserId,
-            streak.peerUserId,
+            ownerUserId,
+            peerUserId,
             nextLevelLength,
             streak.updateFromOwnerAt.toLocalDate(streak.timeZone),
             streak.updateFromPeerAt.toLocalDate(streak.timeZone),
@@ -1059,6 +1114,8 @@ class StreaksController(
         )
 
         dao.update(upgraded)
+
+        updateCache(ownerUserId, peerUserId, upgraded)
 
         EventBus.emit(
             PluginEvent.StreakGrowUpEvent(
@@ -1099,6 +1156,8 @@ class StreaksController(
             dao.insert(streak)
         }
 
+        updateCache(ownerUserId, peerUserId, streak)
+
         EventBus.emit(
             PluginEvent.StreakCreatedEvent(
                 accountId,
@@ -1138,6 +1197,8 @@ class StreaksController(
             dao.insert(streak)
         }
 
+        updateCache(ownerUserId, peerUserId, streak)
+
         EventBus.emit(
             PluginEvent.StreakLostEvent(
                 accountId,
@@ -1158,6 +1219,8 @@ class StreaksController(
             dao.deleteByRelation(ownerUserId, peerUserId)
         }
 
+        updateCache(ownerUserId, peerUserId, null)
+
         if (streak != null) {
             EventBus.emit(
                 PluginEvent.StreakDeletedEvent(
@@ -1177,7 +1240,9 @@ class StreaksController(
         at: Instant,
         byPeer: Boolean = false
     ): Boolean {
-        val streak = get(accountId, peerUserId) ?: return false
+        val ownerUserId = UserConfig.getInstance(accountId).clientUserId
+
+        val streak = dao.findByRelation(ownerUserId, peerUserId) ?: return false
 
         if (!streak.canRestore)
             return false
@@ -1186,16 +1251,16 @@ class StreaksController(
         val alreadyRestored =
             restoreDao.isRestored(streak.ownerUserId, streak.peerUserId, restoreDate)
 
+        val restoredStreak = streak.copy(
+            restoresCount = if (alreadyRestored) streak.restoresCount else streak.restoresCount + 1,
+            updateFromOwnerAt = at,
+            updateFromPeerAt = at,
+            deathNotified = false,
+            warningNotified = false,
+        )
+
         db.withTransaction {
-            dao.update(
-                streak.copy(
-                    restoresCount = if (alreadyRestored) streak.restoresCount else streak.restoresCount + 1,
-                    updateFromOwnerAt = at,
-                    updateFromPeerAt = at,
-                    deathNotified = false,
-                    warningNotified = false,
-                )
-            )
+            dao.update(restoredStreak)
 
             if (!alreadyRestored) {
                 restoreDao.insert(
@@ -1210,7 +1275,7 @@ class StreaksController(
             }
         }
 
-        val restoredStreak = get(accountId, peerUserId)!!
+        updateCache(ownerUserId, peerUserId, restoredStreak)
 
         EventBus.emit(
             PluginEvent.StreakRestoredEvent(

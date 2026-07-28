@@ -293,7 +293,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         invalidateSelf()
     }
 
-    private fun refreshViews(streakViewData: StreakViewData?) {
+    private fun refreshCachedViews() {
         if (peerUserId == 0L) {
             setStreak(null, null)
             setBadge(null, null)
@@ -301,7 +301,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             return
         }
 
-        if (streakViewData == null) {
+        if (cachedStreakViewData == null) {
             val dialog =
                 MessagesController.getInstance(UserConfig.selectedAccount)
                     .getUserOrChat(peerUserId)
@@ -337,7 +337,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
                 this.hasBadge = badge != null
 
-                setStreak(it, streakViewData)
+                setStreak(it, cachedStreakViewData)
                 setBadge(it, badge)
             }
     }
@@ -359,15 +359,15 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     fun setPeerUserId(peerUserId: Long, clearStreak: Boolean = false) {
         this.peerUserId = peerUserId
 
-        val plugin = Plugin.getInstance()
+        cachedStreakViewData = if (!clearStreak && peerUserId != 0L) {
+            Plugin.getInstance()
+                .streaksController
+                .getViewData(UserConfig.selectedAccount, peerUserId)
+        } else {
+            null
+        }
 
-        cachedStreakViewData =
-            if (!clearStreak && peerUserId != 0L)
-                plugin.streaksController.getViewDataBlocking(UserConfig.selectedAccount, peerUserId)
-            else
-                null
-
-        refreshViews(cachedStreakViewData)
+        refreshCachedViews()
 
         runOnMainThread(this@StreakEmoji::invalidateSelf)
     }

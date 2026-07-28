@@ -32,7 +32,7 @@ class PremiumPreviewBottomSheetHookBundle : HookBundle() {
             )!!
 
             val streakViewData = Plugin.getInstance().streaksController
-                .getViewDataBlocking(
+                .getViewData(
                     UserConfig.selectedAccount,
                     user.id
                 ) ?: return@before

@@ -18,6 +18,8 @@ class ProfileActivityHookBundle : HookBundle() {
         before: InstallHook,
         after: InstallHook
     ) {
+        val streaksController = Plugin.getInstance().streaksController
+
         // Профиль пользователя
         after(
             ProfileActivity::class.java.getDeclaredMethod(
@@ -48,9 +50,8 @@ class ProfileActivityHookBundle : HookBundle() {
             nameTextView.setRightDrawableOnClick { view ->
                 val userId = getFieldValue<Long>(thisClass, thisObject, "userId")!!
 
-                val streakViewData = Plugin.getInstance()
-                    .streaksController
-                    .getViewDataBlocking(UserConfig.selectedAccount, userId)
+                val streakViewData = streaksController
+                    .getViewData(UserConfig.selectedAccount, userId)
 
                 if (streakViewData == null) {
                     rightDrawableOnClick?.onClick(view)

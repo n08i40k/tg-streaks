@@ -310,7 +310,12 @@ class Plugin {
                 TimeZonesController(this.db)
 
             this.streaksController =
-                StreaksController(this.db, this.timeZonesController, this.resourcesProvider)
+                StreaksController(
+                    this.db,
+                    this.timeZonesController,
+                    this.streakLevelRegistry,
+                    this.resourcesProvider
+                )
 
             this.streakPetsController =
                 StreakPetsController(this.db, this.streaksController, this.timeZonesController)
@@ -655,6 +660,8 @@ class Plugin {
     }
 
     private fun onFinalizeInject() {
+        runBlocking { streaksController.loadCaches() }
+
         Logger.tryOrFatal(
             "hook methods",
             ::hookMethods

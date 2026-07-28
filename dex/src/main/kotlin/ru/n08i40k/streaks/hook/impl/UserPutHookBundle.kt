@@ -1,6 +1,5 @@
 package ru.n08i40k.streaks.hook.impl
 
-import kotlinx.coroutines.launch
 import org.telegram.messenger.BaseController
 import org.telegram.messenger.MessagesController
 import org.telegram.tgnet.TLRPC
@@ -16,6 +15,8 @@ class UserPutHookBundle : HookBundle() {
         before: InstallHook,
         after: InstallHook
     ) {
+        val streaksController = Plugin.getInstance().streaksController
+
         // Патч пользователя со стриком
         before(
             MessagesController::class.java.getDeclaredMethod(
@@ -37,12 +38,8 @@ class UserPutHookBundle : HookBundle() {
                 getFieldValue<Int>(BaseController::class.java, messagesController, "currentAccount")
                     ?: return@before
 
-            with(Plugin.getInstance()) {
-                backgroundScope.launch {
-                    if (streaksController.getViewData(accountId, user.id) != null)
-                        UserPatcher.patchUser(accountId, user)
-                }
-            }
+            if (streaksController.getViewData(accountId, user.id) != null)
+                UserPatcher.patchUser(accountId, user)
         }
     }
 }

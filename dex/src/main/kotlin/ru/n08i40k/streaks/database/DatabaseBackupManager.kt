@@ -15,6 +15,7 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import org.telegram.messenger.ApplicationLoader
+import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.PeerTimeZone
 import ru.n08i40k.streaks.data.PluginRelation
 import ru.n08i40k.streaks.data.ServiceMessageCategories
@@ -294,6 +295,8 @@ class DatabaseBackupManager(
         val source = Room.buildPluginDatabase(sourceFile.path)
         val target = db
 
+        val streaksController = Plugin.getInstance().streaksController
+
         source.closeAfter {
             target.withTransaction {
                 target.pluginRelationDao().apply {
@@ -313,7 +316,10 @@ class DatabaseBackupManager(
 
                 target.streakDao().apply {
                     source.streakDao().findByRelation(ownerUserId, peerUserId)
-                        ?.let { insertOrReplace(it) }
+                        ?.let {
+                            insertOrReplace(it)
+                            streaksController.updateCache(ownerUserId, peerUserId, it)
+                        }
                 }
 
                 target.streakRestoreDao().apply {
