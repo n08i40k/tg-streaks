@@ -22,21 +22,6 @@ data class ScheduledStreakPopup(
     @ColumnInfo(name = "peer_user_id")
     val peerUserId: Long,
 
-    @ColumnInfo(name = "kind")
-    val kind: String,
-
-    @ColumnInfo(name = "peer_name")
-    val peerName: String,
-
-    @ColumnInfo(name = "days")
-    val days: Int,
-
-    @ColumnInfo(name = "accent_color")
-    val accentColor: Int,
-
-    @ColumnInfo(name = "emoji_document_id")
-    val emojiDocumentId: Long,
-
     @ColumnInfo(name = "popup_resource_name")
     val popupResourceName: String,
 

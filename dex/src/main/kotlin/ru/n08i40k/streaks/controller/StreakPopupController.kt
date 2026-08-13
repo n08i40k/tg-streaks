@@ -21,9 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.telegram.messenger.AndroidUtilities
-import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
-import org.telegram.messenger.UserObject
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
@@ -67,10 +65,8 @@ class StreakPopupController(
                 enqueue(
                     accountId = accountId,
                     peerUserId = peerUserId,
-                    kind = POPUP_KIND_CREATED,
-                    days = after.length,
                     level = after.level,
-                    dedupeKey = "created:$accountId:$peerUserId:${after.level.length}"
+                    dedupeKey = "$POPUP_KIND_CREATED:$accountId:$peerUserId:${after.level.length}"
                 )
             }
 
@@ -78,10 +74,8 @@ class StreakPopupController(
                 enqueue(
                     accountId = accountId,
                     peerUserId = peerUserId,
-                    kind = POPUP_KIND_UPGRADED,
-                    days = after.length,
                     level = after.level,
-                    dedupeKey = "upgraded:$accountId:$peerUserId:${after.level.length}"
+                    dedupeKey = "$POPUP_KIND_UPGRADED:$accountId:$peerUserId:${after.level.length}"
                 )
             }
         }
@@ -95,8 +89,6 @@ class StreakPopupController(
     private suspend fun enqueue(
         accountId: Int,
         peerUserId: Long,
-        kind: String,
-        days: Int,
         level: StreakLevel,
         dedupeKey: String,
     ) {
@@ -108,11 +100,6 @@ class StreakPopupController(
             ScheduledStreakPopup(
                 accountId = accountId,
                 peerUserId = peerUserId,
-                kind = kind,
-                peerName = resolvePeerName(accountId, peerUserId),
-                days = days,
-                accentColor = level.colorInt,
-                emojiDocumentId = level.documentId,
                 popupResourceName = level.popupResourceName,
                 dedupeKey = dedupeKey,
                 scheduledAt = System.currentTimeMillis(),
@@ -466,13 +453,6 @@ class StreakPopupController(
             accountId = UserConfig.selectedAccount,
             peerUserId = dialogId
         )
-    }
-
-    private fun resolvePeerName(accountId: Int, peerUserId: Long): String {
-        val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
-        val fullName = peerUser?.let { UserObject.getUserName(it) }?.takeIf { it.isNotBlank() }
-
-        return fullName ?: peerUserId.toString()
     }
 
     private data class OpenChatRelation(

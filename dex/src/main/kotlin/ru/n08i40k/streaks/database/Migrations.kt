@@ -345,3 +345,42 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         )
     }
 }
+
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `scheduled_streak_popup_new` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `account_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `popup_resource_name` TEXT NOT NULL,
+                `dedupe_key` TEXT NOT NULL,
+                `scheduled_at` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            INSERT INTO `scheduled_streak_popup_new`
+                (`id`, `account_id`, `peer_user_id`, `popup_resource_name`, `dedupe_key`, `scheduled_at`)
+            SELECT `id`, `account_id`, `peer_user_id`, `popup_resource_name`, `dedupe_key`, `scheduled_at`
+            FROM `scheduled_streak_popup`
+            """.trimIndent()
+        )
+        db.execSQL("DROP TABLE `scheduled_streak_popup`")
+        db.execSQL("ALTER TABLE `scheduled_streak_popup_new` RENAME TO `scheduled_streak_popup`")
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_scheduled_streak_popup_account_id_peer_user_id_id`
+            ON `scheduled_streak_popup` (`account_id`, `peer_user_id`, `id`)
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS `index_scheduled_streak_popup_dedupe_key`
+            ON `scheduled_streak_popup` (`dedupe_key`)
+            """.trimIndent()
+        )
+    }
+}

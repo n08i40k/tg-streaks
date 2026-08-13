@@ -36,7 +36,7 @@ import ru.n08i40k.streaks.database.dao.StreakRestoreDao
         PluginRelation::class,
         ServiceMessageCategories::class,
     ],
-    version = 11
+    version = 12
 )
 @TypeConverters(
     InstantConverter::class,
