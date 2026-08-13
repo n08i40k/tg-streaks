@@ -25,8 +25,6 @@ data class StreakPet(
 ) {
     @delegate:Ignore
     val level: StreakPetLevel by lazy {
-        Plugin.getInstance()
-            .streakPetLevelRegistry
-            .findByPointsApproximate(points)
+        StreakPetLevel.findByPointsApproximate(points)
     }
 }

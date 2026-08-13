@@ -6,14 +6,12 @@ import threading
 import time
 import traceback
 import zipfile
-from enum import Enum
 from typing import Optional, cast
 
 import requests
 from java import dynamic_proxy, jarray, jbyte
 from android.content import Intent
 from android.content import DialogInterface
-from android.graphics import Color
 from android.net import Uri
 from android.os import Environment, Process
 from android.util import Log
@@ -23,11 +21,11 @@ from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
 from java.lang import Class, Integer, Long, String
-from java.nio import ByteBuffer  # ty:ignore[unresolved-import]
+from java.nio import ByteBuffer
 from java.util import Locale
 from org.telegram.messenger import ApplicationLoader, LocaleController
-from org.telegram.messenger import R as R_tg  # ty:ignore[unresolved-import]
-from org.telegram.ui.ActionBar import AlertDialog
+from org.telegram.messenger import R as R_tg
+from org.telegram.ui.ActionBar import AlertDialog, BaseFragment
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Selector, Switch, Text
@@ -324,135 +322,6 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
 }
 
 # fmt: on
-
-
-class StreakLevel:
-    length: int
-    document_id: int
-    popup_resource_name: str
-    text_color: Color
-    text_color_int: int
-
-    def __init__(
-        self,
-        length: int,
-        document_id: int,
-        popup_resource_name: str,
-        text_color: tuple[int, int, int],
-    ):
-        self.length = int(length)
-        self.document_id = int(document_id)
-        self.popup_resource_name = str(popup_resource_name)
-        self.text_color = Color.valueOf(
-            text_color[0] / 255,
-            text_color[1] / 255,
-            text_color[2] / 255,
-            1.0,
-        )
-        self.text_color_int = Color.rgb(
-            int(text_color[0]),
-            int(text_color[1]),
-            int(text_color[2]),
-        )
-
-
-class StreakLevels(Enum):
-    COLD = StreakLevel(0, 5285071881815235305, "", (175, 175, 175))
-    DAYS_3 = StreakLevel(3, 5285079178964672780, "3.webm", (255, 154, 0))
-    DAYS_10 = StreakLevel(10, 5285274844789777412, "10.webm", (255, 100, 0))
-    DAYS_30 = StreakLevel(30, 5285076623459129616, "30.webm", (255, 61, 0))
-    DAYS_100 = StreakLevel(100, 5285003347022093599, "100.webm", (255, 0, 200))
-    DAYS_200 = StreakLevel(200, 5285514817497504375, "200.webm", (176, 0, 255))
-
-    @staticmethod
-    def pick_by_length(length: int, cold: bool = False) -> StreakLevel:
-        if cold:
-            return StreakLevels.COLD.value
-
-        if length < 10:
-            return StreakLevels.DAYS_3.value
-        if length < 30:
-            return StreakLevels.DAYS_10.value
-        if length < 100:
-            return StreakLevels.DAYS_30.value
-        if length < 200:
-            return StreakLevels.DAYS_100.value
-
-        return StreakLevels.DAYS_200.value
-
-
-class StreakPetLevel:
-    max_points: int
-    image_resource_path: str
-    gradient_start: str
-    gradient_end: str
-    pet_start: str
-    pet_end: str
-    accent: str
-    accent_secondary: str
-
-    def __init__(
-        self,
-        max_points: int,
-        image_resource_path: str,
-        gradient_start: str,
-        gradient_end: str,
-        pet_start: str,
-        pet_end: str,
-        accent: str,
-        accent_secondary: str,
-    ):
-        self.max_points = int(max_points)
-        self.image_resource_path = str(image_resource_path)
-        self.gradient_start = str(gradient_start)
-        self.gradient_end = str(gradient_end)
-        self.pet_start = str(pet_start)
-        self.pet_end = str(pet_end)
-        self.accent = str(accent)
-        self.accent_secondary = str(accent_secondary)
-
-
-class StreakPetLevels(Enum):
-    POINTS_100 = StreakPetLevel(
-        100,
-        "points-100.webm",
-        "#F9B746",
-        "#FFF8E8",
-        "#FFCB68",
-        "#FF9C24",
-        "#8D4A00",
-        "#FFF2C8",
-    )
-    POINTS_300 = StreakPetLevel(
-        300,
-        "points-300.webm",
-        "#FEA386",
-        "#FFF2EC",
-        "#FFC0A9",
-        "#F9724F",
-        "#8A2E19",
-        "#FFE1D6",
-    )
-    POINTS_500 = StreakPetLevel(
-        500,
-        "points-500.webm",
-        "#FF8EFA",
-        "#FFF0FF",
-        "#FFB6FC",
-        "#FF63E3",
-        "#842C7A",
-        "#FFE3FB",
-    )
-    POINTS_900 = StreakPetLevel(
-        900,
-        "points-900.webm",
-        "#6873FF",
-        "#EEF0FF",
-        "#98A1FF",
-        "#4A56F0",
-        "#2230A3",
-        "#DFE3FF",
-    )
 
 
 class DownloadFailedError(Exception):
@@ -922,7 +791,7 @@ class ChatContextMenu:
                 String("invokeChatContextMenuCallback"),
                 String.getClass(),
                 Long.TYPE,
-            ).invoke(None, key, value)  # ty:ignore[no-matching-overload]
+            ).invoke(None, key, value)
         except Exception as e:
             self.plugin.log_exception(
                 f"Failed to resolve chat context menu callback {key}",
@@ -1033,7 +902,7 @@ class SettingsActions:
             self.plugin.jvm_plugin.klass.getDeclaredMethod(
                 String("invokeSettingsActionCallback"),
                 String.getClass(),
-            ).invoke(None, key)  # ty:ignore[invalid-argument-type]
+            ).invoke(None, key)
         except Exception as e:
             self.plugin.log_exception(
                 f"Failed to resolve settings callback {key}",
@@ -1307,7 +1176,7 @@ class TgStreaksPlugin(BasePlugin):
                     .setMessage(String(message))
                     .setPositiveButton(
                         String(self._t("dialog.sha256_mismatch.ok")),
-                        None,
+                        None,  # ty:ignore[invalid-argument-type]
                     )
                     .create()
                 )
@@ -1350,7 +1219,7 @@ class TgStreaksPlugin(BasePlugin):
                     )
                     .setNegativeButton(
                         String(self._t("dialog.download_failed.cancel")),
-                        None,
+                        None,  # ty:ignore[invalid-argument-type]
                     )
                     .create()
                 )
@@ -1390,7 +1259,7 @@ class TgStreaksPlugin(BasePlugin):
                     self_outer._restart_client()
 
             class DismissListener(dynamic_proxy(DialogInterface.OnDismissListener)):
-                def onDismiss(self, var1) -> None:
+                def onDismiss(self, arg0) -> None:
                     self_outer._persist_current_loaded_version()
                     self_outer._restart_client()
 
@@ -1505,7 +1374,7 @@ class TgStreaksPlugin(BasePlugin):
                     )
                     .setNegativeButton(
                         String(self._t("dialog.load_crash.ok")),
-                        None,
+                        None,  # ty:ignore[invalid-argument-type]
                     )
                     .create()
                 )
@@ -1666,7 +1535,7 @@ class TgStreaksPlugin(BasePlugin):
                 String("setPetFabSizeDp"),
                 Integer.TYPE,
             ).invoke(
-                None,  # ty:ignore[invalid-argument-type]
+                None,
                 Integer(int(size_dp)),
             )
         except Exception as e:
@@ -1808,83 +1677,11 @@ class TgStreaksPlugin(BasePlugin):
 
         run_on_ui_thread(open_url)
 
-    def _register_streak_levels(self) -> bool:
-        if self.jvm_plugin.klass is None:
-            return False
-
-        try:
-            register_method = self.jvm_plugin.klass.getDeclaredMethod(
-                String("registerStreakLevel"),
-                Integer.TYPE,
-                Color.getClass(),
-                Long.TYPE,
-                String.getClass(),
-            )
-
-            for level in StreakLevels:
-                streak_level = cast("StreakLevel", level.value)
-                register_method.invoke(
-                    None,  # ty:ignore[invalid-argument-type]
-                    Integer(streak_level.length),
-                    streak_level.text_color,
-                    Long(streak_level.document_id),
-                    String(streak_level.popup_resource_name),
-                )
-
-            self.log(f"Registered {len(StreakLevels)} streak levels")
-        except Exception as e:
-            self._handle_load_failure("registerStreakLevel", e)
-            self.on_plugin_eject()
-            return False
-
-        return True
-
-    def _register_streak_pet_levels(self) -> bool:
-        if self.jvm_plugin.klass is None:
-            return False
-
-        try:
-            register_method = self.jvm_plugin.klass.getDeclaredMethod(
-                String("registerStreakPetLevel"),
-                Integer.TYPE,
-                String.getClass(),
-                String.getClass(),
-                String.getClass(),
-                String.getClass(),
-                String.getClass(),
-                String.getClass(),
-                String.getClass(),
-            )
-
-            for level in StreakPetLevels:
-                streak_pet_level = cast("StreakPetLevel", level.value)
-                register_method.invoke(
-                    None,  # ty:ignore[invalid-argument-type]
-                    Integer(streak_pet_level.max_points),
-                    String(streak_pet_level.image_resource_path),
-                    String(streak_pet_level.gradient_start),
-                    String(streak_pet_level.gradient_end),
-                    String(streak_pet_level.pet_start),
-                    String(streak_pet_level.pet_end),
-                    String(streak_pet_level.accent),
-                    String(streak_pet_level.accent_secondary),
-                )
-
-            self.log(f"Registered {len(StreakPetLevels)} streak pet levels")
-        except Exception as e:
-            self._handle_load_failure("registerStreakPetLevel", e)
-            self.on_plugin_eject()
-            return False
-
-        return True
-
     def _finalize_jvm_plugin_inject(self) -> bool:
         try:
             self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("finalizeInject")
-            ).invoke(
-                None  # ty:ignore[invalid-argument-type]
-            )
+            ).invoke(None)
             self.log("JVM plugin finalizeInject completed")
         except Exception as e:
             self._handle_load_failure("finalizeInject", e)
@@ -1910,7 +1707,7 @@ class TgStreaksPlugin(BasePlugin):
         try:
             build_date = self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("getBuildDate")
-            ).invoke(None)  # ty:ignore[invalid-argument-type]
+            ).invoke(None)
             self.log(f"Loading JVM plugin {build_date}")
         except Exception as e:
             self.log_exception("Failed to infer JVM plugin version", e)
@@ -1919,18 +1716,18 @@ class TgStreaksPlugin(BasePlugin):
             ref = self
 
             class Logger(dynamic_proxy(ValueCallback)):
-                def onReceiveValue(self, var1):
-                    ref.log(str(var1))
+                def onReceiveValue(self, arg0):
+                    ref.log(str(arg0))
 
             self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("inject"),
                 String.getClass(),
-                ValueCallback.getClass(),  # ty:ignore[unresolved-attribute]
+                ValueCallback.getClass(),
                 String.getClass(),
             ).invoke(
-                None,  # ty:ignore[invalid-argument-type]
+                None,
                 String(__version__),
-                Logger(),  # ty:ignore[invalid-argument-type]
+                Logger(),
                 String(self.resources_root),
             )
 
@@ -2276,11 +2073,6 @@ class TgStreaksPlugin(BasePlugin):
             if not self._inject_jvm_plugin():
                 return
 
-            if not self._register_streak_levels():
-                return
-            if not self._register_streak_pet_levels():
-                return
-
             self.settings_actions = SettingsActions(self)
             self.chat_context_menu = ChatContextMenu(self)
             self.chat_context_menu.register()
@@ -2352,9 +2144,7 @@ class TgStreaksPlugin(BasePlugin):
             if getattr(self, "chat_context_menu", None) is not None:
                 self.chat_context_menu.unregister()
         except Exception as e:
-            self.log_exception(
-                "Failed to unregister chat context menu after eject", e
-            )
+            self.log_exception("Failed to unregister chat context menu after eject", e)
 
         try:
             if getattr(self, "update_checker", None) is not None:

@@ -14,6 +14,7 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.constants.ChatContextMenuButton
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
+import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.override.FixupCalendarActivity
@@ -408,22 +409,6 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                 accountId,
                 "upgrade debug streak for $accountId:$peerUserId"
             ) {
-                val streak = streaksController.get(accountId, peerUserId)
-
-                if (streak == null) {
-                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
-                    return@enqueue
-                }
-
-                val nextLevel = streakLevelRegistry
-                    .levels()
-                    .firstOrNull { level -> level.length > streak.level.length }
-
-                if (nextLevel == null) {
-                    BulletinHelper.show(Strings.status_info_debug_streak_already_max())
-                    return@enqueue
-                }
-
                 val newLength = streaksController.debugUpgradeStreak(accountId, peerUserId)
                     ?: return@enqueue
 

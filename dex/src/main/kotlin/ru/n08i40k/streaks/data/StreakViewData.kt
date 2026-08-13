@@ -11,8 +11,8 @@ data class StreakViewData(
     companion object {
         fun from(streak: Streak) = StreakViewData(
             streak.length,
-            streak.level.documentId,
-            streak.level.color,
+            streak.viewLevel.documentId,
+            streak.viewLevel.color,
             streak.length == streak.level.length || streak.length % 100 == 0
         )
     }

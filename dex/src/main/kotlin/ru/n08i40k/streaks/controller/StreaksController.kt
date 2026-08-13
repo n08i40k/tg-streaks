@@ -14,6 +14,7 @@ import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.data.Streak
+import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakRestore
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.PluginDatabase
@@ -34,7 +35,6 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSeconds
 import ru.n08i40k.streaks.extension.toInstant
 import ru.n08i40k.streaks.extension.toLocalDate
-import ru.n08i40k.streaks.registry.StreakLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
@@ -52,7 +52,6 @@ import kotlin.time.Instant
 class StreaksController(
     private val db: PluginDatabase,
     private val timeZonesController: TimeZonesController,
-    private val streakLevelRegistry: StreakLevelRegistry,
     resourcesProvider: ResourcesProvider,
 ) {
     companion object {
@@ -1097,9 +1096,8 @@ class StreaksController(
 
         val streak = dao.findByRelation(ownerUserId, peerUserId) ?: return null
 
-        val nextLevelLength = streakLevelRegistry
-            .levels()
-            .firstOrNull { it.length > streak.level.length }
+        val nextLevelLength = StreakLevel
+            .findNext(streak.level)
             ?.length
             ?: return streak.level.length
 

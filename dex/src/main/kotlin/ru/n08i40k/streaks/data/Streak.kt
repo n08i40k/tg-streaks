@@ -47,19 +47,11 @@ data class Streak(
 
     @delegate:Ignore
     val level: StreakLevel by lazy {
-        val registry = Plugin.getInstance().streakLevelRegistry
-
-        registry.findByLengthApproximate(length).let {
-            if (this.frozen) {
-                val coldLevel = registry.findByLengthPrecise(0)
-                    ?: throw NullPointerException("Cold streak level is not registered")
-
-                return@let coldLevel.copy(length = it.length)
-            }
-
-            return@let it
-        }
+        StreakLevel.findByLengthApproximate(length)
     }
+
+    @get:Ignore
+    val viewLevel: StreakLevel get() = if (frozen) StreakLevel.Cold else level
 
     @get:Ignore
     val isVisible get() = length >= MIN_VISIBLE_LENGTH

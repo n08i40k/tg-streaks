@@ -74,7 +74,7 @@ class StreakPopupController(
                 )
             }
 
-            !before.ended && after.level.length > before.level.length -> {
+            !before.ended && after.level > before.level -> {
                 enqueue(
                     accountId = accountId,
                     peerUserId = peerUserId,

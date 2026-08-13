@@ -25,12 +25,12 @@ import org.telegram.messenger.FileLoader
 import org.telegram.messenger.ImageLocation
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
-import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.controller.StreakPetsController
+import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.extension.label
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.runOnMainThread
@@ -59,9 +59,7 @@ class StreakPetDialog(
         val isCompleted: Boolean,
     )
 
-    private val stages = Plugin.getInstance().streakPetLevelRegistry.levels().ifEmpty {
-        throw IllegalStateException("Streak pet levels are not registered")
-    }
+    private val stages = StreakPetLevel.levels
 
     private var state = initialState
     private var pageReady = false
@@ -351,7 +349,7 @@ class StreakPetDialog(
         var unlocked = 0
 
         stages.forEachIndexed { index, stage ->
-            if (points >= stage.maxPoints && index < stages.lastIndex) {
+            if (points >= stage.maxPoints && index < (stages.size - 1)) {
                 unlocked = index + 1
             }
         }

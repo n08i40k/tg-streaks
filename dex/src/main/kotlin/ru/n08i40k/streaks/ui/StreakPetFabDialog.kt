@@ -18,6 +18,7 @@ import org.json.JSONObject
 import org.telegram.messenger.AndroidUtilities
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.controller.StreakPetsController
+import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import kotlin.math.abs
 
@@ -31,9 +32,7 @@ class StreakPetFabDialog(
     initialSizeDp: Int,
     private val onOpenRequested: () -> Unit,
 ) : Dialog(context) {
-    private val stages = Plugin.getInstance().streakPetLevelRegistry.levels().ifEmpty {
-        throw IllegalStateException("Streak pet levels are not registered")
-    }
+    private val stages = StreakPetLevel.levels
 
     private var state = initialState
     private var pageReady = false
@@ -252,7 +251,7 @@ class StreakPetFabDialog(
         var unlocked = 0
 
         stages.forEachIndexed { index, stage ->
-            if (points >= stage.maxPoints && index < stages.lastIndex) {
+            if (points >= stage.maxPoints && index < (stages.size - 1)) {
                 unlocked = index + 1
             }
         }

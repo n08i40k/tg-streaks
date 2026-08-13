@@ -1,6 +1,5 @@
 package ru.n08i40k.streaks
 
-import android.graphics.Color
 import android.webkit.ValueCallback
 import androidx.annotation.AnyThread
 import androidx.annotation.UiThread
@@ -38,7 +37,6 @@ import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.controller.TimeZonesController
 import ru.n08i40k.streaks.data.StreakLevel
-import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.event.EventBus
@@ -74,8 +72,6 @@ import ru.n08i40k.streaks.override.PluginBadges
 import ru.n08i40k.streaks.registry.LockableActionRegistry
 import ru.n08i40k.streaks.registry.LockableCallbackRegistry
 import ru.n08i40k.streaks.registry.StreakEmojiRegistry
-import ru.n08i40k.streaks.registry.StreakLevelRegistry
-import ru.n08i40k.streaks.registry.StreakPetLevelRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.StreakPetUiManager
 import ru.n08i40k.streaks.util.AccountTaskExecutor
@@ -182,41 +178,6 @@ class Plugin {
             settingsActionCallbackRegistry.get(key).run()
         }
 
-        @JvmStatic
-        fun registerStreakLevel(
-            length: Int,
-            color: Color,
-            documentId: Long,
-            popupResourceName: String,
-        ) = with(INSTANCE!!) {
-            streakLevelRegistry.register(StreakLevel(length, color, documentId, popupResourceName))
-        }
-
-        @JvmStatic
-        fun registerStreakPetLevel(
-            maxPoints: Int,
-            imageResourcePath: String,
-            gradientStart: String,
-            gradientEnd: String,
-            petStart: String,
-            petEnd: String,
-            accent: String,
-            accentSecondary: String,
-        ) = with(INSTANCE!!) {
-            streakPetLevelRegistry.register(
-                StreakPetLevel(
-                    maxPoints = maxPoints,
-                    imageResourcePath = imageResourcePath,
-                    gradientStart = gradientStart,
-                    gradientEnd = gradientEnd,
-                    petStart = petStart,
-                    petEnd = petEnd,
-                    accent = accent,
-                    accentSecondary = accentSecondary,
-                )
-            )
-        }
-
         @Blocking
         @Synchronized
         @JvmStatic
@@ -290,10 +251,6 @@ class Plugin {
     val serviceMessageCategoriesController: ServiceMessageCategoriesController
     val petUiManager: StreakPetUiManager
 
-    // registries
-    val streakLevelRegistry: StreakLevelRegistry = StreakLevelRegistry()
-    val streakPetLevelRegistry: StreakPetLevelRegistry = StreakPetLevelRegistry()
-
     constructor(resourcesProvider: ResourcesProvider) {
         try {
             this.resourcesProvider = resourcesProvider
@@ -313,7 +270,6 @@ class Plugin {
                 StreaksController(
                     this.db,
                     this.timeZonesController,
-                    this.streakLevelRegistry,
                     this.resourcesProvider
                 )
 
@@ -487,7 +443,7 @@ class Plugin {
                             val targetLevelLength = targetRecord.level.length
 
                             if (targetLevelLength == targetRecord.length
-                                && targetLevelLength == streakLevelRegistry.getFirstVisible().length
+                                && targetLevelLength == StreakLevel.findFirstVisible().length
                             ) {
                                 serviceMessagesController
                                     .sendCreation(accountId, peerUserId)
