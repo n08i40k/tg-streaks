@@ -1,5 +1,7 @@
 package ru.n08i40k.streaks
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.webkit.ValueCallback
 import androidx.annotation.AnyThread
 import androidx.annotation.UiThread
@@ -26,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import org.jetbrains.annotations.Blocking
+import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -97,6 +100,8 @@ typealias LogReceiver = ValueCallback<String>
 class Plugin {
     @Suppress("unused")
     companion object {
+        const val ID = "tg-streaks"
+
         private const val HANDLE_KEY = "ru.n08i40k.streaks.handle"
 
         @Volatile
@@ -218,6 +223,14 @@ class Plugin {
         fun eject() {
             ejectPromise()
         }
+
+        @AnyThread
+        @JvmStatic
+        fun getSharedPrefs(): SharedPreferences =
+            ApplicationLoader.applicationContext.getSharedPreferences(
+                ID,
+                Context.MODE_PRIVATE
+            )
     }
 
     val backgroundScope =
