@@ -34,6 +34,7 @@ import ru.n08i40k.streaks.controller.PluginRelationController
 import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
 import ru.n08i40k.streaks.controller.ServiceMessagesController
 import ru.n08i40k.streaks.controller.StreakPetsController
+import ru.n08i40k.streaks.controller.StreakPopupController
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.controller.TimeZonesController
 import ru.n08i40k.streaks.data.StreakLevel
@@ -78,6 +79,7 @@ import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.CheckNotificationHelper
+import ru.n08i40k.streaks.util.DatabaseTransactor
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.RefCounter
@@ -256,6 +258,9 @@ class Plugin {
             this.resourcesProvider = resourcesProvider
             this.alertNotificationHelper = StreakAlertNotificationHelper()
 
+            // abstract transactions from database instance
+            val transactor = DatabaseTransactor(this.db)
+
             // background work
             this.taskQueue = TaskQueue()
 
@@ -264,23 +269,37 @@ class Plugin {
 
             // controllers
             this.timeZonesController =
-                TimeZonesController(this.db)
+                TimeZonesController(this.db.peerTimeZoneDao())
 
             this.streaksController =
                 StreaksController(
-                    this.db,
+                    transactor,
+                    this.db.streakDao(),
+                    this.db.streakRestoreDao(),
+                    StreakPopupController(
+                        this.db.scheduledStreakPopupDao(),
+                        this.resourcesProvider
+                    ),
                     this.timeZonesController,
-                    this.resourcesProvider
                 )
 
             this.streakPetsController =
-                StreakPetsController(this.db, this.streaksController, this.timeZonesController)
+                StreakPetsController(
+                    transactor,
+                    this.db.streakPetDao(),
+                    this.db.streakPetTaskDao(),
+                    this.streaksController,
+                    this.timeZonesController
+                )
 
             this.serviceMessageCategoriesController =
-                ServiceMessageCategoriesController(this.db)
+                ServiceMessageCategoriesController(this.db.serviceMessageCategoriesDao())
 
             this.pluginRelationController =
-                PluginRelationController(this.db, this.serviceMessageCategoriesController)
+                PluginRelationController(
+                    this.db.pluginRelationDao(),
+                    this.serviceMessageCategoriesController
+                )
 
             this.petUiManager =
                 StreakPetUiManager()

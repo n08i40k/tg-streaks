@@ -2,11 +2,9 @@ package ru.n08i40k.streaks.controller
 
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.data.ServiceMessageCategories
-import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.database.dao.ServiceMessageCategoriesDao
 
-class ServiceMessageCategoriesController(db: PluginDatabase) {
-    private val dao = db.serviceMessageCategoriesDao()
-
+class ServiceMessageCategoriesController(private val dao: ServiceMessageCategoriesDao) {
     private fun defaultRecord(ownerUserId: Long, peerUserId: Long) = ServiceMessageCategories(
         ownerUserId = ownerUserId,
         peerUserId = peerUserId,

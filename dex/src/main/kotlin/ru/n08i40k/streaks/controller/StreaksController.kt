@@ -1,6 +1,5 @@
 package ru.n08i40k.streaks.controller
 
-import androidx.room.withTransaction
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
@@ -17,7 +16,8 @@ import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakRestore
 import ru.n08i40k.streaks.data.StreakViewData
-import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.database.dao.StreakDao
+import ru.n08i40k.streaks.database.dao.StreakRestoreDao
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.exception.InvalidPeerException
@@ -35,9 +35,9 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSeconds
 import ru.n08i40k.streaks.extension.toInstant
 import ru.n08i40k.streaks.extension.toLocalDate
-import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
+import ru.n08i40k.streaks.util.DatabaseTransactor
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.fetchPeerUsers
@@ -50,9 +50,11 @@ import kotlin.time.Instant
 
 @OptIn(DelicateCoroutinesApi::class)
 class StreaksController(
-    private val db: PluginDatabase,
+    private val transactor: DatabaseTransactor,
+    private val dao: StreakDao,
+    private val restoreDao: StreakRestoreDao,
+    private val streakPopupController: StreakPopupController,
     private val timeZonesController: TimeZonesController,
-    resourcesProvider: ResourcesProvider,
 ) {
     companion object {
         private const val MAX_MANUAL_CALENDAR_RESTORES_PER_CHAT = 2
@@ -93,10 +95,6 @@ class StreaksController(
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
     private val remoteFetcher: ChatHistoryFetcher = RemoteChatHistoryFetcher()
-    private val streakPopupController = StreakPopupController(db, resourcesProvider)
-
-    private val dao = db.streakDao()
-    private val restoreDao = db.streakRestoreDao()
 
     private val cache = ConcurrentHashMap<Pair<Long, Long>, Streak>()
     private val viewCache = ConcurrentHashMap<Pair<Long, Long>, StreakViewData>()
@@ -169,7 +167,7 @@ class StreaksController(
     private suspend fun removeInvalidPeerStreak(accountId: Int, peerUserId: Long) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
-        db.withTransaction {
+        transactor.wrap {
             val streak = dao.findByRelation(ownerUserId, peerUserId)
 
             dao.deleteByRelation(ownerUserId, peerUserId)
@@ -442,7 +440,7 @@ class StreaksController(
             if (rebuildFrom > rebuildTo) {
                 var sourceStreak: Streak? = null
 
-                db.withTransaction {
+                transactor.wrap {
                     sourceStreak = dao.findByRelation(ownerUserId, peerUserId)
                     dao.deleteByRelation(ownerUserId, peerUserId)
                 }
@@ -495,7 +493,7 @@ class StreaksController(
                     timeZone = timeZone
                 )
 
-            db.withTransaction {
+            transactor.wrap {
                 sourceStreak = dao.findByRelation(ownerUserId, peerUserId)
 
                 dao.insertOrReplace(targetStreak)
@@ -711,7 +709,7 @@ class StreaksController(
                             warningNotified = false
                         )
 
-                        db.withTransaction {
+                        transactor.wrap {
                             dao.update(resStreak)
                             persistAutoRestores(
                                 ownerUserId,
@@ -773,7 +771,7 @@ class StreaksController(
 
         dynStreak = dynStreak.copy(warningNotified = isInWarningWindow)
 
-        db.withTransaction {
+        transactor.wrap {
             dao.update(dynStreak)
             persistAutoRestores(ownerUserId, peerUserId, timeZone, restores, manualDates)
         }
@@ -1000,17 +998,17 @@ class StreaksController(
         val timeZone = timeZonesController.get(ownerUserId, peerUserId)
         var result = AddManualCalendarRestoreResult.AlreadyExists
 
-        db.withTransaction {
+        transactor.wrap {
             if (restoreDao.isRestored(ownerUserId, peerUserId, day)) {
                 result = AddManualCalendarRestoreResult.AlreadyExists
-                return@withTransaction
+                return@wrap
             }
 
             if (restoreDao.countManualByRelation(ownerUserId, peerUserId) >=
                 MAX_MANUAL_CALENDAR_RESTORES_PER_CHAT
             ) {
                 result = AddManualCalendarRestoreResult.LimitReached
-                return@withTransaction
+                return@wrap
             }
 
             restoreDao.insert(
@@ -1073,7 +1071,7 @@ class StreaksController(
         val now = LocalDate.now(timeZone)
         val streak = buildDebugStreak(ownerUserId, peerUserId, 3, now, now, timeZone)
 
-        db.withTransaction {
+        transactor.wrap {
             dao.deleteByRelation(ownerUserId, peerUserId)
             dao.insert(streak)
         }
@@ -1149,7 +1147,7 @@ class StreaksController(
             restoresCount = restoresCount,
         )
 
-        db.withTransaction {
+        transactor.wrap {
             dao.deleteByRelation(ownerUserId, peerUserId)
             dao.insert(streak)
         }
@@ -1190,7 +1188,7 @@ class StreaksController(
             deathNotified = true,
         )
 
-        db.withTransaction {
+        transactor.wrap {
             dao.deleteByRelation(ownerUserId, peerUserId)
             dao.insert(streak)
         }
@@ -1213,7 +1211,7 @@ class StreaksController(
 
         val streak = dao.findByRelation(ownerUserId, peerUserId)
 
-        db.withTransaction {
+        transactor.wrap {
             dao.deleteByRelation(ownerUserId, peerUserId)
         }
 
@@ -1257,7 +1255,7 @@ class StreaksController(
             warningNotified = false,
         )
 
-        db.withTransaction {
+        transactor.wrap {
             dao.update(restoredStreak)
 
             if (!alreadyRestored) {

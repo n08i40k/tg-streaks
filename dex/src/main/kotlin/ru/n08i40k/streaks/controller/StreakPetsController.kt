@@ -1,6 +1,5 @@
 package ru.n08i40k.streaks.controller
 
-import androidx.room.withTransaction
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import org.telegram.messenger.MessagesController
@@ -14,7 +13,8 @@ import ru.n08i40k.streaks.data.StreakPet
 import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.data.StreakPetTaskType
-import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.database.dao.StreakPetDao
+import ru.n08i40k.streaks.database.dao.StreakPetTaskDao
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.exception.InvalidPeerException
@@ -31,6 +31,7 @@ import ru.n08i40k.streaks.extension.toInstant
 import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
+import ru.n08i40k.streaks.util.DatabaseTransactor
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.fetchPeerUsers
@@ -40,13 +41,12 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 class StreakPetsController(
-    private val db: PluginDatabase,
+    private val transactor: DatabaseTransactor,
+    private val dao: StreakPetDao,
+    private val taskDao: StreakPetTaskDao,
     private val streaksController: StreaksController,
     private val timeZonesController: TimeZonesController,
 ) {
-    private val dao = db.streakPetDao()
-    private val taskDao = db.streakPetTaskDao()
-
     private val rebuildLock = AtomicBoolean(false)
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
@@ -55,7 +55,7 @@ class StreakPetsController(
     private suspend fun removeInvalidPeerPet(accountId: Int, peerUserId: Long) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
 
-        db.withTransaction {
+        transactor.wrap {
             val pet = dao.findByRelation(ownerUserId, peerUserId)
 
             dao.deleteByRelation(ownerUserId, peerUserId)
@@ -257,7 +257,7 @@ class StreakPetsController(
             timeZone = timeZone
         )
 
-        db.withTransaction {
+        transactor.wrap {
             dao.deleteByRelation(ownerUserId, peerUserId)
             dao.insertOrReplace(targetPet)
 
@@ -471,7 +471,7 @@ class StreakPetsController(
 
         val points = tasks.sumOf { if (it.isCompleted) it.type.points else 0 }
 
-        db.withTransaction {
+        transactor.wrap {
             with(currentPet) {
                 if (waitForRenew) {
                     dao.deleteByRelation(ownerUserId, peerUserId)
@@ -715,7 +715,7 @@ class StreakPetsController(
         )
             return
 
-        db.withTransaction {
+        transactor.wrap {
             if (missingTasksForTargetDay.isNotEmpty())
                 taskDao.insertIfNotExistsAll(missingTasksForTargetDay)
 
@@ -761,9 +761,9 @@ class StreakPetsController(
             timeZone = timeZone
         )
 
-        val created = db.withTransaction {
+        val created = transactor.wrap {
             if (dao.insertOrIgnore(streakPet) == -1L)
-                return@withTransaction false
+                return@wrap false
 
             var currentDay = atDay
 

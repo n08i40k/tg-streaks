@@ -28,7 +28,7 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.ScheduledStreakPopup
 import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakLevel
-import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.database.dao.ScheduledStreakPopupDao
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.runOnMainThread
@@ -36,7 +36,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreakPopupController(
-    db: PluginDatabase,
+    private val dao: ScheduledStreakPopupDao,
     private val resourcesProvider: ResourcesProvider,
 ) {
     companion object {
@@ -47,7 +47,6 @@ class StreakPopupController(
         private const val POPUP_MEDIA_SIZE_DP = 440f
     }
 
-    private val dao = db.scheduledStreakPopupDao()
     private val isShowing = AtomicBoolean(false)
 
     suspend fun enqueueForTransition(

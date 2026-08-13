@@ -2,14 +2,12 @@ package ru.n08i40k.streaks.controller
 
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.data.PluginRelation
-import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.database.dao.PluginRelationDao
 
 class PluginRelationController(
-    db: PluginDatabase,
+    private val dao: PluginRelationDao,
     private val serviceMessageCategoriesController: ServiceMessageCategoriesController
 ) {
-    private val dao = db.pluginRelationDao()
-
     suspend fun hasPlugin(ownerUserId: Long, peerUserId: Long): Boolean =
         dao.findByRelation(ownerUserId, peerUserId)?.hasPlugin ?: false
 
