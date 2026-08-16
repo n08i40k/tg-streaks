@@ -19,6 +19,7 @@ object AnimatedEmojiView {
         documentId: Long,
         size: Int,
         color: Int? = null,
+        layerNum: Int = 0,
     ) {
         fun applyDocument(document: TLRPC.Document) {
             val thumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, size)
@@ -60,6 +61,8 @@ object AnimatedEmojiView {
                 else
                     null
             )
+
+            imageView.setLayerNum(layerNum)
         }
 
         AnimatedEmojiDrawable

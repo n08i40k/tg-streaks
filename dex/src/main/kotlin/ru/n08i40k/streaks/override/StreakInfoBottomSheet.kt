@@ -97,8 +97,15 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
         base.resourcesProvider
     ) {
         this.overrideTitleIcon = BackupImageView(context).apply {
-            AnimatedEmojiView.apply(this, streakViewData.documentId, 90)
+            AnimatedEmojiView.apply(
+                this,
+                streakViewData.documentId,
+                90,
+                null,
+                7
+            )
         }
+
         this.isEmojiStatus = true
 
         this.streakViewData = streakViewData
