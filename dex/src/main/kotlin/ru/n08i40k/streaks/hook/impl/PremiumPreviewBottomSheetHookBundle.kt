@@ -16,6 +16,21 @@ class PremiumPreviewBottomSheetHookBundle : HookBundle() {
         private val CLASS = PremiumPreviewBottomSheet::class.java
 
         val USER = getField(CLASS, "user")
+
+        @Volatile
+        private var bypassed = false
+
+        // клиент открывает PremiumPreviewBottomSheet и по нажатию на оригинальный статус,
+        // такие диалоги подменять не нужно
+        fun bypass(block: () -> Unit) {
+            bypassed = true
+
+            try {
+                block()
+            } finally {
+                bypassed = false
+            }
+        }
     }
 
     override fun inject(
@@ -29,6 +44,9 @@ class PremiumPreviewBottomSheetHookBundle : HookBundle() {
                 .filter { it.name == "showDialog" }
                 .sortedByDescending { it.parameterCount }[0]
         ) { param ->
+            if (bypassed)
+                return@before
+
             val dialog = param.args[0] as? PremiumPreviewBottomSheet
                 ?: return@before
 

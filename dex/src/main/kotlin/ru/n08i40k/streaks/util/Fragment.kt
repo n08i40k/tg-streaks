@@ -7,6 +7,9 @@ import org.telegram.ui.LaunchActivity
 
 private val ACTION_BAR_LAYOUT = getField(LaunchActivity::class.java, "actionBarLayout")
 
+fun getLastFragment(): BaseFragment? =
+    ACTION_BAR_LAYOUT.getAs<ActionBarLayout>(LaunchActivity.instance)?.lastFragment
+
 @AnyThread
 fun presentFragment(fragment: BaseFragment) {
     val layout = ACTION_BAR_LAYOUT.getAs<ActionBarLayout>(LaunchActivity.instance) ?: return

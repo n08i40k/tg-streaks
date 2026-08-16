@@ -29,6 +29,17 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         OTHER
     }
 
+    enum class Part {
+        // оригинальный статус пользователя
+        ORIGINAL,
+
+        // эмодзи стрика
+        STREAK,
+
+        // бейдж
+        BADGE
+    }
+
     data class EjectData(
         val drawable: WeakReference<StreakEmoji>,
         val targetObject: WeakReference<Any>,
@@ -236,6 +247,34 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         )
     }
 
+    fun hitTest(x: Int, y: Int): Part? {
+        val padding = AndroidUtilities.dp(3f)
+
+        if (y < bounds.top - padding || y > bounds.bottom + padding)
+            return null
+
+        val streakLeft = bounds.left + if (hideOriginal) 0 else size
+        val streakWidth = size + getTextWidth()
+
+        if (badgeView != null) {
+            val badgeLeft = streakLeft + if (streakView == null) 0 else streakWidth
+
+            if (x >= badgeLeft - padding && x <= badgeLeft + size + padding)
+                return Part.BADGE
+        }
+
+        if (streakView != null
+            && x >= streakLeft - padding
+            && x <= streakLeft + streakWidth + padding
+        )
+            return Part.STREAK
+
+        if (!hideOriginal && x >= bounds.left - padding && x <= bounds.right + padding)
+            return Part.ORIGINAL
+
+        return null
+    }
+
     fun setStreak(user: TLRPC.User?, streakViewData: StreakViewData?) {
         if (user == null || streakViewData == null) {
             clearStreakView()
@@ -391,6 +430,10 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         this.source = source
         this.canDrawBadge = canDrawBadge
         this.size = SIZE.getInt(this)
+
+        PARENT_VIEW.getAs<View>(this)?.let {
+            Plugin.getInstance().streakEmojiRegistry.attachTouchHandler(it, this)
+        }
 
         setPeerUserId(peerUserId)
     }

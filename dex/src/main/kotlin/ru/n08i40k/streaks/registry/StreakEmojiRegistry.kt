@@ -7,10 +7,12 @@ import org.telegram.ui.ActionBar.INavigationLayout
 import org.telegram.ui.DialogsActivity
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.override.StreakEmoji
+import ru.n08i40k.streaks.override.StreakEmojiTouchHandler
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.getAs
 import ru.n08i40k.streaks.util.getField
 import java.lang.reflect.Method
+import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 
 class StreakEmojiRegistry {
@@ -32,7 +34,17 @@ class StreakEmojiRegistry {
 
     private val elements = ConcurrentHashMap.newKeySet<StreakEmoji.EjectData>(128)
 
+    private val touchHandlers = WeakHashMap<View, StreakEmojiTouchHandler>()
+
     fun add(data: StreakEmoji.EjectData) = elements.add(data)
+
+    fun attachTouchHandler(view: View, drawable: StreakEmoji) {
+        val handler = synchronized(touchHandlers) {
+            touchHandlers.getOrPut(view) { StreakEmojiTouchHandler.install(view) }
+        }
+
+        handler.register(drawable)
+    }
 
     @UiThread
     fun restoreAll() {
@@ -43,6 +55,16 @@ class StreakEmojiRegistry {
         }
 
         elements.clear()
+
+        synchronized(touchHandlers) {
+            touchHandlers.forEach { (view, handler) ->
+                Logger.tryOrFatal("restore original touch listener") {
+                    handler.restore(view)
+                }
+            }
+
+            touchHandlers.clear()
+        }
     }
 
     fun refreshAll() {
