@@ -101,7 +101,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
                 this,
                 streakViewData.documentId,
                 90,
-                null,
+                streakViewData.accentColor.toArgb(),
                 7
             )
         }

@@ -4,7 +4,6 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Ignore
 import kotlinx.datetime.TimeZone
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.extension.toEpochDays
 import kotlin.math.min
 import kotlin.time.Clock

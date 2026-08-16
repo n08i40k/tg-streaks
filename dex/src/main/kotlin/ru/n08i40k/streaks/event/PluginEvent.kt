@@ -9,6 +9,10 @@ sealed interface PluginEvent {
         val timestamp: Instant
     }
 
+    data class ActiveStreakEmojiPackChanged(
+        override val timestamp: Instant
+    ) : PluginEvent, TimestampEvent
+
     sealed interface RecordEvent<T> {
         val record: T
     }

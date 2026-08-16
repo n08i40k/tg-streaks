@@ -113,6 +113,10 @@ I18N_SETTINGS: dict[str, dict[str, str]] = {
     },
     "settings.pet_button.size.title": {"en": "Button size", "ru": "Размер кнопки"},
     "settings.pet_button.title": {"en": "Streak pet", "ru": "Серийчик"},
+    "settings.streak_tools.emoji_packs.title": {
+        "en": "Emoji packs",
+        "ru": "Эмодзи-паки",
+    },
     "settings.streak_tools.rebuild_all_chats.description": {
         "en": "Only user DMs are checked. Bots and groups are skipped.",
         "ru": "Только лички с пользователями. Боты и группы пропускаются.",
@@ -836,6 +840,7 @@ class SettingsActions:
     REBUILD_ALL = "rebuildAllPrivateChats"
     EXPORT_BACKUP_NOW = "exportBackupNow"
     DELETE_DB_AND_RELOAD = "deleteDbAndReload"
+    OPEN_EMOJI_PACKS = "openEmojiPacks"
 
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
@@ -853,6 +858,11 @@ class SettingsActions:
             ),
             Divider(text=self.plugin._t("settings.pet_button.size.description")),
             Header(text=self.plugin._t("settings.streak_tools.title")),
+            Text(
+                text=self.plugin._t("settings.streak_tools.emoji_packs.title"),
+                icon="msg_emoji_smiles",
+                on_click=lambda _: self._on_click(self.OPEN_EMOJI_PACKS),
+            ),
             Text(
                 text=self.plugin._t("settings.streak_tools.rebuild_all_chats.title"),
                 icon="msg_retry",

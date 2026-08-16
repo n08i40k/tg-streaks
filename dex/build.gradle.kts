@@ -379,10 +379,11 @@ fun registerBuildDexTask(variant: String) {
                 }
                 classRoots.forEach { root ->
                     if (root.isDirectory) {
-                        root.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach { f ->
-                            val rel = f.toRelativeString(root).replace(File.separatorChar, '/')
-                            add(rel, remapClassBytes(f.readBytes()))
-                        }
+                        root.walkTopDown().filter { it.isFile && it.extension == "class" }
+                            .forEach { f ->
+                                val rel = f.toRelativeString(root).replace(File.separatorChar, '/')
+                                add(rel, remapClassBytes(f.readBytes()))
+                            }
                     } else {
                         ZipFile(root).use { zip ->
                             zip.entries().asSequence()
@@ -399,7 +400,8 @@ fun registerBuildDexTask(variant: String) {
                         zip.entries().asSequence().filter { !it.isDirectory }.forEach { entry ->
                             val bytes = zip.getInputStream(entry).readBytes()
                             if (entry.name.endsWith(".class")) {
-                                val shadedName = SHADED_REMAPPER.map(entry.name.removeSuffix(".class"))
+                                val shadedName =
+                                    SHADED_REMAPPER.map(entry.name.removeSuffix(".class"))
                                 add("$shadedName.class", remapClassBytes(bytes))
                             } else {
                                 add(entry.name, bytes)
@@ -411,7 +413,8 @@ fun registerBuildDexTask(variant: String) {
 
             val dexInputs = listOf(mergedShadedJar.absolutePath)
 
-            val dexModules = (embeddedJars + filteredRuntimeJars).map { File(it).artifactKey() }.toSet()
+            val dexModules =
+                (embeddedJars + filteredRuntimeJars).map { File(it).artifactKey() }.toSet()
             val classpathJars = compileJars
                 .filterNot {
                     val jar = File(it)

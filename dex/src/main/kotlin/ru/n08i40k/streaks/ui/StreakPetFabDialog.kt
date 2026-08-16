@@ -16,7 +16,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import org.json.JSONObject
 import org.telegram.messenger.AndroidUtilities
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.data.StreakPetLevel
 import ru.n08i40k.streaks.resource.ResourcesProvider

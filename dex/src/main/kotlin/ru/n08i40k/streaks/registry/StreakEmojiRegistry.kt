@@ -45,6 +45,19 @@ class StreakEmojiRegistry {
         elements.clear()
     }
 
+    fun refreshAll() {
+        val it = elements.iterator()
+
+        while (it.hasNext()) {
+            val streakEmoji = it.next().drawable.get() ?: run {
+                it.remove()
+                continue
+            }
+
+            streakEmoji.refresh()
+        }
+    }
+
     fun refreshByPeerUserId(peerUserId: Long) {
         val it = elements.iterator()
 

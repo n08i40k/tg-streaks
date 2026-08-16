@@ -32,11 +32,13 @@ import org.jetbrains.annotations.Blocking
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
+import org.telegram.messenger.NotificationCenter
 import org.telegram.messenger.UserConfig
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.controller.PluginRelationController
 import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
 import ru.n08i40k.streaks.controller.ServiceMessagesController
+import ru.n08i40k.streaks.controller.StreakEmojiPacksController
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreakPopupController
 import ru.n08i40k.streaks.controller.StreaksController
@@ -233,6 +235,12 @@ class Plugin {
                 ID,
                 Context.MODE_PRIVATE
             )
+
+        fun coroutineScope(): CoroutineScope =
+            INSTANCE!!.backgroundScope
+
+        fun childCoroutineScope(): CoroutineScope =
+            INSTANCE!!.backgroundScope.coroutineContext.let { CoroutineScope(it + SupervisorJob(it.job)) }
     }
 
     val backgroundScope =
@@ -259,8 +267,16 @@ class Plugin {
 
     val streakEmojiRegistry = StreakEmojiRegistry()
 
+    // view cache holds resolved theme colors
+    private val themeObserver =
+        NotificationCenter.NotificationCenterDelegate { id, _, _ ->
+            if (id == NotificationCenter.didSetNewTheme)
+                refreshStreakViews()
+        }
+
     // controllers
     val serviceMessagesController = ServiceMessagesController()
+    val streakEmojiPacksController: StreakEmojiPacksController
     val streaksController: StreaksController
     val streakPetsController: StreakPetsController
     val timeZonesController: TimeZonesController
@@ -285,6 +301,9 @@ class Plugin {
             // controllers
             this.timeZonesController =
                 TimeZonesController(this.db.peerTimeZoneDao())
+
+            this.streakEmojiPacksController =
+                StreakEmojiPacksController(this.db.streakEmojiPackDao())
 
             this.streaksController =
                 StreaksController(
@@ -324,9 +343,21 @@ class Plugin {
         }
     }
 
+    @UiThread
+    private fun refreshStreakViews() {
+        streaksController.refreshViewCache()
+        streakEmojiRegistry.refreshAll()
+        streakEmojiRegistry.refreshDialogCells()
+    }
+
     @OptIn(FlowPreview::class)
     private fun subscribeToEvents() {
         // streak ui patches/transitions
+        EventBus.stream
+            .filterIsInstance<PluginEvent.ActiveStreakEmojiPackChanged>()
+            .onEachOnMainThread { refreshStreakViews() }
+            .launchIn(backgroundScope)
+
         EventBus.stream
             .filterIsInstance<PluginEvent.StreakEvent>()
             .onEachWithOnMainThreadBlocking {
@@ -634,6 +665,11 @@ class Plugin {
 
         subscribeToEvents()
 
+        runOnMainThread {
+            NotificationCenter.getGlobalInstance()
+                .addObserver(themeObserver, NotificationCenter.didSetNewTheme)
+        }
+
         taskQueue.startWorker(backgroundScope)
 
         ChatContextMenuActions(this).register()
@@ -643,7 +679,10 @@ class Plugin {
     }
 
     private fun onFinalizeInject() {
-        runBlocking { streaksController.loadCaches() }
+        runBlocking {
+            streakEmojiPacksController.init()
+            streaksController.loadCaches()
+        }
 
         Logger.tryOrFatal(
             "hook methods",
@@ -693,6 +732,9 @@ class Plugin {
 
         // ui
         runOnMainThread {
+            NotificationCenter.getGlobalInstance()
+                .removeObserver(themeObserver, NotificationCenter.didSetNewTheme)
+
             petUiManager.dismissAll()
             streakEmojiRegistry.restoreAll()
         }

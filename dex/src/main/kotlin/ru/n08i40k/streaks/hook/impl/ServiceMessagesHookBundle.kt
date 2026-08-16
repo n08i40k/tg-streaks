@@ -22,9 +22,11 @@ import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.i18n.Strings
+import ru.n08i40k.streaks.ui.emojiPack.share.StreakEmojiPackImportBottomSheet
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.StreakEmojiPackCodec
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getAccessibleFields
 import ru.n08i40k.streaks.util.getAs
@@ -306,6 +308,26 @@ class ServiceMessagesHookBundle : HookBundle() {
                     .apply { this.message = messageText }
             }
 
+            val tryEmojiPackImport = emojiPackImport@{
+                val pack = StreakEmojiPackCodec.decode(message.message)
+                    ?: return@emojiPackImport null
+
+                if (message.out) {
+                    TLRPC.TL_messageActionCustomAction()
+                        .apply { this.message = Strings.service_emoji_pack_import_self(pack.name) }
+                } else {
+                    TLRPC.TL_messageActionPrizeStars()
+                        .apply {
+                            boost_peer = message.peer_id
+                            flags = 0
+                            giveaway_msg_id = 0
+                            stars = 0
+                            transaction_id = message.message
+                            unclaimed = false
+                        }
+                }
+            }
+
             val action = tryStreakCreate()
                 ?: tryStreakUpgrade()
                 ?: tryStreakDeath()
@@ -316,6 +338,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                 ?: tryPetDeleted()
                 ?: trySyncOffer()
                 ?: trySyncApplied()
+                ?: tryEmojiPackImport()
                 ?: return@before
 
             param.args[1] = TLRPC.TL_messageService()
@@ -341,6 +364,11 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             val prizeStars = thisObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
+
+            if (ServiceMessage.isEmojiPackImport(prizeStars.transaction_id)) {
+                thisObject.messageText = Strings.service_emoji_pack_import_title()
+                return@after
+            }
 
             thisObject.messageText = when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> Strings.service_streak_ended_title()
@@ -371,6 +399,43 @@ class ServiceMessagesHookBundle : HookBundle() {
             val serviceMessagesController = plugin.serviceMessagesController
             val streakPetsController = plugin.streakPetsController
             val pluginRelationController = plugin.pluginRelationController
+            val streakEmojiPacksController = plugin.streakEmojiPacksController
+
+            if (ServiceMessage.isEmojiPackImport(prizeStars.transaction_id)) {
+                val context = (param.thisObject as ChatActionCell).context
+
+                val pack = StreakEmojiPackCodec.decode(prizeStars.transaction_id)
+
+                if (pack == null) {
+                    BulletinHelper.show(Strings.status_error_emoji_pack_invalid())
+
+                    param.result = null
+                    return@before
+                }
+
+                plugin.enqueueTask("open emoji pack import sheet for ${pack.id}") {
+                    val replace = streakEmojiPacksController.exists(pack.id)
+
+                    runOnMainThread {
+                        StreakEmojiPackImportBottomSheet(context, pack, replace) {
+                            plugin.enqueueTask("import emoji pack ${pack.id}") {
+                                streakEmojiPacksController.import(pack)
+
+                                BulletinHelper.show(
+                                    if (replace)
+                                        Strings.status_success_emoji_pack_replaced()
+                                    else
+                                        Strings.status_success_emoji_pack_imported(),
+                                    "msg_reactions"
+                                )
+                            }
+                        }.show()
+                    }
+                }
+
+                param.result = null
+                return@before
+            }
 
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
@@ -554,6 +619,20 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@before
 
+            if (ServiceMessage.isEmojiPackImport(prizeStars.transaction_id)) {
+                val pack = StreakEmojiPackCodec.decode(prizeStars.transaction_id)
+                    ?: return@before
+
+                param.args[0] = Strings.service_emoji_pack_import_title()
+                param.args[1] = pack.name
+                param.args[3] = Strings.service_emoji_pack_import_hint()
+                param.args[5] = Strings.service_emoji_pack_import_action()
+                param.args[9] = false
+                param.args[10] = true
+
+                return@before
+            }
+
             when (prizeStars.transaction_id) {
                 ServiceMessage.DEATH_TEXT -> {
                     param.args[0] = Strings.service_streak_ended_title()
@@ -606,10 +685,7 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT
-                && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT
-                && prizeStars.transaction_id != ServiceMessage.SYNC_OFFER
-            )
+            if (!ServiceMessage.isGiftStyled(prizeStars.transaction_id))
                 return@after
 
             param.result = true
@@ -628,10 +704,7 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT
-                && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT
-                && prizeStars.transaction_id != ServiceMessage.SYNC_OFFER
-            )
+            if (!ServiceMessage.isGiftStyled(prizeStars.transaction_id))
                 return@after
 
             param.result = -AndroidUtilities.dp(19.5f)
@@ -651,10 +724,7 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
 
-            if (prizeStars.transaction_id != ServiceMessage.DEATH_TEXT
-                && prizeStars.transaction_id != ServiceMessage.PET_INVITE_TEXT
-                && prizeStars.transaction_id != ServiceMessage.SYNC_OFFER
-            )
+            if (!ServiceMessage.isGiftStyled(prizeStars.transaction_id))
                 return@after
 
             val thisObject = param.thisObject as ChatActionCell

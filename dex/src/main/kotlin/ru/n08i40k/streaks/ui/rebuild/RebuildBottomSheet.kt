@@ -30,6 +30,7 @@ import org.telegram.ui.Components.AvatarDrawable
 import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.LaunchActivity
+import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakPet
@@ -543,24 +544,32 @@ class RebuildBottomSheet(
                 val record = (userRebuildStates.first() as? UserRebuildState.Done<*>)?.record
 
                 val rows = when (record) {
-                    is Streak -> listOf(
-                        InfoRow(
-                            iconDocumentId = record.level.documentId,
-                            iconBg = withAlpha(record.level.colorInt, 0x29),
-                            iconColor = record.level.colorInt,
-                            label = Strings.sheet_rebuild_result_card_days(),
-                            value = record.length.toString(),
-                            valueColor = record.level.colorInt
-                        ),
-                        InfoRow(
-                            iconDocumentId = Emoji.REBUILD_RESULT_RESTORES,
-                            iconBg = withAlpha(Theme.getColor(Theme.key_dialogButton), 0x29),
-                            iconColor = Theme.getColor(Theme.key_dialogButton),
-                            label = Strings.sheet_rebuild_result_card_restores(),
-                            value = record.restoresCount.toString(),
-                            valueColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText)
+                    is Streak -> with(
+                        Plugin.getInstance().streakEmojiPacksController.getCurrent()
+                            .getEmoji(record.level)
+                    ) {
+                        val accentColor = accentColor?.toArgb()
+                            ?: Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon)
+
+                        listOf(
+                            InfoRow(
+                                iconDocumentId = documentId,
+                                iconBg = withAlpha(accentColor, 0x29),
+                                iconColor = accentColor,
+                                label = Strings.sheet_rebuild_result_card_days(),
+                                value = record.length.toString(),
+                                valueColor = accentColor
+                            ),
+                            InfoRow(
+                                iconDocumentId = Emoji.REBUILD_RESULT_RESTORES,
+                                iconBg = withAlpha(Theme.getColor(Theme.key_dialogButton), 0x29),
+                                iconColor = Theme.getColor(Theme.key_dialogButton),
+                                label = Strings.sheet_rebuild_result_card_restores(),
+                                value = record.restoresCount.toString(),
+                                valueColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText)
+                            )
                         )
-                    )
+                    }
 
                     is StreakPet -> {
                         val color = Color.parseColor(record.level.accent)

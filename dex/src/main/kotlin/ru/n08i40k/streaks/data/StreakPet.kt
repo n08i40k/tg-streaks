@@ -2,10 +2,9 @@ package ru.n08i40k.streaks.data
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import kotlin.time.Instant
 import androidx.room.Ignore
 import kotlinx.datetime.TimeZone
-import ru.n08i40k.streaks.Plugin
+import kotlin.time.Instant
 
 @Entity(
     tableName = "streak_pet",

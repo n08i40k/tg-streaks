@@ -115,6 +115,15 @@ class StreaksController(
         }
     }
 
+    fun refreshViewCache() {
+        viewCache.clear()
+
+        for ((key, streak) in cache) {
+            if (!streak.ended && streak.isVisible)
+                viewCache[key] = StreakViewData.from(streak)
+        }
+    }
+
     fun updateCache(ownerUserId: Long, peerUserId: Long, streak: Streak?) {
         val key = Pair(ownerUserId, peerUserId)
 
