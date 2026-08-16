@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -47,13 +48,14 @@ import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.buildPluginDatabase
-import ru.n08i40k.streaks.extension.collectOnUIThread
-import ru.n08i40k.streaks.extension.collectWith
-import ru.n08i40k.streaks.extension.collectWithOnUIThread
 import ru.n08i40k.streaks.extension.diff
 import ru.n08i40k.streaks.extension.isPeerValid
 import ru.n08i40k.streaks.extension.label
 import ru.n08i40k.streaks.extension.now
+import ru.n08i40k.streaks.extension.onEachOnMainThread
+import ru.n08i40k.streaks.extension.onEachWith
+import ru.n08i40k.streaks.extension.onEachWithOnMainThread
+import ru.n08i40k.streaks.extension.onEachWithOnMainThreadBlocking
 import ru.n08i40k.streaks.extension.resolveLanguageCode
 import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
@@ -325,244 +327,237 @@ class Plugin {
     @OptIn(FlowPreview::class)
     private fun subscribeToEvents() {
         // streak ui patches/transitions
-        backgroundScope.launch {
-            EventBus.stream
-                .filterIsInstance<PluginEvent.StreakEvent>()
-                .collectWithOnUIThread {
-                    streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+        EventBus.stream
+            .filterIsInstance<PluginEvent.StreakEvent>()
+            .onEachWithOnMainThreadBlocking {
+                streakEmojiRegistry.refreshByPeerUserId(peerUserId)
 
-                    when (this) {
-                        is PluginEvent.StreakCreatedEvent -> {
-                            if (!record.isVisible)
-                                return@collectWithOnUIThread
+                when (this) {
+                    is PluginEvent.StreakCreatedEvent -> {
+                        if (!record.isVisible)
+                            return@onEachWithOnMainThreadBlocking
 
-                            UserPatcher.patchUser(accountId, peerUserId)
-
-                            streaksController.enqueuePopupForTransition(
-                                accountId,
-                                peerUserId,
-                                null,
-                                record
-                            )
-                        }
-
-                        is PluginEvent.StreakGrowUpEvent -> {
-                            UserPatcher.patchUser(accountId, peerUserId)
-
-                            streaksController.enqueuePopupForTransition(
-                                accountId,
-                                peerUserId,
-                                sourceRecord,
-                                targetRecord
-                            )
-                        }
-
-                        is PluginEvent.StreakRebuiltEvent,
-                        is PluginEvent.StreakRestoredEvent -> {
-                            if (!record.isVisible)
-                                return@collectWithOnUIThread
-
-                            UserPatcher.patchUser(accountId, peerUserId)
-                        }
-
-                        is PluginEvent.StreakDeletedEvent,
-                        is PluginEvent.StreakLostEvent -> {
-                            UserPatcher.restoreUser(accountId, peerUserId)
-
-                            alertNotificationHelper.cancelNearDeath(peerUserId)
-
-                            // as we don't need to notify about manual streak deletion
-                            if (this is PluginEvent.StreakLostEvent) {
-                                alertNotificationHelper.showDeath(
-                                    peerUserId,
-                                    MessagesController.getInstance(accountId)
-                                        .getUser(peerUserId)?.label
-                                        ?: peerUserId.toString(),
-                                    record.length
-                                )
-                            }
-                        }
-                    }
-                }
-        }
-
-        // streak dependents
-        backgroundScope.launch {
-            EventBus.stream
-                .filterIsInstance<PluginEvent.StreakDeletedEvent>()
-                .collectWith {
-                    streakPetsController.delete(accountId, record.peerUserId, timestamp, true)
-                }
-        }
-
-        // debounced dialog cells refresh
-        backgroundScope.launch {
-            EventBus.stream
-                .filterIsInstance<PluginEvent.StreakEvent>()
-                .debounce(100)
-                .collectOnUIThread { streakEmojiRegistry.refreshDialogCells() }
-        }
-
-        // sync
-        backgroundScope.launch {
-            EventBus.stream
-                .filterIsInstance<PluginEvent.SyncDatabaseSnapshotAppliedEvent>()
-                .collectWithOnUIThread {
-                    if (hasVisibleStreak)
                         UserPatcher.patchUser(accountId, peerUserId)
-                    else
+
+                        streaksController.enqueuePopupForTransition(
+                            accountId,
+                            peerUserId,
+                            null,
+                            record
+                        )
+                    }
+
+                    is PluginEvent.StreakGrowUpEvent -> {
+                        UserPatcher.patchUser(accountId, peerUserId)
+
+                        streaksController.enqueuePopupForTransition(
+                            accountId,
+                            peerUserId,
+                            sourceRecord,
+                            targetRecord
+                        )
+                    }
+
+                    is PluginEvent.StreakRebuiltEvent,
+                    is PluginEvent.StreakRestoredEvent -> {
+                        if (!record.isVisible)
+                            return@onEachWithOnMainThreadBlocking
+
+                        UserPatcher.patchUser(accountId, peerUserId)
+                    }
+
+                    is PluginEvent.StreakDeletedEvent,
+                    is PluginEvent.StreakLostEvent -> {
                         UserPatcher.restoreUser(accountId, peerUserId)
 
-                    alertNotificationHelper.cancelNearDeath(peerUserId)
-                    alertNotificationHelper.cancelDeath(peerUserId)
+                        alertNotificationHelper.cancelNearDeath(peerUserId)
 
-                    petUiManager.refreshFabForOpenChat()
-                    petUiManager.refreshOpenedDialog(accountId, peerUserId)
-
-                    streakEmojiRegistry.refreshDialogCells()
+                        // as we don't need to notify about manual streak deletion
+                        if (this is PluginEvent.StreakLostEvent) {
+                            alertNotificationHelper.showDeath(
+                                peerUserId,
+                                MessagesController.getInstance(accountId)
+                                    .getUser(peerUserId)?.label
+                                    ?: peerUserId.toString(),
+                                record.length
+                            )
+                        }
+                    }
                 }
-        }
+            }
+            .launchIn(backgroundScope)
+
+        // streak dependents
+        EventBus.stream
+            .filterIsInstance<PluginEvent.StreakDeletedEvent>()
+            .onEachWith {
+                streakPetsController.delete(accountId, record.peerUserId, timestamp, true)
+            }
+            .launchIn(backgroundScope)
+
+        // debounced dialog cells refresh
+        EventBus.stream
+            .filterIsInstance<PluginEvent.StreakEvent>()
+            .debounce(100)
+            .onEachOnMainThread { streakEmojiRegistry.refreshDialogCells() }
+            .launchIn(backgroundScope)
+
+        // sync
+        EventBus.stream
+            .filterIsInstance<PluginEvent.SyncDatabaseSnapshotAppliedEvent>()
+            .onEachWithOnMainThread {
+                if (hasVisibleStreak)
+                    UserPatcher.patchUser(accountId, peerUserId)
+                else
+                    UserPatcher.restoreUser(accountId, peerUserId)
+
+                alertNotificationHelper.cancelNearDeath(peerUserId)
+                alertNotificationHelper.cancelDeath(peerUserId)
+
+                petUiManager.refreshFabForOpenChat()
+                petUiManager.refreshOpenedDialog(accountId, peerUserId)
+
+                streakEmojiRegistry.refreshDialogCells()
+            }
+            .launchIn(backgroundScope)
 
         // pre-death notification
-        backgroundScope.launch {
-            EventBus.stream
-                .filterIsInstance<PluginEvent.StreakDeathWarningEvent>()
-                .collectWith {
-                    if (active) {
-                        alertNotificationHelper.showNearDeath(
-                            peerUserId,
-                            peerName,
-                            streak.length,
-                            timeUntilDeathSeconds
-                        )
-                    } else {
-                        alertNotificationHelper.cancelNearDeath(peerUserId)
-                    }
+        EventBus.stream
+            .filterIsInstance<PluginEvent.StreakDeathWarningEvent>()
+            .onEachWith {
+                if (active) {
+                    alertNotificationHelper.showNearDeath(
+                        peerUserId,
+                        peerName,
+                        streak.length,
+                        timeUntilDeathSeconds
+                    )
+                } else {
+                    alertNotificationHelper.cancelNearDeath(peerUserId)
                 }
-        }
+            }
+            .launchIn(backgroundScope)
 
         // streak pet fab
-        backgroundScope.launch {
-            EventBus.stream
-                .filterIsInstance<PluginEvent.StreakPetEvent>()
-                .collectWithOnUIThread {
-                    petUiManager.refreshFabForOpenChat()
-                    petUiManager.refreshOpenedDialog(accountId, peerUserId)
-                }
-        }
+        EventBus.stream
+            .filterIsInstance<PluginEvent.StreakPetEvent>()
+            .onEachWithOnMainThread {
+                petUiManager.refreshFabForOpenChat()
+                petUiManager.refreshOpenedDialog(accountId, peerUserId)
+            }
+            .launchIn(backgroundScope)
 
         // service messages
-        backgroundScope.launch {
-            EventBus.stream
-                .filterIsInstance<PluginEvent.PeerEvent>()
-                .collectWith {
-                    when (this) {
-                        is PluginEvent.StreakGrowUpEvent -> {
-                            if (LocalDate.now(record.timeZone)
-                                    .diff(timestamp.toLocalDate(record.timeZone)) > 2
-                            )
-                                return@collectWith
+        EventBus.stream
+            .filterIsInstance<PluginEvent.PeerEvent>()
+            .onEachWith {
+                when (this) {
+                    is PluginEvent.StreakGrowUpEvent -> {
+                        if (LocalDate.now(record.timeZone)
+                                .diff(timestamp.toLocalDate(record.timeZone)) > 2
+                        )
+                            return@onEachWith
 
-                            val allowSend = serviceMessageCategoriesController.isEnabled(
-                                record.ownerUserId,
-                                record.peerUserId,
-                                ServiceMessageCategory.LEVEL_UP
-                            )
+                        val allowSend = serviceMessageCategoriesController.isEnabled(
+                            record.ownerUserId,
+                            record.peerUserId,
+                            ServiceMessageCategory.LEVEL_UP
+                        )
 
-                            if (!allowSend)
-                                return@collectWith
+                        if (!allowSend)
+                            return@onEachWith
 
-                            val targetLevelLength = targetRecord.level.length
+                        val targetLevelLength = targetRecord.level.length
 
-                            if (targetLevelLength == targetRecord.length
-                                && targetLevelLength == StreakLevel.findFirstVisible().length
-                            ) {
-                                serviceMessagesController
-                                    .sendCreation(accountId, peerUserId)
-                                return@collectWith
-                            }
-
-                            if (targetRecord.level <= sourceRecord.level)
-                                return@collectWith
-
+                        if (targetLevelLength == targetRecord.length
+                            && targetLevelLength == StreakLevel.findFirstVisible().length
+                        ) {
                             serviceMessagesController
-                                .sendUpgrade(accountId, peerUserId, targetRecord.level.length)
+                                .sendCreation(accountId, peerUserId)
+                            return@onEachWith
                         }
 
-                        is PluginEvent.StreakLostEvent -> {
-                            if (LocalDate.now(record.timeZone)
-                                    .diff(timestamp.toLocalDate(record.timeZone)) > 1
-                            )
-                                return@collectWith
+                        if (targetRecord.level <= sourceRecord.level)
+                            return@onEachWith
 
-                            val allowSend = serviceMessageCategoriesController.isEnabled(
-                                record.ownerUserId,
-                                record.peerUserId,
-                                ServiceMessageCategory.LIFECYCLE
-                            )
-
-                            if (!allowSend)
-                                return@collectWith
-
-                            serviceMessagesController
-                                .sendDeath(accountId, peerUserId)
-                        }
-
-                        is PluginEvent.StreakRestoredEvent -> {
-                            if (byPeer)
-                                return@collectWith
-
-                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
-                                return@collectWith
-
-                            serviceMessagesController
-                                .sendRestore(accountId, peerUserId)
-                        }
-
-                        is PluginEvent.StreakPetRenamedEvent -> {
-                            if (by != PluginEvent.StreakPetRenamedEvent.By.SELF)
-                                return@collectWith
-
-                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
-                                return@collectWith
-
-                            val allowSend = serviceMessageCategoriesController.isEnabled(
-                                record.ownerUserId,
-                                record.peerUserId,
-                                ServiceMessageCategory.PET
-                            )
-
-                            if (!allowSend)
-                                return@collectWith
-
-                            serviceMessagesController
-                                .sendPetSetName(accountId, peerUserId, record.name)
-                        }
-
-                        is PluginEvent.StreakPetDeletedEvent -> {
-                            if (by != PluginEvent.StreakPetDeletedEvent.By.SELF)
-                                return@collectWith
-
-                            if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
-                                return@collectWith
-
-                            val allowSend = serviceMessageCategoriesController.isEnabled(
-                                record.ownerUserId,
-                                record.peerUserId,
-                                ServiceMessageCategory.PET
-                            )
-
-                            if (!allowSend)
-                                return@collectWith
-
-                            serviceMessagesController
-                                .sendPetDeleted(accountId, peerUserId)
-                        }
-
-                        else -> {}
+                        serviceMessagesController
+                            .sendUpgrade(accountId, peerUserId, targetRecord.level.length)
                     }
+
+                    is PluginEvent.StreakLostEvent -> {
+                        if (LocalDate.now(record.timeZone)
+                                .diff(timestamp.toLocalDate(record.timeZone)) > 1
+                        )
+                            return@onEachWith
+
+                        val allowSend = serviceMessageCategoriesController.isEnabled(
+                            record.ownerUserId,
+                            record.peerUserId,
+                            ServiceMessageCategory.LIFECYCLE
+                        )
+
+                        if (!allowSend)
+                            return@onEachWith
+
+                        serviceMessagesController
+                            .sendDeath(accountId, peerUserId)
+                    }
+
+                    is PluginEvent.StreakRestoredEvent -> {
+                        if (byPeer)
+                            return@onEachWith
+
+                        if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
+                            return@onEachWith
+
+                        serviceMessagesController
+                            .sendRestore(accountId, peerUserId)
+                    }
+
+                    is PluginEvent.StreakPetRenamedEvent -> {
+                        if (by != PluginEvent.StreakPetRenamedEvent.By.SELF)
+                            return@onEachWith
+
+                        if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
+                            return@onEachWith
+
+                        val allowSend = serviceMessageCategoriesController.isEnabled(
+                            record.ownerUserId,
+                            record.peerUserId,
+                            ServiceMessageCategory.PET
+                        )
+
+                        if (!allowSend)
+                            return@onEachWith
+
+                        serviceMessagesController
+                            .sendPetSetName(accountId, peerUserId, record.name)
+                    }
+
+                    is PluginEvent.StreakPetDeletedEvent -> {
+                        if (by != PluginEvent.StreakPetDeletedEvent.By.SELF)
+                            return@onEachWith
+
+                        if (timestamp.toLocalDate(record.timeZone) != LocalDate.now(record.timeZone))
+                            return@onEachWith
+
+                        val allowSend = serviceMessageCategoriesController.isEnabled(
+                            record.ownerUserId,
+                            record.peerUserId,
+                            ServiceMessageCategory.PET
+                        )
+
+                        if (!allowSend)
+                            return@onEachWith
+
+                        serviceMessagesController
+                            .sendPetDeleted(accountId, peerUserId)
+                    }
+
+                    else -> {}
                 }
-        }
+            }
+            .launchIn(backgroundScope)
     }
 
     fun enqueueTask(name: String, callback: suspend () -> Unit) =

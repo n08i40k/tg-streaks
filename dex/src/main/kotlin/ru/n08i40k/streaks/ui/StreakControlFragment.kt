@@ -28,7 +28,7 @@ import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
-import ru.n08i40k.streaks.extension.collectOnUIThread
+import ru.n08i40k.streaks.extension.collectOnMainThread
 import ru.n08i40k.streaks.extension.setSectionsCompat
 import ru.n08i40k.streaks.extension.setTextAndValueAndCheckCompat
 import ru.n08i40k.streaks.extension.toOffsetString
@@ -140,7 +140,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
     }
 
     private fun <T> Flow<T>.observe(action: (T) -> Unit) =
-        viewScope.launch { collectOnUIThread(action::invoke) }
+        viewScope.launch { collectOnMainThread(action::invoke) }
 
     private fun observeState() {
         fun ListAdapter.notifyRowChanged(row: Row) =
