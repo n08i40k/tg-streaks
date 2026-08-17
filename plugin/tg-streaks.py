@@ -876,7 +876,7 @@ class SettingsActions:
             Header(text=self.plugin._t("settings.backups.title")),
             Text(
                 text=self.plugin._t("settings.backups.export.title"),
-                icon="msg_save",
+                icon="msg_download",
                 on_click=lambda _: self._on_click(self.EXPORT_BACKUP_NOW),
             ),
             Text(

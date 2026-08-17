@@ -41,7 +41,7 @@ class SettingsMenuActions(private val plugin: Plugin) {
 
                 BulletinHelper.show(
                     Strings.status_success_backup_exported(backup.name),
-                    "msg_save"
+                    "msg_download"
                 )
             }
         }
