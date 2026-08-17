@@ -4,3 +4,6 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 .DS_Store
+
+# оригиналы скриншотов, отложенные `docs_screens.py stale` (см. скилл docs-update)
+.screenshots-outdated/
