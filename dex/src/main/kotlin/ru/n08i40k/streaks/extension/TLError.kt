@@ -3,7 +3,13 @@ package ru.n08i40k.streaks.extension
 import org.telegram.tgnet.TLRPC
 
 private val FLOOD_WAIT_REGEX = Regex("""FLOOD_WAIT_(\d+)""")
-private val MSG_WAIT_ERRORS = listOf("MSG_WAIT_TIMEOUT", "MSG_WAIT_FAILED", "MSGID_DECREASE_RETRY")
+private val TRANSIENT_FAILURE_ERRORS = listOf(
+    "MSG_WAIT_TIMEOUT",
+    "MSG_WAIT_FAILED",
+    "MSGID_DECREASE_RETRY",
+    "RPC_CALL_FAIL",
+    "RPC_MCGET_FAIL"
+)
 
 fun TLRPC.TL_error.isRateLimited(): Boolean {
     val text = this.text.orEmpty()
@@ -17,7 +23,7 @@ fun TLRPC.TL_error.isRateLimited(): Boolean {
 fun TLRPC.TL_error.isTransientFailure(): Boolean {
     val text = this.text.orEmpty()
 
-    return MSG_WAIT_ERRORS.any { text.contains(it, ignoreCase = true) }
+    return TRANSIENT_FAILURE_ERRORS.any { text.contains(it, ignoreCase = true) }
             || text.startsWith("MSG_WAIT_", ignoreCase = true)
 }
 
