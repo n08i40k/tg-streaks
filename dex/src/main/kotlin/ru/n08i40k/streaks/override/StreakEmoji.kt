@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.View
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
@@ -17,16 +18,28 @@ import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.getAccessibleFields
 import ru.n08i40k.streaks.util.getAs
 import ru.n08i40k.streaks.util.getField
-import ru.n08i40k.streaks.util.isClientVersionBelow
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 
 class StreakEmoji : SwapAnimatedEmojiDrawable {
-    enum class Source {
-        DIALOG_CELL,
-        MESSAGE_CELL,
-        OTHER
+    // куда клиент кладёт бейдж без нашего вмешательства
+    enum class BadgeSlot {
+        // в отдельный view:
+        // UserCell.emojiStatus2,
+        // ChatAvatarContainer.emojiStatusDrawable2,
+        // ProfileActivity.badgeDrawable;
+        SEPARATE,
+
+        // в тот же view, но только если тот не занят эмодзи:
+        // ProfileSearchCell,
+        // StatusBadgeComponent;
+        STATUS,
+
+        // то же, что STATUS, но при занятом статусе кастомный бейдж уезжает в слот перед именем (новые версии):
+        // DialogCell.botVerification,
+        // ChatMessageCell.currentNameEmojiStatusDrawable;
+        STATUS_OR_NAME,
     }
 
     enum class Part {
@@ -93,8 +106,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             field: Field,
             arrayIndex: Int?,
             peerUserId: Long,
-            source: Source = Source.OTHER,
-            canDrawBadge: Boolean = false,
+            badgeSlot: BadgeSlot,
             simpleTextView: SimpleTextView? = null,
         ): StreakEmoji? {
             if (arrayIndex == null) {
@@ -109,8 +121,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
                 val newDrawable = StreakEmoji(
                     drawable,
                     peerUserId,
-                    source,
-                    canDrawBadge,
+                    badgeSlot,
                 )
 
                 field.set(obj, newDrawable)
@@ -151,8 +162,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
             val newDrawable = StreakEmoji(
                 drawable,
                 peerUserId,
-                source,
-                canDrawBadge,
+                badgeSlot,
             )
             array[arrayIndex] = newDrawable
 
@@ -179,8 +189,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     private var peerUserId: Long = 0
     private var cachedStreakViewData: StreakViewData? = null
 
-    private val source: Source
-    private val canDrawBadge: Boolean
+    private val badgeSlot: BadgeSlot
 
     private var streakView: SwapAnimatedEmojiDrawable? = null
 
@@ -313,9 +322,9 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         invalidateSelf()
     }
 
-    fun setBadge(user: TLRPC.User?, badgeDocumentId: Long?) {
+    fun setBadge(badgeDocumentId: Long?) {
         // do not draw badge, as it will be shown instead of an empty emoji status
-        if (!canDrawBadge || badgeDocumentId == null || user?.emoji_status == null) {
+        if (badgeDocumentId == null) {
             clearBadgeView()
             invalidateSelf()
             return
@@ -336,65 +345,62 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     }
 
     private fun refreshCachedViews() {
-        if (peerUserId == 0L) {
+        val user = peerUserId
+            .takeIf { it != 0L }
+            ?.let { MessagesController.getInstance(UserConfig.selectedAccount).getUserOrChat(it) }
+                as? TLRPC.User
+
+        if (user == null) {
+            hideOriginal = false
+            hasBadge = false
+
             setStreak(null, null)
-            setBadge(null, null)
+            setBadge(null)
 
             return
         }
 
-        if (cachedStreakViewData == null) {
-            val dialog =
-                MessagesController.getInstance(UserConfig.selectedAccount)
-                    .getUserOrChat(peerUserId)
+        val documentId = BadgesCompat.getDocumentId(user)
+        val hasStatus = hasEmojiStatus(user)
 
-            when (dialog) {
-                is TLRPC.User -> {
-                    val badge = getBadgeDocumentId(dialog)
+        // При пустом статусе в занятом нами слоте лежал бы бейдж или прем-эмодзи
+        // а т.к. стрик должен быть перед бейджем, скрываем его и рисуем сами
+        hideOriginal = !hasStatus && (cachedStreakViewData != null || documentId != null)
 
-                    this.hasBadge = badge != null
+        val badge = getBadgeDocumentId(user, documentId, hasStatus)
 
-                    setStreak(dialog, null)
-                    setBadge(dialog, badge)
-                }
+        hasBadge = badge != null
 
-                is TLRPC.Chat -> {
-                    this.hasBadge = false
-
-                    setStreak(null, null)
-                    setBadge(null, null)
-                }
-            }
-
-            return
-        }
-
-        MessagesController
-            .getInstance(UserConfig.selectedAccount)
-            .getUser(this.peerUserId)
-            ?.let {
-                hideOriginal = it.premium && it.emoji_status == null
-
-                val badge = getBadgeDocumentId(it)
-
-                this.hasBadge = badge != null
-
-                setStreak(it, cachedStreakViewData)
-                setBadge(it, badge)
-            }
+        setStreak(user, cachedStreakViewData)
+        setBadge(badge)
     }
 
-    private fun getBadgeDocumentId(user: TLRPC.User): Long? =
-        BadgesCompat.getDocumentId(user).let { documentId ->
-            if (documentId == null
-                || isClientVersionBelow("12.8.1")
-                || (source != Source.DIALOG_CELL && source != Source.MESSAGE_CELL)
-                || !BadgesCompat.hasSecondaryBadge(user)
-            )
-                return@let documentId
+    private fun hasEmojiStatus(user: TLRPC.User): Boolean =
+        DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0L
 
-            return@let null
+    private fun getBadgeDocumentId(
+        user: TLRPC.User,
+        documentId: Long?,
+        hasStatus: Boolean,
+    ): Long? {
+        if (documentId == null)
+            return null
+
+        // статус пуст, значит слот, в котором клиент нарисовал бы бейдж, занят нами (секс)
+        if (!hasStatus)
+            return documentId
+
+        return when (badgeSlot) {
+            // клиент рисует бейдж своим drawable рядом со статусом
+            BadgeSlot.SEPARATE -> null
+
+            // кастомный бейдж в слоте перед именем (новая версия)
+            BadgeSlot.STATUS_OR_NAME -> documentId.takeIf { !BadgesCompat.hasSecondaryBadge(user) }
+
+            // если есть прем эмодзи, клиент не рисует бейдж
+            BadgeSlot.STATUS -> documentId
         }
+    }
 
     fun getPeerUserId(): Long = peerUserId
 
@@ -420,15 +426,14 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     constructor(
         base: SwapAnimatedEmojiDrawable,
         peerUserId: Long,
-        source: Source,
-        canDrawBadge: Boolean,
+        badgeSlot: BadgeSlot,
     ) : super(
         null,
         0
     ) {
         cloneFields(base, this, EMOJI_FIELDS)
-        this.source = source
-        this.canDrawBadge = canDrawBadge
+        this.badgeSlot = badgeSlot
+
         this.size = SIZE.getInt(this)
 
         PARENT_VIEW.getAs<View>(this)?.let {
@@ -453,7 +458,7 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
 
     private fun getTextWidth(): Int {
         val length = cachedStreakViewData?.length ?: return 0
-        val padding = if (canDrawBadge) size / 5 else 0
+        val padding = if (hasBadge) size / 5 else 0
 
         if (length < 10)
             return (size * 0.3f).toInt() + padding
@@ -468,16 +473,13 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
     }
 
     fun getAdditionalWidth(): Int {
-        var width = 0
+        // ну типо уменьшаем размер на 1 эмодзи, если его нет
+        var width = if (hideOriginal) -size else 0
 
-        if (cachedStreakViewData != null) {
-            if (!hideOriginal)
-                width += size
+        if (cachedStreakViewData != null)
+            width += size + getTextWidth()
 
-            width += getTextWidth()
-        }
-
-        if (canDrawBadge && hasBadge)
+        if (hasBadge)
             width += size
 
         return width
@@ -506,3 +508,5 @@ class StreakEmoji : SwapAnimatedEmojiDrawable {
         super.setAlpha(alpha)
     }
 }
+
+// жопа)

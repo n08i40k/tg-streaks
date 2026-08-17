@@ -47,8 +47,7 @@ class DialogCellHookBundle : HookBundle() {
                 EMOJI_STATUS,
                 null,
                 0,
-                source = StreakEmoji.Source.DIALOG_CELL,
-                canDrawBadge = true
+                badgeSlot = StreakEmoji.BadgeSlot.STATUS_OR_NAME,
             )
         }
 

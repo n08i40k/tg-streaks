@@ -33,7 +33,7 @@ class StatusBadgeComponentHookBundle : HookBundle() {
                 STATUS_DRAWABLE,
                 null,
                 0,
-                canDrawBadge = true
+                badgeSlot = StreakEmoji.BadgeSlot.STATUS,
             )
         }
 
@@ -58,7 +58,7 @@ class StatusBadgeComponentHookBundle : HookBundle() {
                 STATUS_DRAWABLE,
                 null,
                 user.id,
-                canDrawBadge = true,
+                badgeSlot = StreakEmoji.BadgeSlot.STATUS,
             )
         }
     }

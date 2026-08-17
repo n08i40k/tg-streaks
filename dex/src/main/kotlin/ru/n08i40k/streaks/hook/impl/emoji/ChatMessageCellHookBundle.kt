@@ -96,8 +96,7 @@ class ChatMessageCellHookBundle : HookBundle() {
                 CURRENT_NAME_STATUS_DRAWABLE,
                 null,
                 peerUserId,
-                source = StreakEmoji.Source.MESSAGE_CELL,
-                canDrawBadge = true,
+                badgeSlot = StreakEmoji.BadgeSlot.STATUS_OR_NAME,
                 simpleTextView = null,
             ) ?: return@before
 

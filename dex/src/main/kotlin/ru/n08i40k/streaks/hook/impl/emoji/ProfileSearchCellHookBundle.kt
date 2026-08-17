@@ -35,7 +35,7 @@ class ProfileSearchCellHookBundle : HookBundle() {
                 STATUS_DRAWABLE,
                 null,
                 user.id,
-                canDrawBadge = true
+                badgeSlot = StreakEmoji.BadgeSlot.STATUS,
             )
         }
     }

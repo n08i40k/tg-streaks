@@ -51,7 +51,9 @@ class ChatAvatarContainerHookBundle : HookBundle() {
                 thisObject,
                 EMOJI_STATUS_DRAWABLE,
                 null,
-                dialogId
+                dialogId,
+                badgeSlot = StreakEmoji.BadgeSlot.SEPARATE,
+                simpleTextView = titleTextView,
             ) ?: return@after
 
             if (titleTextView.rightDrawable !== newDrawable && titleTextView.rightDrawable is AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable)

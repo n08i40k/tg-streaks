@@ -42,7 +42,8 @@ class UserCellHookBundle : HookBundle() {
                 EMOJI_STATUS,
                 null,
                 currentUser.id,
-                simpleTextView = nameTextView
+                badgeSlot = StreakEmoji.BadgeSlot.SEPARATE,
+                simpleTextView = nameTextView,
             )
 
             nameTextView.rightDrawable = emoji
