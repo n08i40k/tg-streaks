@@ -59,7 +59,7 @@ BADGES_SDK_BLOCK = ("# === EMDEDDED BADGES SDK BEGIN ===", "# === EMDEDDED BADGE
 
 BADGES_SDK_ID = "badges-sdk"
 # stamped by tools/embed_assets.py from the embedded badges-sdk.plugin
-BADGES_SDK_VERSION = "1.0.1"
+BADGES_SDK_VERSION = "1.0.2"
 BADGES_SDK_BOOTSTRAP_RETRY_SECONDS = 2.0
 BADGES_SDK_BOOTSTRAP_MAX_RETRIES = 15
 

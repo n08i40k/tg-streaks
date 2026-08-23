@@ -4,10 +4,8 @@ DEBUG_DEX_PATH := `realpath -m build/outputs/dex/debug/classes.dex`
 RESOURCES_DIR := "resources"
 RESOURCES_ZIP := `realpath -m build/resources.zip`
 
-# badges-sdk release pinned for this plugin: the compat AAR is a build input and
-# the .plugin is embedded into the release build so it can be installed on device
 BADGES_SDK_REPO := "n08i40k/badges-sdk"
-BADGES_SDK_VERSION := "1.0.1"
+BADGES_SDK_VERSION := "1.0.2"
 BADGES_SDK_PLUGIN := `realpath -m build/badges-sdk/badges-sdk.plugin`
 BADGES_SDK_COMPAT_AAR := `realpath -m libs/badges-sdk-compat.aar`
 
