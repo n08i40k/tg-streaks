@@ -5,7 +5,7 @@ import shutil
 import threading
 import traceback
 import zipfile
-from typing import Optional, cast
+from typing import Callable, Optional, cast
 
 import requests
 from java import dynamic_proxy, jarray, jbyte
@@ -60,8 +60,8 @@ BADGES_SDK_BLOCK = ("# === EMDEDDED BADGES SDK BEGIN ===", "# === EMDEDDED BADGE
 BADGES_SDK_ID = "badges-sdk"
 # stamped by tools/embed_assets.py from the embedded badges-sdk.plugin
 BADGES_SDK_VERSION = "1.0.1"
-BADGES_SDK_INSTALL_DIALOG_RETRY_SECONDS = 2.0
-BADGES_SDK_INSTALL_DIALOG_MAX_RETRIES = 15
+BADGES_SDK_BOOTSTRAP_RETRY_SECONDS = 2.0
+BADGES_SDK_BOOTSTRAP_MAX_RETRIES = 15
 
 # Plugin official resource links
 
@@ -590,8 +590,14 @@ class BadgesSdkBootstrap:
         self.cache_dir = get_plugin_cache_dir("badges_sdk")
         self.plugin_path = os.path.join(self.cache_dir, f"{BADGES_SDK_ID}.plugin")
 
-    def ensure_installed(self):
+    def ensure_installed(self, attempt: int = 0):
         try:
+            # the engine registers plugins one by one as it walks the plugins dir,
+            # so an SDK loaded after us shows up only once the walk is over
+            if not PluginsController.getInstance().isInitialized():
+                self._retry(attempt, self.ensure_installed, "plugins are still loading")
+                return
+
             installed_version = self._installed_version()
 
             if installed_version is not None and not _is_version_older(
@@ -613,7 +619,7 @@ class BadgesSdkBootstrap:
                 f"Offering Badges SDK {BADGES_SDK_VERSION} "
                 f"(installed: {installed_version or 'none'})"
             )
-            self._show_install_dialog()
+            self._show_install_dialog(attempt)
         except Exception as e:
             self.plugin.log_exception("Failed to bootstrap Badges SDK", e)
 
@@ -634,6 +640,17 @@ class BadgesSdkBootstrap:
 
         os.replace(staging_path, self.plugin_path)
 
+    def _retry(self, attempt: int, action: Callable[[int], None], reason: str):
+        if attempt >= BADGES_SDK_BOOTSTRAP_MAX_RETRIES:
+            self.plugin.log(f"Badges SDK bootstrap dropped: {reason}")
+            return
+
+        timer = threading.Timer(
+            BADGES_SDK_BOOTSTRAP_RETRY_SECONDS, lambda: action(attempt + 1)
+        )
+        timer.daemon = True
+        timer.start()
+
     def _show_install_dialog(self, attempt: int = 0):
         def show():
             try:
@@ -642,18 +659,9 @@ class BadgesSdkBootstrap:
                 fragment = None
 
             if fragment is None:
-                if attempt >= BADGES_SDK_INSTALL_DIALOG_MAX_RETRIES:
-                    self.plugin.log(
-                        "Badges SDK install dialog dropped: UI context is unavailable"
-                    )
-                    return
-
-                timer = threading.Timer(
-                    BADGES_SDK_INSTALL_DIALOG_RETRY_SECONDS,
-                    lambda: self._show_install_dialog(attempt + 1),
+                self._retry(
+                    attempt, self._show_install_dialog, "UI context is unavailable"
                 )
-                timer.daemon = True
-                timer.start()
                 return
 
             try:
