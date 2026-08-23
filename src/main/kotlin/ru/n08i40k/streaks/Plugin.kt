@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.launchIn
@@ -34,6 +35,7 @@ import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.NotificationCenter
 import org.telegram.messenger.UserConfig
+import ru.n08i40k.badges.compat.BadgesSdkProvider
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.controller.PluginRelationController
 import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
@@ -46,6 +48,7 @@ import ru.n08i40k.streaks.controller.TimeZonesController
 import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.PluginDatabase
+import ru.n08i40k.streaks.emoji.StreakEmojiViewFactory
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.event.eject.EjectNotifier
@@ -66,20 +69,11 @@ import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.PremiumPreviewBottomSheetHookBundle
 import ru.n08i40k.streaks.hook.impl.ServiceMessagesHookBundle
 import ru.n08i40k.streaks.hook.impl.UpdatesHookBundle
-import ru.n08i40k.streaks.hook.impl.UserPutHookBundle
-import ru.n08i40k.streaks.hook.impl.emoji.ChatAvatarContainerHookBundle
-import ru.n08i40k.streaks.hook.impl.emoji.ChatMessageCellHookBundle
-import ru.n08i40k.streaks.hook.impl.emoji.DialogCellHookBundle
-import ru.n08i40k.streaks.hook.impl.emoji.ProfileActivityHookBundle
-import ru.n08i40k.streaks.hook.impl.emoji.ProfileSearchCellHookBundle
-import ru.n08i40k.streaks.hook.impl.emoji.StatusBadgeComponentHookBundle
-import ru.n08i40k.streaks.hook.impl.emoji.UserCellHookBundle
 import ru.n08i40k.streaks.i18n.MessagePluralFormatter
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.override.PluginBadges
 import ru.n08i40k.streaks.registry.LockableActionRegistry
 import ru.n08i40k.streaks.registry.LockableCallbackRegistry
-import ru.n08i40k.streaks.registry.StreakEmojiRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.StreakPetUiManager
 import ru.n08i40k.streaks.util.AccountTaskExecutor
@@ -92,7 +86,6 @@ import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.RefCounter
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
-import ru.n08i40k.streaks.util.UserPatcher
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.lang.reflect.Member
 import java.util.function.Supplier
@@ -248,6 +241,8 @@ class Plugin {
             Logger.fatal("An unknown error occurred in background coroutine scope", exception)
         })
 
+    private val streakEmojiViewFactory = StreakEmojiViewFactory()
+
     // database
     private val db: PluginDatabase = Room.buildPluginDatabase()
 
@@ -264,8 +259,6 @@ class Plugin {
 
     // eject data
     val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
-
-    val streakEmojiRegistry = StreakEmojiRegistry()
 
     // view cache holds resolved theme colors
     private val themeObserver =
@@ -346,8 +339,7 @@ class Plugin {
     @UiThread
     private fun refreshStreakViews() {
         streaksController.refreshViewCache()
-        streakEmojiRegistry.refreshAll()
-        streakEmojiRegistry.refreshDialogCells()
+        BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
     }
 
     @OptIn(FlowPreview::class)
@@ -361,14 +353,12 @@ class Plugin {
         EventBus.stream
             .filterIsInstance<PluginEvent.StreakEvent>()
             .onEachWithOnMainThreadBlocking {
-                streakEmojiRegistry.refreshByPeerUserId(peerUserId)
+                BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory, peerUserId)
 
                 when (this) {
                     is PluginEvent.StreakCreatedEvent -> {
                         if (!record.isVisible)
                             return@onEachWithOnMainThreadBlocking
-
-                        UserPatcher.patchUser(accountId, peerUserId)
 
                         streaksController.enqueuePopupForTransition(
                             accountId,
@@ -379,8 +369,6 @@ class Plugin {
                     }
 
                     is PluginEvent.StreakGrowUpEvent -> {
-                        UserPatcher.patchUser(accountId, peerUserId)
-
                         streaksController.enqueuePopupForTransition(
                             accountId,
                             peerUserId,
@@ -389,18 +377,8 @@ class Plugin {
                         )
                     }
 
-                    is PluginEvent.StreakRebuiltEvent,
-                    is PluginEvent.StreakRestoredEvent -> {
-                        if (!record.isVisible)
-                            return@onEachWithOnMainThreadBlocking
-
-                        UserPatcher.patchUser(accountId, peerUserId)
-                    }
-
                     is PluginEvent.StreakDeletedEvent,
                     is PluginEvent.StreakLostEvent -> {
-                        UserPatcher.restoreUser(accountId, peerUserId)
-
                         alertNotificationHelper.cancelNearDeath(peerUserId)
 
                         // as we don't need to notify about manual streak deletion
@@ -414,6 +392,9 @@ class Plugin {
                             )
                         }
                     }
+
+                    is PluginEvent.StreakRebuiltEvent,
+                    is PluginEvent.StreakRestoredEvent -> Unit
                 }
             }
             .launchIn(backgroundScope)
@@ -430,25 +411,20 @@ class Plugin {
         EventBus.stream
             .filterIsInstance<PluginEvent.StreakEvent>()
             .debounce(100)
-            .onEachOnMainThread { streakEmojiRegistry.refreshDialogCells() }
+            .onEachOnMainThread { BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory) }
             .launchIn(backgroundScope)
 
         // sync
         EventBus.stream
             .filterIsInstance<PluginEvent.SyncDatabaseSnapshotAppliedEvent>()
             .onEachWithOnMainThread {
-                if (hasVisibleStreak)
-                    UserPatcher.patchUser(accountId, peerUserId)
-                else
-                    UserPatcher.restoreUser(accountId, peerUserId)
-
                 alertNotificationHelper.cancelNearDeath(peerUserId)
                 alertNotificationHelper.cancelDeath(peerUserId)
 
                 petUiManager.refreshFabForOpenChat()
                 petUiManager.refreshOpenedDialog(accountId, peerUserId)
 
-                streakEmojiRegistry.refreshDialogCells()
+                BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
             }
             .launchIn(backgroundScope)
 
@@ -605,24 +581,9 @@ class Plugin {
 
         AccountTaskExecutor.enqueue(
             accountId,
-            "patch user's emoji statuses for account $accountId ($reason)"
+            "refresh streak badges for account $accountId ($reason)"
         ) {
-            val accounts = userConfigAuthorizedIds
-                .associateBy { UserConfig.getInstance(it).clientUserId }
-
-            val perAccountPeerIds = hashMapOf<Int, ArrayList<Long>>()
-
-            for (streak in streaksController.getAllVisible()) {
-                val accountId = accounts[streak.ownerUserId] ?: continue
-
-                perAccountPeerIds
-                    .computeIfAbsent(accountId) { arrayListOf() }
-                    .add(streak.peerUserId)
-            }
-
-            perAccountPeerIds.forEach(UserPatcher::patchUsers)
-
-            runOnMainThread { streakEmojiRegistry.refreshDialogCells() }
+            BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
         }
 
         AccountTaskExecutor.enqueue(
@@ -689,6 +650,16 @@ class Plugin {
             ::hookMethods
         )
 
+        // the sdk plugin may not be loaded yet: the factory is registered as soon as
+        // it appears, so the load order of the two plugins does not matter
+        BadgesSdkProvider.setLogger { message, error ->
+            if (error == null)
+                Logger.info(message)
+            else
+                Logger.fatal(message, error, preventEject = true)
+        }
+        BadgesSdkProvider.addBadgeFactory(ID, streakEmojiViewFactory)
+
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
 
         backgroundScope.launch {
@@ -736,7 +707,8 @@ class Plugin {
                 .removeObserver(themeObserver, NotificationCenter.didSetNewTheme)
 
             petUiManager.dismissAll()
-            streakEmojiRegistry.restoreAll()
+
+            BadgesSdkProvider.shutdown()
         }
 
         // database (will be closed after notifying all subscribers except logger)
@@ -811,15 +783,7 @@ class Plugin {
         }
 
         val bundles = listOf(
-            ChatAvatarContainerHookBundle(),
-            ChatMessageCellHookBundle(),
-            DialogCellHookBundle(),
-            ProfileActivityHookBundle(),
-            ProfileSearchCellHookBundle(),
-            StatusBadgeComponentHookBundle(),
-            UserCellHookBundle(),
             AccountSwitchHookBundle(),
-            UserPutHookBundle(),
             PetFabHookBundle(),
             PremiumPreviewBottomSheetHookBundle(),
             ServiceMessagesHookBundle(),

@@ -4,6 +4,13 @@ DEBUG_DEX_PATH := `realpath -m build/outputs/dex/debug/classes.dex`
 RESOURCES_DIR := "resources"
 RESOURCES_ZIP := `realpath -m build/resources.zip`
 
+# badges-sdk release pinned for this plugin: the compat AAR is a build input and
+# the .plugin is embedded into the release build so it can be installed on device
+BADGES_SDK_REPO := "n08i40k/badges-sdk"
+BADGES_SDK_VERSION := "1.0.0"
+BADGES_SDK_PLUGIN := `realpath -m build/badges-sdk/badges-sdk.plugin`
+BADGES_SDK_COMPAT_AAR := `realpath -m libs/badges-sdk-compat.aar`
+
 PLUGIN_PY := `grep -ls '^__id__ = ' -- *.py | head -n1`
 DIST_PY := "dist/" + file_name(PLUGIN_PY)
 
@@ -35,19 +42,50 @@ loc: (_require "java")
 resources OUTPUT=RESOURCES_ZIP: (_require "uv")
     uv run python tools/pack_resources.py '{{ RESOURCES_DIR }}' '{{ OUTPUT }}'
 
+# download the pinned badges-sdk release assets (both are gitignored)
+badges-sdk: (_require "curl")
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    base='https://github.com/{{ BADGES_SDK_REPO }}/releases/download/{{ BADGES_SDK_VERSION }}'
+
+    mkdir -p "$(dirname '{{ BADGES_SDK_COMPAT_AAR }}')" "$(dirname '{{ BADGES_SDK_PLUGIN }}')"
+    curl -fsSL "$base/badges-sdk-compat.aar" -o '{{ BADGES_SDK_COMPAT_AAR }}'
+    curl -fsSL "$base/badges-sdk.plugin" -o '{{ BADGES_SDK_PLUGIN }}'
+
+    echo "fetched badges-sdk {{ BADGES_SDK_VERSION }}"
+
+# put a locally built compat AAR into libs/ instead of the released one (dev; see 'just compat' in the SDK repo)
+badges-sdk-local PATH_TO_AAR:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "$(dirname '{{ BADGES_SDK_COMPAT_AAR }}')"
+    cp '{{ PATH_TO_AAR }}' '{{ BADGES_SDK_COMPAT_AAR }}'
+
 # build the release DEX and pack the resources
-ci: (_require "java") (resources)
+ci: (_require "java") (badges-sdk) (resources)
     ./gradlew buildDexRelease
     cp {{ RELEASE_DEX_PATH }} ./
 
-# embed a DEX (default: release) and the resources into a distributable copy of the plugin .py
+# embed a DEX (default: release), the resources and the pinned badges-sdk into a
+# distributable copy of the plugin .py; without a fetched SDK (dev) it is left out
 embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY: (_require "uv") (resources)
     #!/usr/bin/env bash
     set -euo pipefail
+
     mkdir -p "$(dirname '{{ OUTPUT }}')"
+
+    badges_sdk_args=()
+    if [ -s '{{ BADGES_SDK_PLUGIN }}' ]; then
+        badges_sdk_args=(--badges-sdk '{{ BADGES_SDK_PLUGIN }}')
+    else
+        echo "badges-sdk is not fetched, embedding without it (run 'just badges-sdk' for a release build)" >&2
+    fi
+
     uv run python tools/embed_assets.py \
         --dex '{{ DEX_PATH }}' \
         --resources '{{ RESOURCES_ZIP }}' \
+        "${badges_sdk_args[@]}" \
         '{{ PLUGIN_PY }}' '{{ OUTPUT }}'
 
 # watch the plugin source, debug DEX and resources, and live-reload on device via extera dev-sync

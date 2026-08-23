@@ -18,6 +18,7 @@ from android.webkit import ValueCallback
 from android_utils import copy_to_clipboard, run_on_ui_thread
 from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
 from client_utils import get_last_fragment
+from com.exteragram.messenger.plugins import PluginsController
 from dalvik.system import InMemoryDexClassLoader
 from java.lang import Class, Integer, Long, String
 from java.nio import ByteBuffer
@@ -52,6 +53,15 @@ REPO_NAME = __id__
 # Resource hashes
 DEX_BLOCK = ("# === EMDEDDED DEX BEGIN ===", "# === EMDEDDED DEX END ===")
 RESOURCES_BLOCK = ("# === EMDEDDED RESOURCES BEGIN ===", "# === EMDEDDED RESOURCES END ===")
+BADGES_SDK_BLOCK = ("# === EMDEDDED BADGES SDK BEGIN ===", "# === EMDEDDED BADGES SDK END ===")
+
+# Badges SDK bootstrap
+
+BADGES_SDK_ID = "badges-sdk"
+# stamped by tools/embed_assets.py from the embedded badges-sdk.plugin
+BADGES_SDK_VERSION = "1.0.0"
+BADGES_SDK_INSTALL_DIALOG_RETRY_SECONDS = 2.0
+BADGES_SDK_INSTALL_DIALOG_MAX_RETRIES = 15
 
 # Plugin official resource links
 
@@ -77,6 +87,30 @@ def get_plugin_cache_dir(*parts: str) -> str:
 
 def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest().lower()
+
+
+def _version_tuple(value: str) -> tuple[int, ...]:
+    parts: list[int] = []
+
+    for chunk in str(value).strip().lstrip("vV").split("."):
+        digits = ""
+
+        for char in chunk:
+            if not char.isdigit():
+                break
+            digits += char
+
+        parts.append(int(digits) if digits else 0)
+
+    return tuple(parts)
+
+
+def _is_version_older(version: str, required: str) -> bool:
+    left = _version_tuple(version)
+    right = _version_tuple(required)
+    width = max(len(left), len(right))
+
+    return left + (0,) * (width - len(left)) < right + (0,) * (width - len(right))
 
 
 I18N_SETTINGS: dict[str, dict[str, str]] = {
@@ -521,6 +555,94 @@ class ZipResourcesBridge:
             # the archive is only a staging area: the embedded copy is the source of truth
             if os.path.exists(self.zip_path):
                 os.remove(self.zip_path)
+
+
+class BadgesSdkBootstrap:
+    """Offers the bundled Badges SDK when it is missing or older than the pinned one.
+
+    Only release builds carry the SDK payload: in a debug build the block is
+    empty and the bootstrap stays out of the way.
+    """
+
+    def __init__(self, plugin: "TgStreaksPlugin"):
+        self.plugin = plugin
+        self.cache_dir = get_plugin_cache_dir("badges_sdk")
+        self.plugin_path = os.path.join(self.cache_dir, f"{BADGES_SDK_ID}.plugin")
+
+    def ensure_installed(self):
+        try:
+            installed_version = self._installed_version()
+
+            if installed_version is not None and not _is_version_older(
+                installed_version, BADGES_SDK_VERSION
+            ):
+                return
+
+            try:
+                payload = self.plugin.assets.read(
+                    BADGES_SDK_BLOCK, f"{BADGES_SDK_ID}.plugin"
+                )
+            except EmbeddedAssetError as e:
+                self.plugin.log(f"Badges SDK is not embedded into this build: {e}")
+                return
+
+            self._write_payload(payload)
+
+            self.plugin.log(
+                f"Offering Badges SDK {BADGES_SDK_VERSION} "
+                f"(installed: {installed_version or 'none'})"
+            )
+            self._show_install_dialog()
+        except Exception as e:
+            self.plugin.log_exception("Failed to bootstrap Badges SDK", e)
+
+    def _installed_version(self) -> Optional[str]:
+        installed = PluginsController.getInstance().getPlugins().get(BADGES_SDK_ID)
+
+        if installed is None:
+            return None
+
+        return str(installed.getVersion())
+
+    def _write_payload(self, payload: bytes):
+        os.makedirs(self.cache_dir, exist_ok=True)
+        staging_path = f"{self.plugin_path}.tmp"
+
+        with open(staging_path, "wb") as f:
+            f.write(payload)
+
+        os.replace(staging_path, self.plugin_path)
+
+    def _show_install_dialog(self, attempt: int = 0):
+        def show():
+            try:
+                fragment = get_last_fragment()
+            except Exception:
+                fragment = None
+
+            if fragment is None:
+                if attempt >= BADGES_SDK_INSTALL_DIALOG_MAX_RETRIES:
+                    self.plugin.log(
+                        "Badges SDK install dialog dropped: UI context is unavailable"
+                    )
+                    return
+
+                timer = threading.Timer(
+                    BADGES_SDK_INSTALL_DIALOG_RETRY_SECONDS,
+                    lambda: self._show_install_dialog(attempt + 1),
+                )
+                timer.daemon = True
+                timer.start()
+                return
+
+            try:
+                PluginsController.getInstance().showInstallDialog(
+                    fragment, self.plugin_path, True
+                )
+            except Exception as e:
+                self.plugin.log_exception("Failed to show Badges SDK install dialog", e)
+
+        run_on_ui_thread(show)
 
 
 class ChatContextMenu:
@@ -1832,6 +1954,9 @@ class TgStreaksPlugin(BasePlugin):
 
             self.update_checker = PluginUpdateChecker(self)
             self.update_checker.start()
+
+            self.badges_sdk_bootstrap = BadgesSdkBootstrap(self)
+            self.badges_sdk_bootstrap.ensure_installed()
         except BaseException as e:
             self._handle_load_failure("plugin load", e)
             return
@@ -1912,3 +2037,5 @@ class TgStreaksPlugin(BasePlugin):
 # === EMDEDDED DEX END ===
 # === EMDEDDED RESOURCES BEGIN ===
 # === EMDEDDED RESOURCES END ===
+# === EMDEDDED BADGES SDK BEGIN ===
+# === EMDEDDED BADGES SDK END ===

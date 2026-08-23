@@ -294,6 +294,8 @@ val embed by configurations.creating {
 }
 
 dependencies {
+    implementation(files("./libs/badges-sdk-compat.aar"))
+
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     implementation(libs.kotlinx.datetime)

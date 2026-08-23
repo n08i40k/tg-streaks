@@ -29,3 +29,6 @@ tmp/
 src-resources/
 external/
 resources/
+
+# badges-sdk release assets (see 'just badges-sdk')
+/libs/badges-sdk-*.aar

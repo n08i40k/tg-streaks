@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -32,6 +33,23 @@ from exteragram_utils.dev_client import (
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from embed_assets import embed_source  # noqa: E402
 from pack_resources import pack  # noqa: E402
+
+# the embedded dex + resources make the payload tens of megabytes, which never
+# fits into the 1s socket timeout the dev client sets for its own ping traffic
+SOCKET_TIMEOUT = 300.0
+
+_send_lock = threading.Lock()
+_original_send_message = DeviceConnection.send_message
+
+
+def _serialized_send_message(self, action, arguments=None):
+    with _send_lock:
+        if self.socket is not None:
+            self.socket.settimeout(SOCKET_TIMEOUT)
+        return _original_send_message(self, action, arguments)
+
+
+DeviceConnection.send_message = _serialized_send_message
 
 
 def _mtime(path: str) -> float | None:
@@ -125,7 +143,9 @@ def main() -> int:
         logger.error("Failed to set up adb connection")
         return 1
 
-    connection = DeviceConnection(debug_enabled=args.debug)
+    connection = DeviceConnection(
+        debug_enabled=args.debug, response_timeout=int(SOCKET_TIMEOUT)
+    )
     if not connection.connect():
         logger.error("Failed to connect to the device")
         return 1
@@ -175,7 +195,11 @@ def main() -> int:
                 continue
 
             if connection.write_plugin(plugin_id, content):
-                time.sleep(0.3)
+                # the dev server answers write_plugin before the file is actually
+                # written, and extera reloads the plugin on its own once the write
+                # lands: reloading too early races with that and the device ends up
+                # running the previous .py while the new one is still being flushed
+                time.sleep(max(1.0, len(content) / float(4 << 20)))
                 if connection.reload_plugin(plugin_id):
                     logger.info(f"Reloaded plugin '{plugin_id}' on device")
                 else:

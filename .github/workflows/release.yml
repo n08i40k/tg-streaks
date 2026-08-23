@@ -106,7 +106,7 @@ jobs:
           chmod +x gradlew
           just ci
 
-      - name: Embed DEX and resources into the plugin
+      - name: Embed DEX, resources and badges-sdk into the plugin
         env:
           PLUGIN_PY: ${{ steps.plugin.outputs.file }}
           PLUGIN_ID: ${{ steps.plugin.outputs.id }}
@@ -117,6 +117,7 @@ jobs:
           python tools/embed_assets.py \
             --dex build/outputs/dex/release/classes.dex \
             --resources build/resources.zip \
+            --badges-sdk build/badges-sdk/badges-sdk.plugin \
             "$PLUGIN_PY" \
             "$release_dir/${PLUGIN_ID}.plugin"
 
