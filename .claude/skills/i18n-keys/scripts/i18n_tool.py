@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage the I18N_* translation dicts in plugin/tg-streaks.py.
+"""Manage the I18N_* translation dicts in tg-streaks.py.
 
 Avoids hand-editing the (large) I18N block with Read/Edit: mutate keys via
 this CLI instead. Every mutating command re-sorts all I18N_* dicts
@@ -27,17 +27,15 @@ BLOCK_RE = re.compile(
 
 def find_repo_root(start: Path) -> Path:
     for candidate in (start, *start.parents):
-        if (candidate / "plugin" / "tg-streaks.py").is_file():
+        if (candidate / "tg-streaks.py").is_file():
             return candidate
-    raise SystemExit("Could not find repo root (no plugin/tg-streaks.py above this script)")
+    raise SystemExit("Could not find repo root (no tg-streaks.py above this script)")
 
 
 REPO_ROOT = find_repo_root(Path(__file__).resolve())
-PLUGIN_DIR = REPO_ROOT / "plugin"
-TARGET_FILE = PLUGIN_DIR / "tg-streaks.py"
+TARGET_FILE = REPO_ROOT / "tg-streaks.py"
 TRANSLATION_KEY_KT = (
     REPO_ROOT
-    / "dex"
     / "src"
     / "main"
     / "kotlin"
@@ -176,10 +174,10 @@ def write_target(text: str) -> None:
 def run_post_processing() -> None:
     print("--- ruff format ---")
     subprocess.run(
-        ["uv", "run", "ruff", "format", TARGET_FILE.name], cwd=PLUGIN_DIR, check=True
+        ["uv", "run", "ruff", "format", TARGET_FILE.name], cwd=REPO_ROOT, check=True
     )
     print("--- ty check (report only) ---")
-    subprocess.run(["uv", "run", "ty", "check", TARGET_FILE.name], cwd=PLUGIN_DIR, check=False)
+    subprocess.run(["uv", "run", "ty", "check", TARGET_FILE.name], cwd=REPO_ROOT, check=False)
 
 
 def cmd_list(args: argparse.Namespace) -> None:

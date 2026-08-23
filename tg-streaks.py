@@ -3,7 +3,6 @@ import hashlib
 import os
 import shutil
 import threading
-import time
 import traceback
 import zipfile
 from typing import Optional, cast
@@ -50,15 +49,9 @@ LOGCAT_TAG = __id__
 REPO_OWNER = "n08i40k"
 REPO_NAME = __id__
 
-# External resource urls
-
-DEX_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/classes.dex"
-RESOURCES_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{__version__}/resources.zip"
-
 # Resource hashes
-
-DEX_SHA256 = "7885facf2b9f5fecd514fd990c827754a7d28a16c0c9a60f7797aed391025ea2"
-RESOURCES_SHA256 = "09bd568c0129e4f3005b586b482b8c6b3d427c94349873f1396f58f4075b8062"
+DEX_BLOCK = ("# === EMDEDDED DEX BEGIN ===", "# === EMDEDDED DEX END ===")
+RESOURCES_BLOCK = ("# === EMDEDDED RESOURCES BEGIN ===", "# === EMDEDDED RESOURCES END ===")
 
 # Plugin official resource links
 
@@ -145,6 +138,10 @@ I18N_STATUS: dict[str, dict[str, str]] = {
     "status.error.backup.not_found": {
         "en": "No backups found",
         "ru": "Бэкапы не найдены",
+    },
+    "status.error.assets.unpack_failed": {
+        "en": "Failed to unpack plugin resources",
+        "ru": "Не удалось распаковать ресурсы плагина",
     },
     "status.error.chat.detect_current_failed": {
         "en": "Current chat not found",
@@ -242,21 +239,20 @@ I18N_MENU: dict[str, dict[str, str]] = {
 }
 
 I18N_DIALOGS: dict[str, dict[str, str]] = {
+    "dialog.assets_damaged.message": {
+        "en": "{filename} is missing from the plugin file or is damaged. Reinstall the plugin.",
+        "ru": "{filename} отсутствует в файле плагина или повреждён. Переустановите плагин.",
+    },
+    "dialog.assets_damaged.ok": {"en": "OK", "ru": "Ок"},
+    "dialog.assets_damaged.title": {
+        "en": "Plugin file is damaged",
+        "ru": "Файл плагина повреждён",
+    },
     "dialog.backup_restore.browse": {
         "en": "Browse from device...",
         "ru": "Выбрать с устройства...",
     },
     "dialog.backup_restore.title": {"en": "Choose backup", "ru": "Выберите бэкап"},
-    "dialog.download_failed.cancel": {"en": "Cancel", "ru": "Отмена"},
-    "dialog.download_failed.message": {
-        "en": "Failed to download {filename}. Check your internet connection or try enabling a VPN, then try again.",
-        "ru": "Не удалось скачать {filename}. Проверьте подключение к интернету или попробуйте включить ВПН, затем повторите попытку.",
-    },
-    "dialog.download_failed.retry": {"en": "Retry", "ru": "Повторить"},
-    "dialog.download_failed.title": {
-        "en": "Couldn't download plugin data",
-        "ru": "Не удалось скачать данные плагина",
-    },
     "dialog.load_crash.message": {
         "en": "tg-streaks failed to load at stage '{stage}'.\n\nA crash report has been copied to the clipboard — you can send it to the plugin's chat.",
         "ru": "Не удалось загрузить tg-streaks на этапе «{stage}».\n\nОтчёт скопирован в буфер обмена — вы можете отправить его в чат плагина.",
@@ -266,15 +262,6 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
     "dialog.load_crash.title": {
         "en": "Plugin load failed",
         "ru": "Не удалось загрузить плагин",
-    },
-    "dialog.sha256_mismatch.message": {
-        "en": "Checksum of downloaded {filename} does not match.\nThe plugin has been disabled for security.\n\nPlugin version: {version}\nTarget file: {filename}\nHash: {hash} ({expected_hash} expected)",
-        "ru": "Контрольная сумма скачанного {filename} не совпадает.\nПлагин отключён в целях безопасности.\n\nВерсия плагина: {version}\nФайл: {filename}\nХеш: {hash} (ожидался {expected_hash})",
-    },
-    "dialog.sha256_mismatch.ok": {"en": "OK", "ru": "Ок"},
-    "dialog.sha256_mismatch.title": {
-        "en": "Streaks plugin disabled",
-        "ru": "Плагин Streaks отключён",
     },
     "dialog.update_restart.message": {
         "en": "Streaks was updated from {previous} to {current}. Restart the client to finish the update.",
@@ -295,44 +282,87 @@ I18N_UPDATE: dict[str, dict[str, str]] = {
     },
 }
 
-I18N_DOWNLOAD: dict[str, dict[str, str]] = {
-    "download.assets.completed": {"en": "Assets downloaded", "ru": "Ресурсы скачаны"},
-    "download.assets.started": {
-        "en": "Downloading assets...",
-        "ru": "Скачиваю ресурсы...",
-    },
-    "download.engine.completed": {"en": "Engine downloaded", "ru": "Движок скачан"},
-    "download.engine.started": {
-        "en": "Downloading engine...",
-        "ru": "Скачиваю движок...",
-    },
-    "download.progress.known_total": {
-        "en": "{percent}% • {downloaded}/{total} • ETA {eta}",
-        "ru": "{percent}% • {downloaded}/{total} • ETA {eta}",
-    },
-    "download.progress.unknown_total": {
-        "en": "Downloaded {downloaded} • ETA...",
-        "ru": "Скачано {downloaded} • ETA...",
-    },
-}
-
 I18N_STRINGS: dict[str, dict[str, str]] = {
     **I18N_SETTINGS,
     **I18N_STATUS,
     **I18N_MENU,
     **I18N_DIALOGS,
     **I18N_UPDATE,
-    **I18N_DOWNLOAD,
 }
 
 # fmt: on
 
 
-class DownloadFailedError(Exception):
-    """Raised by TgStreaksPlugin._download_with_progress on any download
-    failure. The user-facing dialog is shown right there, at the point the
-    download failed; callers only need to handle fallback-to-cache logic, if
-    any."""
+class EmbeddedAssetError(Exception):
+    """Raised when an embedded asset block is missing or cannot be decoded.
+    The user-facing dialog is shown by the bridge that hit the failure; callers
+    only need to abort their part of the load."""
+
+
+class EmbeddedAssets:
+    """Reads the payloads embedded into this very .py file as hex comments.
+
+    The blocks are decoded line by line instead of slurping the whole source:
+    the resources archive alone is several megabytes, and its hex form is twice
+    that again.
+    """
+
+    def __init__(self, plugin: "TgStreaksPlugin"):
+        self.plugin = plugin
+
+    def read(self, block: tuple[str, str], label: str) -> bytes:
+        begin, end = block
+        path = self._source_path()
+
+        if path is None:
+            raise EmbeddedAssetError(f"plugin source not found for {label}")
+
+        payload = bytearray()
+        collecting = False
+        completed = False
+
+        try:
+            with open(path, "r", encoding="utf-8") as source:
+                for line in source:
+                    stripped = line.strip()
+
+                    if not collecting:
+                        collecting = stripped == begin
+                        continue
+
+                    if stripped == end:
+                        completed = True
+                        break
+
+                    if stripped.startswith("#"):
+                        payload += bytes.fromhex(stripped[1:].strip())
+        except (OSError, ValueError) as e:
+            raise EmbeddedAssetError(f"failed to decode embedded {label}: {e}") from e
+
+        if not completed or not payload:
+            raise EmbeddedAssetError(f"embedded {label} is missing or empty")
+
+        return bytes(payload)
+
+    def _source_path(self) -> Optional[str]:
+        candidates: list[str] = []
+
+        own_file = globals().get("__file__")
+        if isinstance(own_file, str) and own_file:
+            candidates.append(own_file)
+
+        plugins_dir_getter = globals().get("get_plugins_dir")
+        if callable(plugins_dir_getter):
+            try:
+                candidates.append(os.path.join(plugins_dir_getter(), f"{__id__}.py"))
+            except Exception as e:
+                self.plugin.log_exception("Failed to resolve plugins directory", e)
+
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+
+        return None
 
 
 class JvmPluginBridge:
@@ -341,83 +371,16 @@ class JvmPluginBridge:
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
         self.klass = None
-        self.cache_dir = get_plugin_cache_dir("plugins_dex_cache")
-        os.makedirs(self.cache_dir, exist_ok=True)
-        self.dex_path = os.path.join(self.cache_dir, f"{__id__}.dex")
 
     def load(self):
-        if DEBUG_MODE:
-            self.plugin.log(
-                "Debug mode enabled. Downloading DEX without SHA256 checks..."
-            )
-            try:
-                dex_data = self._download(show_bulletins=True)
-            except DownloadFailedError:
-                return
-
-            self._write_dex_file(dex_data)
-            self._load(dex_data)
-            return
-
-        expected_sha256 = str(DEX_SHA256).strip().lower()
-        cached_sha256 = self._compute_file_sha256(self.dex_path)
-
-        if cached_sha256 == expected_sha256:
-            self._load_cached_file()
-            return
-
-        if cached_sha256 is not None:
-            self.plugin.log(
-                f"Cached DEX SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Downloading correct version..."
-            )
-        else:
-            self.plugin.log("Cached DEX not found. Downloading...")
-
         try:
-            dex_data = self._download(show_bulletins=True)
-        except DownloadFailedError:
+            dex_data = self.plugin.assets.read(DEX_BLOCK, "classes.dex")
+        except EmbeddedAssetError as e:
+            self.plugin.log(f"Failed to read embedded DEX: {e}")
+            self.plugin._show_assets_damaged_dialog("classes.dex")
             return
 
-        downloaded_sha256 = _sha256_hex(dex_data)
-        if downloaded_sha256 != expected_sha256:
-            self.plugin._show_sha256_mismatch_dialog(
-                "classes.dex", downloaded_sha256, expected_sha256
-            )
-            return
-
-        self._write_dex_file(dex_data)
         self._load(dex_data)
-
-    def _load_cached_file(self):
-        try:
-            with open(self.dex_path, "rb") as f:
-                self._load(f.read())
-        except Exception as e:
-            self.plugin.log_exception("Failed to load cached DEX", e)
-
-    def _compute_file_sha256(self, path: str) -> Optional[str]:
-        if not os.path.exists(path):
-            return None
-
-        try:
-            with open(path, "rb") as f:
-                return _sha256_hex(f.read())
-        except Exception as e:
-            self.plugin.log_exception("Failed to read cached DEX for SHA256", e)
-            return None
-
-    def _write_dex_file(self, dex_data: bytes):
-        with open(self.dex_path, "wb") as f:
-            f.write(dex_data)
-
-    def _download(self, show_bulletins: bool) -> bytes:
-        return self.plugin._download_with_progress(
-            url=DEX_URL,
-            label="classes.dex",
-            started_key="download.engine.started",
-            completed_key="download.engine.completed",
-            show_bulletins=show_bulletins,
-        )
 
     def _load(self, dex_data: bytes):
         class_path = "ru.n08i40k.streaks.Plugin"
@@ -433,125 +396,66 @@ class JvmPluginBridge:
 
 
 class ZipResourcesBridge:
+    """Unpacks the embedded resources archive into the plugin cache.
+
+    The extracted tree is stamped with the archive hash, so it is only unpacked
+    again after a plugin update actually changes the resources.
+    """
+
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
         self.cache_dir = get_plugin_cache_dir("plugins_resources_cache")
         os.makedirs(self.cache_dir, exist_ok=True)
-        self.zip_path = os.path.join(self.cache_dir, f"{__id__}-resources.zip")
         self.resources_root = os.path.join(self.cache_dir, "resources")
-        self.lock_path = f"{self.zip_path}.lock"
+        self.zip_path = os.path.join(self.cache_dir, f"{__id__}-resources.zip")
+        self.stamp_path = os.path.join(self.cache_dir, "resources.sha256")
+        self.lock_path = os.path.join(self.cache_dir, "resources.lock")
 
     def load(self) -> Optional[str]:
-        if DEBUG_MODE:
-            return self._load_debug()
-
-        expected_sha256 = str(RESOURCES_SHA256).strip().lower()
-        cached_sha256 = self._compute_file_sha256(self.zip_path)
-
-        if cached_sha256 == expected_sha256:
-            if not os.path.isdir(self.resources_root):
-                self.plugin.log(
-                    "Resources ZIP is cached, but unpacked files are missing. Extracting..."
-                )
-                lock_fd = self._acquire_lock(blocking=True)
-                try:
-                    if not os.path.isdir(self.resources_root):
-                        self._extract_zip()
-                finally:
-                    self._release_lock(lock_fd)
-            return self.resources_root if os.path.isdir(self.resources_root) else None
-
-        if cached_sha256 is not None:
-            self.plugin.log(
-                f"Cached resources ZIP SHA256 mismatch (cached={cached_sha256}, expected={expected_sha256}). Downloading correct version..."
-            )
-        else:
-            self.plugin.log("Cached resources ZIP not found. Downloading...")
-
-        lock_fd = self._acquire_lock(blocking=False)
-        if lock_fd is None:
-            self.plugin.log("Resources ZIP update is already in progress. Waiting...")
-            lock_fd = self._acquire_lock(blocking=True)
-            self._release_lock(lock_fd)
-
-            if self._compute_file_sha256(self.zip_path) != expected_sha256:
-                self.plugin.log(
-                    "Resources ZIP update finished, but SHA256 still mismatches. Aborting..."
-                )
-                return None
-
-            return self.resources_root if os.path.isdir(self.resources_root) else None
-
         try:
-            try:
-                zip_data = self._download(show_bulletins=True)
-            except DownloadFailedError:
-                return None
+            zip_data = self.plugin.assets.read(RESOURCES_BLOCK, "resources.zip")
+        except EmbeddedAssetError as e:
+            self.plugin.log(f"Failed to read embedded resources ZIP: {e}")
+            self.plugin._show_assets_damaged_dialog("resources.zip")
+            return None
 
-            downloaded_sha256 = _sha256_hex(zip_data)
-            if downloaded_sha256 != expected_sha256:
-                self.plugin._show_sha256_mismatch_dialog(
-                    "resources.zip", downloaded_sha256, expected_sha256
-                )
-                return None
+        expected_sha256 = _sha256_hex(zip_data)
 
-            self._write_zip_file(zip_data)
-            self._extract_zip()
+        if self._is_extracted(expected_sha256):
+            return self.resources_root
+
+        self.plugin.log("Embedded resources are not unpacked yet. Extracting...")
+
+        lock_fd = self._acquire_lock()
+        try:
+            # another process may have won the race while we waited for the lock
+            if not self._is_extracted(expected_sha256):
+                self._extract_zip(zip_data, expected_sha256)
         finally:
             self._release_lock(lock_fd)
 
-        return self.resources_root if os.path.isdir(self.resources_root) else None
-
-    def _load_debug(self) -> Optional[str]:
-        lock_fd = self._acquire_lock(blocking=False)
-        if lock_fd is not None:
-            try:
-                self.plugin.log(
-                    "Debug mode enabled. Downloading resources ZIP without SHA256 checks..."
-                )
-                try:
-                    zip_data = self._download(show_bulletins=True)
-                except DownloadFailedError:
-                    return None
-
-                self._write_zip_file(zip_data)
-                self._extract_zip()
-            finally:
-                self._release_lock(lock_fd)
-        else:
-            self.plugin.log("Resources ZIP download is already in progress. Waiting...")
-            wait_lock_fd = self._acquire_lock(blocking=True)
-            self._release_lock(wait_lock_fd)
-
-        return self.resources_root if os.path.isdir(self.resources_root) else None
-
-    def _compute_file_sha256(self, path: str) -> Optional[str]:
-        if not os.path.exists(path):
+        if not self._is_extracted(expected_sha256):
+            self.plugin._show_error(self.plugin._t("status.error.assets.unpack_failed"))
             return None
+
+        return self.resources_root
+
+    def _is_extracted(self, expected_sha256: str) -> bool:
+        if not os.path.isdir(self.resources_root):
+            return False
 
         try:
-            with open(path, "rb") as f:
-                return _sha256_hex(f.read())
-        except Exception as e:
-            self.plugin.log_exception(
-                "Failed to read cached resources ZIP for SHA256", e
-            )
-            return None
+            with open(self.stamp_path, "r", encoding="utf-8") as f:
+                return f.read().strip() == expected_sha256
+        except OSError:
+            return False
 
-    def _write_zip_file(self, zip_data: bytes):
-        with open(self.zip_path, "wb") as f:
-            f.write(zip_data)
-
-    def _acquire_lock(self, blocking: bool) -> Optional[int]:
+    def _acquire_lock(self) -> int:
         lock_fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o666)
-        lock_flags = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
 
         try:
-            fcntl.flock(lock_fd, lock_flags)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
             return lock_fd
-        except BlockingIOError:
-            os.close(lock_fd)
-            return None
         except Exception:
             os.close(lock_fd)
             raise
@@ -562,16 +466,7 @@ class ZipResourcesBridge:
         finally:
             os.close(lock_fd)
 
-    def _download(self, show_bulletins: bool) -> bytes:
-        return self.plugin._download_with_progress(
-            url=RESOURCES_URL,
-            label="resources.zip",
-            started_key="download.assets.started",
-            completed_key="download.assets.completed",
-            show_bulletins=show_bulletins,
-        )
-
-    def _extract_zip(self):
+    def _extract_zip(self, zip_data: bytes, expected_sha256: str):
         staging_root = os.path.join(self.cache_dir, "resources-staging")
 
         if os.path.isdir(staging_root):
@@ -580,6 +475,9 @@ class ZipResourcesBridge:
         os.makedirs(staging_root, exist_ok=True)
 
         try:
+            with open(self.zip_path, "wb") as f:
+                f.write(zip_data)
+
             with zipfile.ZipFile(self.zip_path) as zip_file:
                 for member in zip_file.namelist():
                     normalized = member.replace("\\", "/")
@@ -600,16 +498,29 @@ class ZipResourcesBridge:
             if not os.path.isdir(extracted_root):
                 raise RuntimeError("Resources ZIP does not contain resources/ root")
 
+            # the stamp is dropped first: a crash mid-swap must not leave it
+            # pointing at a half-replaced tree
+            if os.path.exists(self.stamp_path):
+                os.remove(self.stamp_path)
+
             if os.path.isdir(self.resources_root):
                 shutil.rmtree(self.resources_root)
 
             os.replace(extracted_root, self.resources_root)
-            self.plugin.log("Resources ZIP extracted successfully")
+
+            with open(self.stamp_path, "w", encoding="utf-8") as f:
+                f.write(expected_sha256)
+
+            self.plugin.log("Embedded resources extracted successfully")
         except Exception as e:
-            self.plugin.log_exception("Failed to extract resources ZIP", e)
+            self.plugin.log_exception("Failed to extract embedded resources", e)
         finally:
             if os.path.isdir(staging_root):
                 shutil.rmtree(staging_root)
+
+            # the archive is only a staging area: the embedded copy is the source of truth
+            if os.path.exists(self.zip_path):
+                os.remove(self.zip_path)
 
 
 class ChatContextMenu:
@@ -1155,10 +1066,8 @@ class TgStreaksPlugin(BasePlugin):
         self._show_update_restart_dialog(previous_version)
         return True
 
-    def _show_sha256_mismatch_dialog(
-        self, filename: str, hash: str, expected_hash: str
-    ):
-        self.log(f"SHA256 mismatch for {filename}: plugin disabled")
+    def _show_assets_damaged_dialog(self, filename: str):
+        self.log(f"Embedded {filename} is unusable: plugin load aborted")
 
         def show():
             try:
@@ -1166,14 +1075,7 @@ class TgStreaksPlugin(BasePlugin):
             except Exception:
                 fragment = None
 
-            title = self._t("dialog.sha256_mismatch.title")
-            message = self._t(
-                "dialog.sha256_mismatch.message",
-                filename=filename,
-                version=__version__,
-                hash=f"{hash[:4]}...{hash[-6:]}",
-                expected_hash=f"{expected_hash[:4]}...{expected_hash[-6:]}",
-            )
+            message = self._t("dialog.assets_damaged.message", filename=filename)
 
             if fragment is None:
                 self._show_error(message)
@@ -1182,70 +1084,19 @@ class TgStreaksPlugin(BasePlugin):
             try:
                 fragment.showDialog(
                     AlertDialog.Builder(fragment.getContext())
-                    .setTitle(String(title))
+                    .setTitle(String(self._t("dialog.assets_damaged.title")))
                     .setMessage(String(message))
                     .setPositiveButton(
-                        String(self._t("dialog.sha256_mismatch.ok")),
+                        String(self._t("dialog.assets_damaged.ok")),
                         None,  # ty:ignore[invalid-argument-type]
                     )
                     .create()
                 )
             except Exception as e:
-                self.log_exception("Failed to show SHA256 mismatch dialog", e)
+                self.log_exception("Failed to show damaged assets dialog", e)
                 self._show_error(message)
 
         run_on_ui_thread(show)
-
-    def _show_download_failed_dialog(self, filename: str):
-        self.log(f"Download failed for {filename}: plugin load aborted")
-
-        def show():
-            try:
-                fragment = get_last_fragment()
-            except Exception:
-                fragment = None
-
-            message = self._t("dialog.download_failed.message", filename=filename)
-
-            if fragment is None:
-                self.log("Download failed dialog deferred: UI context is unavailable")
-                self._schedule_download_failed_dialog_retry(filename)
-                return
-
-            self_outer = self
-
-            class RetryClickListener(dynamic_proxy(AlertDialog.OnButtonClickListener)):
-                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
-                    self_outer._continue_plugin_load()
-
-            try:
-                fragment.showDialog(
-                    AlertDialog.Builder(fragment.getContext())
-                    .setTitle(String(self._t("dialog.download_failed.title")))
-                    .setMessage(String(message))
-                    .setPositiveButton(
-                        String(self._t("dialog.download_failed.retry")),
-                        RetryClickListener(),
-                    )
-                    .setNegativeButton(
-                        String(self._t("dialog.download_failed.cancel")),
-                        None,  # ty:ignore[invalid-argument-type]
-                    )
-                    .create()
-                )
-            except Exception as e:
-                self.log_exception("Failed to show download failed dialog", e)
-                self._show_error(message)
-
-        run_on_ui_thread(show)
-
-    def _schedule_download_failed_dialog_retry(self, filename: str):
-        timer = threading.Timer(
-            1.0,
-            lambda: self._show_download_failed_dialog(filename),
-        )
-        timer.daemon = True
-        timer.start()
 
     def _show_update_restart_dialog(self, previous_version: str):
         def show():
@@ -1404,117 +1255,6 @@ class TgStreaksPlugin(BasePlugin):
                 self.on_plugin_load()
 
         run_on_ui_thread(restart)
-
-    def _show_download_progress(self, title: str, subtitle: str):
-        def show():
-            try:
-                BulletinHelper.show_two_line(title, subtitle, R_tg.raw.ic_download)
-            except Exception as e:
-                self.log_exception("Failed to show download progress bulletin", e)
-                self._show_info(f"{title}\n{subtitle}")
-
-        run_on_ui_thread(show)
-
-    def _format_download_size(self, byte_count: float) -> str:
-        value = float(max(byte_count, 0.0))
-        units = ("B", "KB", "MB", "GB")
-        unit_index = 0
-
-        while value >= 1024.0 and unit_index < len(units) - 1:
-            value /= 1024.0
-            unit_index += 1
-
-        if unit_index == 0:
-            return f"{int(value)} {units[unit_index]}"
-
-        return f"{value:.1f} {units[unit_index]}"
-
-    def _format_eta(self, seconds: float) -> str:
-        total_seconds = int(max(seconds, 0.0))
-        minutes, secs = divmod(total_seconds, 60)
-        hours, mins = divmod(minutes, 60)
-
-        if hours > 0:
-            return f"{hours}h {mins:02d}m"
-        if minutes > 0:
-            return f"{minutes}m {secs:02d}s"
-        return f"{secs}s"
-
-    def _download_with_progress(
-        self,
-        url: str,
-        label: str,
-        started_key: str,
-        completed_key: str,
-        show_bulletins: bool,
-    ) -> bytes:
-        if show_bulletins:
-            self._show_info(self._t(started_key))
-
-        try:
-            response = requests.get(url, timeout=10, stream=True)
-            if response.status_code != 200:
-                raise DownloadFailedError(f"HTTP {response.status_code} for {url}")
-
-            total_bytes = int(response.headers.get("content-length", "0") or "0")
-            downloaded = 0
-            chunks: list[bytes] = []
-            started_at = time.monotonic()
-            last_progress_at = 0.0
-
-            for chunk in response.iter_content(chunk_size=64 * 1024):
-                if not chunk:
-                    continue
-
-                chunks.append(chunk)
-                downloaded += len(chunk)
-
-                if not show_bulletins:
-                    continue
-
-                now = time.monotonic()
-                if total_bytes > 0 and downloaded >= total_bytes:
-                    continue
-
-                if (now - last_progress_at) < 0.8:
-                    continue
-
-                elapsed = max(now - started_at, 0.001)
-                speed = downloaded / elapsed
-                title = self._t(started_key)
-
-                if total_bytes > 0 and speed > 1.0:
-                    remaining_seconds = (total_bytes - downloaded) / speed
-                    subtitle = self._t(
-                        "download.progress.known_total",
-                        percent=str(int(downloaded * 100 / total_bytes)),
-                        downloaded=self._format_download_size(downloaded),
-                        total=self._format_download_size(total_bytes),
-                        eta=self._format_eta(remaining_seconds),
-                    )
-                else:
-                    subtitle = self._t(
-                        "download.progress.unknown_total",
-                        downloaded=self._format_download_size(downloaded),
-                    )
-
-                self._show_download_progress(title, subtitle)
-                last_progress_at = now
-
-            payload = b"".join(chunks)
-        except DownloadFailedError as e:
-            self.log(f"Failed to download {url}: {e}")
-            self._show_download_failed_dialog(label)
-            raise
-        except Exception as e:
-            self.log_exception(f"Failed to download {url}", e)
-            self._show_download_failed_dialog(label)
-            raise DownloadFailedError(str(e)) from e
-
-        if show_bulletins:
-            self._show_success(self._t(completed_key))
-
-        return payload
 
     def _is_update_check_enabled(self) -> bool:
         try:
@@ -1701,9 +1441,9 @@ class TgStreaksPlugin(BasePlugin):
         return True
 
     def _prepare_jvm_plugin(self) -> bool:
-        """Verifies/downloads the DEX and resources. Any download failure is
-        reported (with a retry dialog) by JvmPluginBridge.load() /
-        ZipResourcesBridge.load() themselves, at the point it happens."""
+        """Loads the embedded DEX and unpacks the embedded resources. A damaged
+        or missing payload is reported (with a dialog) by JvmPluginBridge.load()
+        / ZipResourcesBridge.load() themselves, at the point it happens."""
         self.jvm_plugin = JvmPluginBridge(self)
         self.jvm_plugin.load()
 
@@ -2105,6 +1845,7 @@ class TgStreaksPlugin(BasePlugin):
         self._ejected = False
 
         try:
+            self.assets = EmbeddedAssets(self)
             self.resources_bridge = ZipResourcesBridge(self)
             self._full_load_started = False
 
@@ -2165,3 +1906,9 @@ class TgStreaksPlugin(BasePlugin):
         jvm_plugin = getattr(self, "jvm_plugin", None)
         if jvm_plugin is not None:
             jvm_plugin.klass = None
+
+
+# === EMDEDDED DEX BEGIN ===
+# === EMDEDDED DEX END ===
+# === EMDEDDED RESOURCES BEGIN ===
+# === EMDEDDED RESOURCES END ===

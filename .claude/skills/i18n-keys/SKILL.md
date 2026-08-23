@@ -1,11 +1,11 @@
 ---
 name: i18n-keys
-description: Manage translation keys (I18N_* dicts) in plugin/tg-streaks.py — create, delete, rename, and edit translated text — without reading/editing the raw file by hand. Use this whenever a task touches a "sheet.*", "menu.*", "status.*", "dialog.*" etc. translation key in plugin/tg-streaks.py.
+description: Manage translation keys (I18N_* dicts) in tg-streaks.py — create, delete, rename, and edit translated text — without reading/editing the raw file by hand. Use this whenever a task touches a "sheet.*", "menu.*", "status.*", "dialog.*" etc. translation key in tg-streaks.py.
 ---
 
 # i18n-keys
 
-`plugin/tg-streaks.py` has a large block of `I18N_*` dicts (`I18N_SETTINGS`,
+`tg-streaks.py` has a large block of `I18N_*` dicts (`I18N_SETTINGS`,
 `I18N_STATUS`, `I18N_SHEETS`, ...) merged into `I18N_STRINGS`, each mapping a
 dotted key like `"sheet.pet.streak_days"` to `{"en": ..., "ru": ...}`. Editing
 these by hand with Read/Edit burns a lot of context on a 2800+ line file.
@@ -30,7 +30,7 @@ python3 .claude/skills/i18n-keys/scripts/i18n_tool.py <command> ...
   an existing key (leaves an omitted language untouched).
 - `rename <old_key> <new_key>` — renames the dict key and rewrites every
   quoted reference to it elsewhere in `tg-streaks.py`, **and** in
-  `dex/src/main/kotlin/ru/n08i40k/streaks/constants/TranslationKey.kt` (the
+  `src/main/kotlin/ru/n08i40k/streaks/constants/TranslationKey.kt` (the
   Kotlin side mirrors these keys as `const val` string literals).
 - `rm <key> [--force]` — deletes a key. Refuses (exit 1) and prints every
   remaining reference in `tg-streaks.py`/`TranslationKey.kt` if the key is
@@ -43,7 +43,7 @@ Use literal `\n` in `--en`/`--ru` values for embedded newlines (e.g.
 
 ## Placeholder syntax (Python only — no plurals here)
 
-This skill only manages `plugin/tg-streaks.py`'s own keys (`I18N_SETTINGS`,
+This skill only manages `tg-streaks.py`'s own keys (`I18N_SETTINGS`,
 `I18N_STATUS`, `I18N_MENU`, `I18N_DIALOGS`, `I18N_UPDATE`, `I18N_DOWNLOAD`).
 Since the i18n4k migration ([[project-i18n4k-migration]]), DEX no longer
 reads strings from Python at all, and Python's `_t()` helper is just
@@ -59,7 +59,7 @@ reads strings from Python at all, and Python's `_t()` helper is just
 - Shell-quote values that contain `{`/`}` so the shell doesn't eat them.
 
 **Plurals are a DEX-only feature.** DEX strings live in
-`dex/src/main/i18n/Strings_en.properties` / `Strings_ru.properties` and are
+`src/main/i18n/Strings_en.properties` / `Strings_ru.properties` and are
 compiled by i18n4k, which has its own `{name}` MessageFormat parser with
 `select`/exact-value-match plural support (see `MessageSelectFormatter` —
 exact/regex value matching, not CLDR one/few/many categories). Those files
@@ -73,7 +73,7 @@ Python `I18N_*` key.
 1. Recursively re-sorts **all** `I18N_*` dicts (top-level keys, and the
    per-language keys within each) alphabetically — not just the group you
    touched.
-2. Runs `uv run ruff format tg-streaks.py` (cwd `plugin/`) to normalize style.
+2. Runs `uv run ruff format tg-streaks.py` (repo root) to normalize style.
 3. Runs `uv run ty check tg-streaks.py` and prints diagnostics for review —
    informational only, it does not block the operation (there are 2
    pre-existing unrelated diagnostics in this file as of writing).

@@ -1,3 +1,30 @@
+# Python-generated files
+__pycache__/
+.ruff_cache/
+*.py[oc]
+/dist
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Stubs
+stubs/
+
+# Gradle / Android
+*.iml
+.gradle
+/build
+/.idea/
+/.kotlin/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Misc
+.DS_Store
 tmp/
 src-resources/
 external/

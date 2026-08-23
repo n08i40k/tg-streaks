@@ -77,7 +77,7 @@ logging and build files unless behaviour changed.
 | `controller/ServiceMessage*.kt`, `hook/impl/ServiceMessagesHookBundle.kt`, `ui/ServiceMessageCategoriesFragment.kt` | `features/service-messages.mdx`, `control-panel.mdx` |
 | `chat_history_fetcher/**`, `ui/rebuild/**` | `features/rebuild.mdx` |
 | `ui/StreakControlFragment.kt`, `ui/TimeZoneSelectFragment.kt`, `controller/TimeZonesController.kt` | `control-panel.mdx` |
-| plugin settings UI in `plugin/tg-streaks.py` (`I18N_SETTINGS`, `create_settings`) | `settings.mdx` |
+| plugin settings UI in `tg-streaks.py` (`I18N_SETTINGS`, `create_settings`) | `settings.mdx` |
 | chat menu entries (`hook/impl/*HookBundle.kt`, menu items in `tg-streaks.py`) | `chat-menu.mdx` |
 | `database/**` backup/restore, reset | `backups.mdx` |
 | updater / release flow in `tg-streaks.py`, `scripts/prepare_release.py` | `updates.mdx`, `installation.mdx` |
@@ -97,7 +97,7 @@ the user rather than silently inventing a large page.
 
 Docs name buttons and settings exactly as the app does. Do not invent labels:
 
-- DEX strings: `dex/src/main/i18n/Strings_ru.properties`.
+- DEX strings: `src/main/i18n/Strings_ru.properties`.
 - Python-side strings: use the **i18n-keys** skill (`i18n_tool.py get|find`),
   never read the raw dicts.
 
