@@ -296,6 +296,18 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "ru": "Выбрать с устройства...",
     },
     "dialog.backup_restore.title": {"en": "Choose backup", "ru": "Выберите бэкап"},
+    "dialog.downgrade.channel": {
+        "en": "Updates channel",
+        "ru": "Канал с обновлениями",
+    },
+    "dialog.downgrade.message": {
+        "en": "Streaks was downgraded from {previous} to {current}. Old versions cannot work with data written by a newer one, so the plugin will not load and can crash the client. Install {previous} or newer from the updates channel.",
+        "ru": "Streaks понижен с {previous} до {current}. Старая версия не умеет работать с данными новой, поэтому плагин не будет загружен и может крашить клиент. Установите {previous} или новее из канала с обновлениями.",
+    },
+    "dialog.downgrade.title": {
+        "en": "Plugin version downgraded",
+        "ru": "Версия плагина понижена",
+    },
     "dialog.load_crash.message": {
         "en": "tg-streaks failed to load at stage '{stage}'.\n\nA crash report has been copied to the clipboard — you can send it to the plugin's chat.",
         "ru": "Не удалось загрузить tg-streaks на этапе «{stage}».\n\nОтчёт скопирован в буфер обмена — вы можете отправить его в чат плагина.",
@@ -1206,6 +1218,81 @@ class TgStreaksPlugin(BasePlugin):
         except Exception as e:
             self.log_exception("Failed to persist last loaded plugin version", e)
 
+    def _should_block_load_for_downgrade(self) -> bool:
+        if DEBUG_MODE:
+            return False
+
+        previous_version = self._get_last_loaded_version()
+
+        if len(previous_version) == 0 or not _is_version_older(
+            __version__, previous_version
+        ):
+            return False
+
+        self.log(
+            f"Plugin was downgraded from {previous_version} to {__version__}: "
+            "load aborted"
+        )
+        self._show_downgrade_dialog(previous_version)
+
+        return True
+
+    def _show_downgrade_dialog(self, previous_version: str):
+        def show():
+            try:
+                fragment = get_last_fragment()
+            except Exception:
+                fragment = None
+
+            if fragment is None:
+                self.log("Downgrade dialog deferred: UI context is unavailable")
+                self._schedule_downgrade_dialog_retry(previous_version)
+                return
+
+            self_outer = self
+
+            class ChannelClickListener(
+                dynamic_proxy(AlertDialog.OnButtonClickListener)
+            ):
+                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
+                    self_outer._open_telegram_url(PLUGIN_UPDATE_TG_URL)
+
+            message = self._t(
+                "dialog.downgrade.message",
+                previous=previous_version,
+                current=__version__,
+            )
+
+            try:
+                dialog = (
+                    AlertDialog.Builder(fragment.getContext())
+                    .setTitle(String(self._t("dialog.downgrade.title")))
+                    .setMessage(String(message))
+                    .setPositiveButton(
+                        String(self._t("dialog.downgrade.channel")),
+                        ChannelClickListener(),
+                    )
+                    .create()
+                )
+                dialog.setCancelable(False)
+                dialog.setCanceledOnTouchOutside(False)
+
+                fragment.showDialog(dialog)
+            except Exception as e:
+                self.log_exception("Failed to show downgrade dialog", e)
+                self._show_error(message)
+                self._schedule_downgrade_dialog_retry(previous_version)
+
+        run_on_ui_thread(show)
+
+    def _schedule_downgrade_dialog_retry(self, previous_version: str):
+        timer = threading.Timer(
+            1.0,
+            lambda: self._show_downgrade_dialog(previous_version),
+        )
+        timer.daemon = True
+        timer.start()
+
     def _should_pause_full_load_for_update(self) -> bool:
         previous_version = self._get_last_loaded_version()
 
@@ -2034,6 +2121,9 @@ class TgStreaksPlugin(BasePlugin):
             self.assets = EmbeddedAssets(self)
             self.resources_bridge = ZipResourcesBridge(self)
             self._full_load_started = False
+
+            if self._should_block_load_for_downgrade():
+                return None
 
             if allow_update_pause and self._should_pause_full_load_for_update():
                 return None
