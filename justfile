@@ -7,7 +7,7 @@ RESOURCES_ZIP := `realpath -m build/resources.zip`
 # badges-sdk release pinned for this plugin: the compat AAR is a build input and
 # the .plugin is embedded into the release build so it can be installed on device
 BADGES_SDK_REPO := "n08i40k/badges-sdk"
-BADGES_SDK_VERSION := "1.0.0"
+BADGES_SDK_VERSION := "1.0.1"
 BADGES_SDK_PLUGIN := `realpath -m build/badges-sdk/badges-sdk.plugin`
 BADGES_SDK_COMPAT_AAR := `realpath -m libs/badges-sdk-compat.aar`
 
@@ -63,13 +63,13 @@ badges-sdk-local PATH_TO_AAR:
     cp '{{ PATH_TO_AAR }}' '{{ BADGES_SDK_COMPAT_AAR }}'
 
 # build the release DEX and pack the resources
-ci: (_require "java") (badges-sdk) (resources)
+ci: (_require "java") badges-sdk resources
     ./gradlew buildDexRelease
     cp {{ RELEASE_DEX_PATH }} ./
 
 # embed a DEX (default: release), the resources and the pinned badges-sdk into a
 # distributable copy of the plugin .py; without a fetched SDK (dev) it is left out
-embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY: (_require "uv") (resources)
+embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY: (_require "uv") resources
     #!/usr/bin/env bash
     set -euo pipefail
 
