@@ -80,7 +80,7 @@ class RebuildBottomSheet(
         super.onStop()
     }
 
-    override fun onEject() = dismiss()
+    override fun onEject() = runOnMainThread { dismiss() }
 
     private class AvatarListView(
         context: Context,
