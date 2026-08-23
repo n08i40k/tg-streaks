@@ -16,6 +16,7 @@ stubs/
 *.iml
 .gradle
 /build
+/classes.dex
 /.idea/
 /.kotlin/
 /captures
