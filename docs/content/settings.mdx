@@ -1,4 +1,5 @@
 import { Screenshot } from "../components/Screenshot";
+import { SettingLink } from "../components/SettingLink";
 
 # Настройки
 
@@ -12,6 +13,16 @@ import { Screenshot } from "../components/Screenshot";
   dark="settings/overview-dark.jpg"
   caption="Экран настроек плагина Streaks целиком"
 />
+
+## Ссылки на настройки
+
+У каждой настройки ниже есть кнопка «Открыть настройку в клиенте». Она ведёт на
+ссылку вида `https://t.me/exteraSettings?p=tg-streaks&s=<id>` — exteraGram
+перехватывает такие ссылки, открывает настройки плагина и прокручивает список
+к нужному пункту.
+
+Ссылку на любую настройку можно получить и в самом клиенте: долгое нажатие на
+пункт настроек предлагает скопировать ссылку на него.
 
 ## Обновления
 
@@ -28,6 +39,8 @@ import { Screenshot } from "../components/Screenshot";
   caption="Настройка «Проверка обновлений»"
 />
 
+<SettingLink alias="update-check" />
+
 ## Серийчик
 
 ### Размер кнопки
@@ -40,6 +53,8 @@ import { Screenshot } from "../components/Screenshot";
   dark="settings/pet-button-size-dark.jpg"
   caption="Настройка «Размер кнопки» серийчика"
 />
+
+<SettingLink alias="pet-button-size" />
 
 ## Стрик
 
@@ -62,6 +77,8 @@ import { Screenshot } from "../components/Screenshot";
   caption="Настройка «Автосоздание стриков»"
 />
 
+<SettingLink alias="auto-create" />
+
 ### Эмодзи-паки
 
 Открывает экран выбора [набора эмодзи](/features/emoji-packs) — какая эмодзи и
@@ -74,6 +91,8 @@ import { Screenshot } from "../components/Screenshot";
   caption="Настройка «Эмодзи-паки»"
 />
 
+<SettingLink alias="emoji-packs" />
+
 ### Пересчёт стриков в личках
 
 Массовый [пересчёт](/features/rebuild#три-варианта-запуска) стриков во всех
@@ -85,6 +104,8 @@ import { Screenshot } from "../components/Screenshot";
   dark="settings/rebuild-all-dark.jpg"
   caption="Настройка «Пересчёт стриков в личках»"
 />
+
+<SettingLink alias="rebuild-all" />
 
 ## Бэкапы
 
@@ -103,6 +124,8 @@ import { Screenshot } from "../components/Screenshot";
   caption="Кнопка «Создать бэкап»"
 />
 
+<SettingLink alias="backup-create" />
+
 ### Восстановить бэкап
 
 Открывает список бэкапов (или выбор файла с устройства) для восстановления.
@@ -113,6 +136,8 @@ import { Screenshot } from "../components/Screenshot";
   dark="settings/backup-restore-dark.jpg"
   caption="Кнопка «Восстановить бэкап»"
 />
+
+<SettingLink alias="backup-restore" />
 
 ### Сбросить базу плагина
 
@@ -125,8 +150,12 @@ import { Screenshot } from "../components/Screenshot";
   caption="Кнопка «Сбросить базу плагина»"
 />
 
+<SettingLink alias="backup-reset" />
+
 ## Справка
 
 ### Документация
 
 Открывает это руководство в браузере.
+
+<SettingLink alias="docs" />

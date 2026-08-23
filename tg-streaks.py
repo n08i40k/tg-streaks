@@ -897,6 +897,7 @@ class SettingsActions:
                 items=[f"{size} dp" for size in PET_FAB_SIZE_OPTIONS_DP],
                 icon="msg_customize",
                 on_change=lambda value: self.plugin._on_pet_fab_size_changed(value),
+                link_alias="pet-button-size",
             ),
             Divider(text=self.plugin._t("settings.pet_button.size.description")),
             Header(text=self.plugin._t("settings.streak_tools.title")),
@@ -909,16 +910,19 @@ class SettingsActions:
                 on_change=lambda value: self.plugin._on_auto_streak_creation_changed(
                     value
                 ),
+                link_alias="auto-create",
             ),
             Text(
                 text=self.plugin._t("settings.streak_tools.emoji_packs.title"),
                 icon="msg_emoji_smiles",
                 on_click=lambda _: self._on_click(self.OPEN_EMOJI_PACKS),
+                link_alias="emoji-packs",
             ),
             Text(
                 text=self.plugin._t("settings.streak_tools.rebuild_all_chats.title"),
                 icon="msg_retry",
                 on_click=lambda _: self._on_click(self.REBUILD_ALL),
+                link_alias="rebuild-all",
             ),
             Divider(
                 text=self.plugin._t(
@@ -930,16 +934,19 @@ class SettingsActions:
                 text=self.plugin._t("settings.backups.export.title"),
                 icon="msg_download",
                 on_click=lambda _: self._on_click(self.EXPORT_BACKUP_NOW),
+                link_alias="backup-create",
             ),
             Text(
                 text=self.plugin._t("settings.backups.restore.title"),
                 icon="msg_reset",
                 on_click=lambda _: self.plugin._show_restore_backup_file_dialog(),
+                link_alias="backup-restore",
             ),
             Text(
                 text=self.plugin._t("settings.backups.reset_database.title"),
                 icon="msg_delete",
                 on_click=lambda _: self.plugin._schedule_database_reset_reinitialize(),
+                link_alias="backup-reset",
             ),
             Divider(text=self.plugin._t("settings.backups.description")),
         ]
@@ -1161,6 +1168,7 @@ class TgStreaksPlugin(BasePlugin):
                 subtext=self._t("settings.updates.auto_check.description"),
                 icon="msg_retry",
                 on_change=lambda value: self._on_update_check_setting_changed(value),
+                link_alias="update-check",
             ),
             *self.settings_actions.build_settings(),
             Header(text=self._t("settings.help.title")),
@@ -1168,6 +1176,7 @@ class TgStreaksPlugin(BasePlugin):
                 text=self._t("settings.help.docs.title"),
                 icon="msg_info",
                 on_click=lambda _: self._open_browser_url(PLUGIN_DOCS_URL),
+                link_alias="docs",
             ),
             Divider(text=self._t("settings.help.docs.description")),
         ]
