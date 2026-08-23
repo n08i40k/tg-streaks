@@ -1050,9 +1050,6 @@ class StreaksController(
     fun exists(accountId: Int, peerUserId: Long): Boolean =
         cache.contains(Pair(UserConfig.getInstance(accountId).clientUserId, peerUserId))
 
-    suspend fun getAllVisible(): List<Streak> = dao.getAll()
-        .filter { !it.ended && it.isVisible }
-
     fun getViewData(accountId: Int, peerUserId: Long): StreakViewData? =
         viewCache[Pair(UserConfig.getInstance(accountId).clientUserId, peerUserId)]
 

@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.launchIn
@@ -63,7 +62,6 @@ import ru.n08i40k.streaks.extension.onEachWithOnMainThread
 import ru.n08i40k.streaks.extension.onEachWithOnMainThreadBlocking
 import ru.n08i40k.streaks.extension.resolveLanguageCode
 import ru.n08i40k.streaks.extension.toLocalDate
-import ru.n08i40k.streaks.extension.userConfigAuthorizedIds
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.PremiumPreviewBottomSheetHookBundle
