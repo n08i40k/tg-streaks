@@ -91,6 +91,8 @@ class StreaksController(
         LimitReached,
     }
 
+    private val autoCreationEnabled = AtomicBoolean(true)
+
     private val rebuildLock = AtomicBoolean(false)
 
     private val cachedFetcher: ChatHistoryFetcher = CachedChatHistoryFetcher()
@@ -195,6 +197,10 @@ class StreaksController(
         }
 
         Logger.info("Removed streak for invalid peer $accountId:$peerUserId")
+    }
+
+    fun setAutoCreationEnabled(enabled: Boolean) {
+        autoCreationEnabled.set(enabled)
     }
 
     fun isRebuildRunning(): Boolean =
@@ -854,6 +860,9 @@ class StreaksController(
         val streak = dao.findByRelation(ownerUserId, peerUserId) ?: run {
             // forbid streak creation for bots
             if (peerType == PeerType.BOT)
+                return
+
+            if (!autoCreationEnabled.get())
                 return
 
             val timeZone = timeZonesController.get(ownerUserId, peerUserId)

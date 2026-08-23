@@ -199,6 +199,11 @@ class Plugin {
             petUiManager.setFabSizeDp(sizeDp)
         }
 
+        @JvmStatic
+        fun setAutoStreakCreationEnabled(enabled: Boolean) = with(INSTANCE!!) {
+            streaksController.setAutoCreationEnabled(enabled)
+        }
+
         @Synchronized
         private fun ejectSynchronized() {
             Logger.tryOrFatal("Failed to eject plugin") {

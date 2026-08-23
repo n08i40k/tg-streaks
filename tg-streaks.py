@@ -20,7 +20,7 @@ from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
 from client_utils import get_last_fragment
 from com.exteragram.messenger.plugins import PluginsController
 from dalvik.system import InMemoryDexClassLoader
-from java.lang import Class, Integer, Long, String
+from java.lang import Boolean, Class, Integer, Long, String
 from java.nio import ByteBuffer
 from java.util import Locale
 from org.telegram.messenger import ApplicationLoader, LocaleController
@@ -76,6 +76,7 @@ UPDATE_CHECK_TIMEOUT_SECONDS = 6
 SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
 SETTING_LAST_LOADED_VERSION = "last_loaded_version"
 SETTING_PET_FAB_SIZE_INDEX = "pet_fab_size_index"
+SETTING_AUTO_STREAK_CREATION_ENABLED = "auto_streak_creation_enabled"
 PET_FAB_SIZE_OPTIONS_DP = (64, 80, 96, 112, 128)
 VALID_ISO_LANGUAGES = frozenset(str(code) for code in Locale.getISOLanguages())
 
@@ -140,6 +141,14 @@ I18N_SETTINGS: dict[str, dict[str, str]] = {
     },
     "settings.pet_button.size.title": {"en": "Button size", "ru": "Размер кнопки"},
     "settings.pet_button.title": {"en": "Streak pet", "ru": "Серийчик"},
+    "settings.streak_tools.auto_create.description": {
+        "en": "Streaks start on their own while chatting. When off, a streak appears only after a rebuild.",
+        "ru": "Стрики создаются сами во время переписки. Если выключено, стрик появится только после пересчёта.",
+    },
+    "settings.streak_tools.auto_create.title": {
+        "en": "Automatic streak creation",
+        "ru": "Автосоздание стриков",
+    },
     "settings.streak_tools.emoji_packs.title": {
         "en": "Emoji packs",
         "ru": "Эмодзи-паки",
@@ -891,6 +900,16 @@ class SettingsActions:
             ),
             Divider(text=self.plugin._t("settings.pet_button.size.description")),
             Header(text=self.plugin._t("settings.streak_tools.title")),
+            Switch(
+                key=SETTING_AUTO_STREAK_CREATION_ENABLED,
+                text=self.plugin._t("settings.streak_tools.auto_create.title"),
+                default=self.plugin._is_auto_streak_creation_enabled(),
+                subtext=self.plugin._t("settings.streak_tools.auto_create.description"),
+                icon="msg_add",
+                on_change=lambda value: self.plugin._on_auto_streak_creation_changed(
+                    value
+                ),
+            ),
             Text(
                 text=self.plugin._t("settings.streak_tools.emoji_packs.title"),
                 icon="msg_emoji_smiles",
@@ -1384,6 +1403,38 @@ class TgStreaksPlugin(BasePlugin):
         except Exception:
             return True
 
+    def _is_auto_streak_creation_enabled(self) -> bool:
+        try:
+            return bool(self.get_setting(SETTING_AUTO_STREAK_CREATION_ENABLED, True))
+        except Exception:
+            return True
+
+    def _apply_auto_streak_creation(self, enabled: bool):
+        if self.jvm_plugin.klass is None:
+            self.log("Auto streak creation update skipped: JVM plugin is not loaded")
+            return
+
+        try:
+            self.jvm_plugin.klass.getDeclaredMethod(
+                String("setAutoStreakCreationEnabled"),
+                Boolean.TYPE,
+            ).invoke(
+                None,
+                Boolean(bool(enabled)),
+            )
+        except Exception as e:
+            self.log_exception("Failed to apply auto streak creation setting", e)
+
+    def _on_auto_streak_creation_changed(self, value: bool):
+        enabled = bool(value)
+
+        try:
+            self.set_setting(SETTING_AUTO_STREAK_CREATION_ENABLED, enabled)
+        except Exception as e:
+            self.log_exception("Failed to persist auto streak creation setting", e)
+
+        self._apply_auto_streak_creation(enabled)
+
     def _get_pet_fab_size_index(self) -> int:
         default_index = 1
 
@@ -1605,6 +1656,7 @@ class TgStreaksPlugin(BasePlugin):
 
             self.log("JVM plugin injected successfully")
             self._apply_pet_fab_size_dp(self._get_pet_fab_size_dp())
+            self._apply_auto_streak_creation(self._is_auto_streak_creation_enabled())
         except Exception as e:
             self._handle_load_failure("inject", e)
             self.on_plugin_eject()
