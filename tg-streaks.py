@@ -583,49 +583,115 @@ class BadgesSdkBootstrap:
 
     def ensure_installed(self, attempt: int = 0):
         try:
-            if attempt == 0:
-                self._retry(attempt, self.ensure_installed, "first attempt")
-                return
-
             controller = PluginsController.getInstance()
             plugin = controller.plugins.get(BADGES_SDK_ID)
 
-            plugin_version = None
-
-            if plugin is not None:
-                if not plugin.isEnabled():
-
-                    class EmptyCallback(dynamic_proxy(Utilities.Callback[String])):
-                        def run(self, arg0: String) -> None:
-                            pass
-
-                    controller.setPluginEnabled("badges-sdk", True, EmptyCallback())  # ty:ignore[invalid-argument-type]
-
-                    self._retry(attempt, self.ensure_installed, "enable badges sdk")
-                    return
-
-                plugin_version = str(plugin.getVersion())
-
-                if not _is_version_older(plugin_version, BADGES_SDK_VERSION):
-                    return
-
-            try:
-                payload = self.plugin.assets.read(
-                    BADGES_SDK_BLOCK, f"{BADGES_SDK_ID}.plugin"
-                )
-            except EmbeddedAssetError as e:
-                self.plugin.log(f"Badges SDK is not embedded into this build: {e}")
+            if plugin is None:
+                self._handle_unregistered(controller, attempt)
                 return
 
-            self._write_payload(payload)
+            if not plugin.isEnabled():
 
-            self.plugin.log(
-                f"Offering Badges SDK {BADGES_SDK_VERSION} "
-                f"(installed: {plugin_version or 'none'})"
-            )
-            self._show_install_dialog(attempt)
+                class EmptyCallback(dynamic_proxy(Utilities.Callback[String])):
+                    def run(self, arg0: String) -> None:
+                        pass
+
+                controller.setPluginEnabled(BADGES_SDK_ID, True, EmptyCallback())  # ty:ignore[invalid-argument-type]
+
+                self._retry(attempt, self.ensure_installed, "Badges SDK is disabled")
+                return
+
+            installed_version = str(plugin.getVersion())
+
+            if not _is_version_older(installed_version, BADGES_SDK_VERSION):
+                return
+
+            self._offer_install(installed_version, attempt)
         except Exception as e:
             self.plugin.log_exception("Failed to bootstrap Badges SDK", e)
+
+    def _handle_unregistered(self, controller: Any, attempt: int):
+        installed_version = self._version_on_disk(controller)
+
+        if installed_version is None or _is_version_older(
+            installed_version, BADGES_SDK_VERSION
+        ):
+            self._offer_install(installed_version, attempt)
+            return
+
+        self._retry(attempt, self.ensure_installed, "Badges SDK is not registered yet")
+
+    def _offer_install(self, installed_version: Optional[str], attempt: int):
+        try:
+            payload = self.plugin.assets.read(
+                BADGES_SDK_BLOCK, f"{BADGES_SDK_ID}.plugin"
+            )
+        except EmbeddedAssetError as e:
+            self.plugin.log(f"Badges SDK is not embedded into this build: {e}")
+            return
+
+        self._write_payload(payload)
+
+        self.plugin.log(
+            f"Offering Badges SDK {BADGES_SDK_VERSION} "
+            f"(installed: {installed_version or 'none'})"
+        )
+        self._show_install_dialog(attempt)
+
+    def _version_on_disk(self, controller: Any) -> Optional[str]:
+        path = self._installed_plugin_path(controller)
+
+        if path is None:
+            return None
+
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as source:
+                for index, line in enumerate(source):
+                    if index >= 200:
+                        break
+
+                    stripped = line.strip()
+
+                    if not stripped.startswith("__version__"):
+                        continue
+
+                    _, _, raw = stripped.partition("=")
+
+                    return raw.strip().strip("\"'") or None
+        except OSError as e:
+            self.plugin.log_exception("Failed to read installed Badges SDK", e)
+
+        return None
+
+    def _installed_plugin_path(self, controller: Any) -> Optional[str]:
+        directories: list[str] = []
+
+        plugins_dir_getter = globals().get("get_plugins_dir")
+        if callable(plugins_dir_getter):
+            try:
+                directories.append(str(plugins_dir_getter()))
+            except Exception as e:
+                self.plugin.log_exception("Failed to resolve plugins directory", e)
+
+        try:
+            plugins_dir = controller.getPluginsDir()
+
+            if plugins_dir is not None:
+                directories.append(str(plugins_dir.getAbsolutePath()))
+        except Exception as e:
+            self.plugin.log_exception("Failed to resolve plugins directory", e)
+
+        own_file = globals().get("__file__")
+        if isinstance(own_file, str) and own_file:
+            directories.append(os.path.dirname(own_file))
+
+        for directory in directories:
+            path = os.path.join(directory, f"{BADGES_SDK_ID}.py")
+
+            if os.path.isfile(path):
+                return path
+
+        return None
 
     def _write_payload(self, payload: bytes):
         os.makedirs(self.cache_dir, exist_ok=True)
