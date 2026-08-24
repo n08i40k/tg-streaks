@@ -41,6 +41,10 @@ loc: (_require "java")
 resources OUTPUT=RESOURCES_ZIP: (_require "uv")
     uv run python tools/pack_resources.py '{{ RESOURCES_DIR }}' '{{ OUTPUT }}'
 
+# re-encode the media tree in place
+optimize-media INPUT=RESOURCES_DIR *FLAGS: (_require "uv" "ffmpeg" "ffprobe")
+    uv run python tools/optimize_media.py '{{ INPUT }}' {{ FLAGS }}
+
 # download the pinned badges-sdk release assets (both are gitignored)
 badges-sdk: (_require "curl")
     #!/usr/bin/env bash
