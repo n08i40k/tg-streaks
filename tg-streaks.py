@@ -1,5 +1,7 @@
+import base64
 import fcntl
 import hashlib
+import lzma
 import os
 import shutil
 import threading
@@ -349,18 +351,11 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
 
 
 class EmbeddedAssetError(Exception):
-    """Raised when an embedded asset block is missing or cannot be decoded.
-    The user-facing dialog is shown by the bridge that hit the failure; callers
-    only need to abort their part of the load."""
+    """Ошибка связанная с отсутствием или повреждением ассетов"""
 
 
 class EmbeddedAssets:
-    """Reads the payloads embedded into this very .py file as hex comments.
-
-    The blocks are decoded line by line instead of slurping the whole source:
-    the resources archive alone is several megabytes, and its hex form is twice
-    that again.
-    """
+    """Utility класс отвечающий за чтение встроенных в файл плагина ассетов"""
 
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
@@ -373,6 +368,7 @@ class EmbeddedAssets:
             raise EmbeddedAssetError(f"plugin source not found for {label}")
 
         payload = bytearray()
+        decompressor = lzma.LZMADecompressor()
         collecting = False
         completed = False
 
@@ -390,9 +386,13 @@ class EmbeddedAssets:
                         break
 
                     if stripped.startswith("#"):
-                        payload += bytes.fromhex(stripped[1:].strip())
-        except (OSError, ValueError) as e:
+                        chunk = base64.b64decode(stripped[1:].strip())
+                        payload += decompressor.decompress(chunk)
+        except (OSError, EOFError, ValueError, lzma.LZMAError) as e:
             raise EmbeddedAssetError(f"failed to decode embedded {label}: {e}") from e
+
+        if completed and not decompressor.eof:
+            raise EmbeddedAssetError(f"embedded {label} is truncated")
 
         if not completed or not payload:
             raise EmbeddedAssetError(f"embedded {label} is missing or empty")
@@ -421,6 +421,8 @@ class EmbeddedAssets:
 
 
 class JvmPluginBridge:
+    """Загружает и инициализирует DEX в приложении (classes.dex)"""
+
     klass: Optional[Class]
 
     def __init__(self, plugin: "TgStreaksPlugin"):
@@ -451,11 +453,7 @@ class JvmPluginBridge:
 
 
 class ZipResourcesBridge:
-    """Unpacks the embedded resources archive into the plugin cache.
-
-    The extracted tree is stamped with the archive hash, so it is only unpacked
-    again after a plugin update actually changes the resources.
-    """
+    """Распаковывает архив с медиа-файлами (resources.zip)"""
 
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
@@ -576,6 +574,8 @@ class ZipResourcesBridge:
 
 
 class BadgesSdkBootstrap:
+    """Проверяет начилие, версию и состояние Badges SDK"""
+
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
         self.cache_dir = get_plugin_cache_dir("badges_sdk")
@@ -737,6 +737,8 @@ class BadgesSdkBootstrap:
 
 
 class ChatContextMenu:
+    """Отвечает за регистрацию кнопок в контекстном меню чата"""
+
     CONTROL_MENU = "controlMenu"
     RESTORE_EXACT = "restoreExact"
 
@@ -961,6 +963,8 @@ class ChatContextMenu:
 
 
 class SettingsActions:
+    """Отвечает за регистрацию элементов в настройках плагина"""
+
     REBUILD_ALL = "rebuildAllPrivateChats"
     EXPORT_BACKUP_NOW = "exportBackupNow"
     DELETE_DB_AND_RELOAD = "deleteDbAndReload"
@@ -1062,6 +1066,11 @@ class SettingsActions:
 
 
 class PluginUpdateChecker:
+    """
+    Проверяет обновления плагина через GitHub API и показывает
+    уведомлении при наличии новой версии
+    """
+
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
         self._stop = threading.Event()
@@ -1197,6 +1206,8 @@ class PluginUpdateChecker:
 
 
 class TgStreaksPlugin(BasePlugin):
+    """Основной класс плагина"""
+
     _reinitialize_lock = threading.Lock()
     _full_load_lock = threading.Lock()
     _eject_lock = threading.Lock()
@@ -1780,9 +1791,6 @@ class TgStreaksPlugin(BasePlugin):
         return True
 
     def _prepare_jvm_plugin(self) -> bool:
-        """Loads the embedded DEX and unpacks the embedded resources. A damaged
-        or missing payload is reported (with a dialog) by JvmPluginBridge.load()
-        / ZipResourcesBridge.load() themselves, at the point it happens."""
         self.jvm_plugin = JvmPluginBridge(self)
         self.jvm_plugin.load()
 
@@ -2229,7 +2237,7 @@ class TgStreaksPlugin(BasePlugin):
         jvm_plugin.klass = None
 
     def on_plugin_eject(self):
-        # guarded: a concurrent reload can trigger this from more than one bridge call
+        # блокирует конкурентные вызовы eject
         with self._eject_lock:
             if getattr(self, "_ejected", False):
                 return

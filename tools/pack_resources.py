@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
-"""Pack the resources/ directory into a reproducible resources.zip.
+"""Упаковывает медиа-ресурсы в resource.zip
 
-Entries are sorted and stamped with a fixed timestamp, so the same tree always
-produces byte-identical output (the plugin ships the archive embedded in its
-source, and a stable archive keeps release diffs meaningful).
-
-Usage: pack_resources.py <resources-dir> <output.zip>
+Использование: pack_resources.py <resources-dir> <output.zip>
 """
 
 import sys
@@ -37,12 +33,15 @@ def main() -> int:
         return 2
 
     root, output = Path(sys.argv[1]), Path(sys.argv[2])
+
     if not root.is_dir():
         print(f"error: resources directory not found: {root}", file=sys.stderr)
         return 1
 
     count = pack(root, output)
-    print(f"packed {count} files into {output} ({output.stat().st_size} bytes)")
+
+    print(f"packed {count} files into {output} ({output.stat().st_size / 1024} kbytes)")
+
     return 0
 
 

@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
-"""Live-reload the plugin on a device while developing.
+"""Ожидает изменения файлов tg-streaks.py, classes.dex, resources.zip и пр. файлов
+после чего отправляет собраный tg-streaks.plugin на устройство
 
-Watches the plugin's Python source, the compiled classes.dex and the resources
-tree. On any change (a manual `just dex` rebuild, an edit to the .py, a new
-resource file) it embeds the current dex and a freshly packed resources.zip
-into a temporary copy of the source and hands that copy to extera's dev-sync,
-which re-uploads and reloads the plugin on the device.
-
-The device side is extera's own dev server (the same one exteragram_utils talks
-to over adb); we only build the file and push it — extera does the reload.
-
-Usage: dev_watch.py <source.py> <classes.dex> <resources-dir> [--debug] [--poll SECONDS]
+Использование: dev_watch.py <source.py> <classes.dex> <resources-dir> [--debug] [--poll SECONDS]
 """
 
 import argparse
@@ -21,22 +13,18 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-
-# exteragram_utils ships extera's dev-sync client (adb setup + device connection)
 from exteragram_utils.dev_client import (
     AdbManager,
     DeviceConnection,
     parse_metadata,
 )
 
-# the embed/pack helpers live next to this file
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from embed_assets import embed_source  # noqa: E402
 from pack_resources import pack  # noqa: E402
 
-# the embedded dex + resources make the payload tens of megabytes, which never
-# fits into the 1s socket timeout the dev client sets for its own ping traffic
-SOCKET_TIMEOUT = 300.0
+# Из-за большого размера файла, сервер может не успеть обработать такую нагрузку за одну секунду
+SOCKET_TIMEOUT = 30.0
 
 _send_lock = threading.Lock()
 _original_send_message = DeviceConnection.send_message
@@ -49,7 +37,7 @@ def _serialized_send_message(self, action, arguments=None):
         return _original_send_message(self, action, arguments)
 
 
-DeviceConnection.send_message = _serialized_send_message
+DeviceConnection.send_message = _serialized_send_message  # ty:ignore[invalid-assignment]
 
 
 def _mtime(path: str) -> float | None:
@@ -71,7 +59,7 @@ def _build_temp(
     zip_path: str,
     temp_path: str,
 ) -> str | None:
-    """Embed the assets into the source and write the temp file. Returns its content."""
+    """Возвращает файл плагина с встроенными в него ресурсами"""
     logger = logging.getLogger("watch")
 
     try:
@@ -93,34 +81,34 @@ def _build_temp(
         f.write(content)
 
     logger.info(
-        f"Embedded {len(dex)} bytes of dex and {len(resources)} bytes of resources into {temp_path}"
+        f"Embedded {len(dex) / 1024} kbytes of dex and {len(resources) / 1024} kbytes of resources into {temp_path}"
     )
     return content
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", help="Plugin Python source file")
-    parser.add_argument("dex", help="Compiled classes.dex to embed")
-    parser.add_argument("resources", help="Resources directory to pack and embed")
-    parser.add_argument("--debug", action="store_true", help="Enable device debugger")
-    parser.add_argument(
-        "--poll", type=float, default=1.0, help="Poll interval in seconds"
-    )
-    parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        default="INFO",
-    )
+
+    # fmt: off
+    parser.add_argument("source",                           help="Plugin Python source file")
+    parser.add_argument("dex",                              help="Compiled classes.dex to embed")
+    parser.add_argument("resources",                        help="Resources directory to pack and embed")
+    parser.add_argument("--debug", action="store_true",     help="Enable device debugger")
+    parser.add_argument("--poll", type=float, default=1.0,  help="Poll interval in seconds")
+    parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], default="INFO")
+    # fmt: on
+
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_arguments()
+
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
     logger = logging.getLogger("watch")
 
     if not os.path.isfile(args.source):
@@ -133,12 +121,15 @@ def main() -> int:
 
     with open(args.source, "r", encoding="utf-8") as f:
         metadata = parse_metadata(f.read())
+
     if metadata is None or not metadata.id:
         logger.error(f"'{args.source}' has no valid plugin metadata (__id__)")
         return 1
+
     plugin_id = metadata.id
 
     adb = AdbManager()
+
     if not adb.setup_device(args.debug):
         logger.error("Failed to set up adb connection")
         return 1
@@ -146,6 +137,7 @@ def main() -> int:
     connection = DeviceConnection(
         debug_enabled=args.debug, response_timeout=int(SOCKET_TIMEOUT)
     )
+
     if not connection.connect():
         logger.error("Failed to connect to the device")
         return 1
@@ -158,8 +150,9 @@ def main() -> int:
         f"Watching '{args.source}', '{args.dex}' and '{args.resources}' for plugin '{plugin_id}'"
     )
 
-    # sentinel: force the first build
+    # при запуске принудительно загружаем билд
     last_source = last_dex = last_resources = object()
+
     try:
         while True:
             source_mtime = _mtime(args.source)
@@ -195,11 +188,9 @@ def main() -> int:
                 continue
 
             if connection.write_plugin(plugin_id, content):
-                # the dev server answers write_plugin before the file is actually
-                # written, and extera reloads the plugin on its own once the write
-                # lands: reloading too early races with that and the device ends up
-                # running the previous .py while the new one is still being flushed
+                # сервер не ждёт загрузки плагина и сразу отвечает, поэтому ждём сами
                 time.sleep(max(1.0, len(content) / float(4 << 20)))
+
                 if connection.reload_plugin(plugin_id):
                     logger.info(f"Reloaded plugin '{plugin_id}' on device")
                 else:
@@ -208,8 +199,10 @@ def main() -> int:
                 logger.warning(f"Failed to upload plugin '{plugin_id}'")
 
             time.sleep(args.poll)
+
     except KeyboardInterrupt:
         logger.info("Stopped by user")
+
     finally:
         connection.stop_debugger()
         connection.disconnect()

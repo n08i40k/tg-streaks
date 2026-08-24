@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
-"""Embed classes.dex, resources.zip and badges-sdk.plugin into the plugin .py as hex comment blocks.
+"""Встраивает classes.dex, resources.zip и badges-sdk.plugin в плагин
+в виде комментария с кодировкой base64 и сжатием LZMA.
 
-The plugin loads its engine and its assets by reading its own source and
-decoding the hex payloads placed between the marker comments (see
-JvmPluginBridge / ZipResourcesBridge in the plugin). Storing the payloads as
-comments (not string literals) keeps their bytes out of the interpreter heap:
-comments are dropped by the tokenizer and never become a live Python object.
+Использование: embed_assets.py [--dex classes.dex] [--resources resources.zip]
+                               [--badges-sdk badges-sdk.plugin] <source.py> [output.py]
 
-Usage: embed_assets.py [--dex classes.dex] [--resources resources.zip]
-                       [--badges-sdk badges-sdk.plugin] <source.py> [output.py]
-
-Without an output path the source is rewritten in place. The reusable
-``embed_source`` helper is what the dev watcher uses to build the temp file it
-hands to extera.
+Если output.py не указан, скрипт перезаписывает source.py.
 """
 
 import argparse
+import base64
+import lzma
 import re
 from pathlib import Path
 from typing import Optional
@@ -27,12 +22,18 @@ RESOURCES_END = "# === EMDEDDED RESOURCES END ==="
 BADGES_SDK_BEGIN = "# === EMDEDDED BADGES SDK BEGIN ==="
 BADGES_SDK_END = "# === EMDEDDED BADGES SDK END ==="
 BADGES_SDK_VERSION_PREFIX = "BADGES_SDK_VERSION = "
-# hex chars per line (kept modest so the source stays diff-friendly)
+
 LINE_WIDTH = 120
+LZMA_PRESET = 9 | lzma.PRESET_EXTREME
+
+
+def compress(data: bytes) -> bytes:
+    return lzma.compress(data, format=lzma.FORMAT_XZ, preset=LZMA_PRESET)
 
 
 def embed_block(source: str, begin: str, end: str, data: bytes) -> str:
-    """Return ``source`` with ``data`` hex-encoded between the marker comments."""
+    """Возвращает цельный блок с упакованным телом обёрнутым в begin и end."""
+
     lines = source.splitlines()
 
     try:
@@ -44,9 +45,9 @@ def embed_block(source: str, begin: str, end: str, data: bytes) -> str:
     if end_idx <= begin_idx:
         raise ValueError(f"END marker precedes BEGIN marker: {begin}")
 
-    hex_data = data.hex()
+    encoded = base64.b64encode(compress(data)).decode("ascii")
     payload = [
-        f"# {hex_data[i : i + LINE_WIDTH]}" for i in range(0, len(hex_data), LINE_WIDTH)
+        f"# {encoded[i : i + LINE_WIDTH]}" for i in range(0, len(encoded), LINE_WIDTH)
     ]
 
     new_lines = lines[: begin_idx + 1] + payload + lines[end_idx:]
@@ -54,7 +55,8 @@ def embed_block(source: str, begin: str, end: str, data: bytes) -> str:
 
 
 def _plugin_version(plugin_source: bytes) -> str:
-    """Read ``__version__`` out of an extera plugin .py/.plugin payload."""
+    """Парсит версию плагина из метатега ``__version__``."""
+
     for line in plugin_source.decode("utf-8", "replace").splitlines():
         match = re.fullmatch(r"""__version__ = ["'](.+)["']""", line.strip())
         if match:
@@ -64,7 +66,8 @@ def _plugin_version(plugin_source: bytes) -> str:
 
 
 def stamp_badges_sdk_version(source: str, version: str) -> str:
-    """Point the runtime bootstrap at the version of the embedded badges-sdk."""
+    """Меняет pinned версию Badges SDK в комментарии."""
+
     lines = source.splitlines()
 
     for i, line in enumerate(lines):
@@ -81,38 +84,38 @@ def embed_source(
     resources: Optional[bytes] = None,
     badges_sdk: Optional[bytes] = None,
 ) -> str:
-    """Embed the given payloads; a payload left out keeps its current block."""
+    """Встраивает данные файлов в плагин."""
+
     if dex is not None:
         source = embed_block(source, DEX_BEGIN, DEX_END, dex)
+
     if resources is not None:
         source = embed_block(source, RESOURCES_BEGIN, RESOURCES_END, resources)
+
     if badges_sdk is not None:
         source = embed_block(source, BADGES_SDK_BEGIN, BADGES_SDK_END, badges_sdk)
         source = stamp_badges_sdk_version(source, _plugin_version(badges_sdk))
+
     return source
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", type=Path, help="Plugin Python source file")
-    parser.add_argument(
-        "output",
-        type=Path,
-        nargs="?",
-        help="Output file (defaults to rewriting the source in place)",
-    )
-    parser.add_argument("--dex", type=Path, help="classes.dex to embed")
-    parser.add_argument("--resources", type=Path, help="resources.zip to embed")
-    parser.add_argument(
-        "--badges-sdk",
-        type=Path,
-        help="badges-sdk.plugin to embed for the on-device bootstrap",
-    )
+
+    # fmt: off
+    parser.add_argument("source",       type=Path,              help="Plugin Python source file")
+    parser.add_argument("output",       type=Path, nargs="?",   help="Output file (defaults to rewriting the source in place)")
+    parser.add_argument("--dex",        type=Path,              help="classes.dex to embed")
+    parser.add_argument("--resources",  type=Path,              help="resources.zip to embed")
+    parser.add_argument("--badges-sdk", type=Path,              help="badges-sdk.plugin to embed for the on-device bootstrap")
+    # fmt: on
+
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+
     output: Path = args.output or args.source
 
     if args.dex is None and args.resources is None and args.badges_sdk is None:
@@ -134,7 +137,7 @@ def main() -> int:
     output.write_text(embedded, encoding="utf-8")
 
     embedded_sizes = ", ".join(
-        f"{len(payload)} bytes of {name}"
+        f"{len(payload) / 1024} kbytes of {name}"
         for name, payload in (
             ("dex", dex),
             ("resources", resources),
@@ -142,7 +145,9 @@ def main() -> int:
         )
         if payload is not None
     )
+
     print(f"embedded {embedded_sizes} into {output}")
+
     return 0
 
 
