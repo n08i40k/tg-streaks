@@ -23,9 +23,9 @@ from dalvik.system import InMemoryDexClassLoader
 from java.lang import Boolean, Class, Integer, Long, String
 from java.nio import ByteBuffer
 from java.util import Locale
-from org.telegram.messenger import ApplicationLoader, LocaleController
+from org.telegram.messenger import ApplicationLoader, LocaleController, Utilities
 from org.telegram.messenger import R as R_tg
-from org.telegram.ui.ActionBar import AlertDialog, BaseFragment
+from org.telegram.ui.ActionBar import AlertDialog
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Selector, Switch, Text
@@ -553,8 +553,6 @@ class ZipResourcesBridge:
             if not os.path.isdir(extracted_root):
                 raise RuntimeError("Resources ZIP does not contain resources/ root")
 
-            # the stamp is dropped first: a crash mid-swap must not leave it
-            # pointing at a half-replaced tree
             if os.path.exists(self.stamp_path):
                 os.remove(self.stamp_path)
 
@@ -573,18 +571,11 @@ class ZipResourcesBridge:
             if os.path.isdir(staging_root):
                 shutil.rmtree(staging_root)
 
-            # the archive is only a staging area: the embedded copy is the source of truth
             if os.path.exists(self.zip_path):
                 os.remove(self.zip_path)
 
 
 class BadgesSdkBootstrap:
-    """Offers the bundled Badges SDK when it is missing or older than the pinned one.
-
-    Only release builds carry the SDK payload: in a debug build the block is
-    empty and the bootstrap stays out of the way.
-    """
-
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
         self.cache_dir = get_plugin_cache_dir("badges_sdk")
@@ -592,18 +583,31 @@ class BadgesSdkBootstrap:
 
     def ensure_installed(self, attempt: int = 0):
         try:
-            # the engine registers plugins one by one as it walks the plugins dir,
-            # so an SDK loaded after us shows up only once the walk is over
-            if not PluginsController.getInstance().isInitialized():
-                self._retry(attempt, self.ensure_installed, "plugins are still loading")
+            if attempt == 0:
+                self._retry(attempt, self.ensure_installed, "first attempt")
                 return
 
-            installed_version = self._installed_version()
+            controller = PluginsController.getInstance()
+            plugin = controller.plugins.get(BADGES_SDK_ID)
 
-            if installed_version is not None and not _is_version_older(
-                installed_version, BADGES_SDK_VERSION
-            ):
-                return
+            plugin_version = None
+
+            if plugin is not None:
+                if not plugin.isEnabled():
+
+                    class EmptyCallback(dynamic_proxy(Utilities.Callback[String])):
+                        def run(self, arg0: String) -> None:
+                            pass
+
+                    controller.setPluginEnabled("badges-sdk", True, EmptyCallback())  # ty:ignore[invalid-argument-type]
+
+                    self._retry(attempt, self.ensure_installed, "enable badges sdk")
+                    return
+
+                plugin_version = str(plugin.getVersion())
+
+                if not _is_version_older(plugin_version, BADGES_SDK_VERSION):
+                    return
 
             try:
                 payload = self.plugin.assets.read(
@@ -617,19 +621,11 @@ class BadgesSdkBootstrap:
 
             self.plugin.log(
                 f"Offering Badges SDK {BADGES_SDK_VERSION} "
-                f"(installed: {installed_version or 'none'})"
+                f"(installed: {plugin_version or 'none'})"
             )
             self._show_install_dialog(attempt)
         except Exception as e:
             self.plugin.log_exception("Failed to bootstrap Badges SDK", e)
-
-    def _installed_version(self) -> Optional[str]:
-        installed = PluginsController.getInstance().getPlugins().get(BADGES_SDK_ID)
-
-        if installed is None:
-            return None
-
-        return str(installed.getVersion())
 
     def _write_payload(self, payload: bytes):
         os.makedirs(self.cache_dir, exist_ok=True)
