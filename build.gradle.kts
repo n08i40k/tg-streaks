@@ -424,7 +424,7 @@ fun registerBuildDexTask(variant: String) {
                 }
                 .distinct()
 
-            val outputDirFile = layout.buildDirectory.dir("outputs/dex/$variant").get().asFile
+            val outputDirFile = rootProject.layout.projectDirectory.dir("dist/dex/$variant").asFile
             if (outputDirFile.exists() && !outputDirFile.isDirectory) {
                 throw GradleException("d8 output path is not a directory: '${outputDirFile.absolutePath}'.")
             }

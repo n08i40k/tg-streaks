@@ -1,8 +1,8 @@
-RELEASE_DEX_PATH := `realpath -m build/outputs/dex/release/classes.dex`
-DEBUG_DEX_PATH := `realpath -m build/outputs/dex/debug/classes.dex`
+RELEASE_DEX_PATH := `realpath -m dist/dex/release/classes.dex`
+DEBUG_DEX_PATH := `realpath -m dist/dex/debug/classes.dex`
 
 RESOURCES_DIR := "resources"
-RESOURCES_ZIP := `realpath -m build/resources.zip`
+RESOURCES_ZIP := `realpath -m dist/resources.zip`
 
 BADGES_SDK_REPO := "n08i40k/badges-sdk"
 BADGES_SDK_VERSION := "1.0.2"
