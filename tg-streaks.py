@@ -592,11 +592,11 @@ class BadgesSdkBootstrap:
 
             if not plugin.isEnabled():
 
-                class EmptyCallback(dynamic_proxy(Utilities.Callback[String])):
+                class EmptyCallback(dynamic_proxy(Utilities.Callback)):
                     def run(self, arg0: String) -> None:
                         pass
 
-                controller.setPluginEnabled(BADGES_SDK_ID, True, EmptyCallback())  # ty:ignore[invalid-argument-type]
+                controller.setPluginEnabled(BADGES_SDK_ID, True, EmptyCallback())
 
                 self._retry(attempt, self.ensure_installed, "Badges SDK is disabled")
                 return
