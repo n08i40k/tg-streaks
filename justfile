@@ -11,6 +11,7 @@ BADGES_SDK_COMPAT_AAR := `realpath -m libs/badges-sdk-compat.aar`
 
 PLUGIN_PY := `grep -ls '^__id__ = ' -- *.py | head -n1`
 DIST_PY := "dist/" + file_name(PLUGIN_PY)
+DIST_PLUGIN := "dist/" + file_stem(PLUGIN_PY) + ".plugin"
 
 # fail early if the tools a recipe needs are not installed
 [private]
@@ -60,14 +61,8 @@ badges-sdk-local PATH_TO_AAR:
     mkdir -p "$(dirname '{{ BADGES_SDK_COMPAT_AAR }}')"
     cp '{{ PATH_TO_AAR }}' '{{ BADGES_SDK_COMPAT_AAR }}'
 
-# build the release DEX and pack the resources
-ci: (_require "java") badges-sdk resources
-    ./gradlew buildDexRelease
-    cp {{ RELEASE_DEX_PATH }} ./
-
-# embed a DEX (default: release), the resources and the pinned badges-sdk into a
-# distributable copy of the plugin .py; without a fetched SDK (dev) it is left out
-embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY: (_require "uv") resources
+# embed all embedable files
+embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY SOURCE=PLUGIN_PY: (_require "uv") resources
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -84,7 +79,45 @@ embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY: (_require "uv") resources
         --dex '{{ DEX_PATH }}' \
         --resources '{{ RESOURCES_ZIP }}' \
         "${badges_sdk_args[@]}" \
-        '{{ PLUGIN_PY }}' '{{ OUTPUT }}'
+        '{{ SOURCE }}' '{{ OUTPUT }}'
+
+# optionally fetch badges-sdk, prepare release, build dex, embed all embedable resources
+ci-release VERSION OUTPUT=DIST_PLUGIN *FLAGS: (_require "java" "uv")
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    offline=0
+    for flag in {{ FLAGS }}; do
+        case "$flag" in
+            --offline) offline=1 ;;
+            *) echo "unknown flag: $flag" >&2; exit 1 ;;
+        esac
+    done
+
+    if [ "$offline" -eq 0 ]; then
+        just badges-sdk
+    else
+        for asset in '{{ BADGES_SDK_COMPAT_AAR }}' '{{ BADGES_SDK_PLUGIN }}'; do
+            if [ ! -s "$asset" ]; then
+                echo "--offline needs badges-sdk {{ BADGES_SDK_VERSION }} fetched already: $asset is missing (run 'just badges-sdk' once)" >&2
+                exit 1
+            fi
+        done
+    fi
+
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+
+    cp '{{ PLUGIN_PY }}' "$tmp/{{ file_name(PLUGIN_PY) }}"
+    cp pyproject.toml "$tmp/pyproject.toml"
+
+    uv run python scripts/prepare_release.py \
+        --version '{{ VERSION }}' \
+        --plugin-file "$tmp/{{ file_name(PLUGIN_PY) }}" \
+        --pyproject-file "$tmp/pyproject.toml"
+
+    ./gradlew buildDexRelease
+    just embed '{{ RELEASE_DEX_PATH }}' '{{ OUTPUT }}' "$tmp/{{ file_name(PLUGIN_PY) }}"
 
 # watch the plugin source, debug DEX and resources, and live-reload on device via extera dev-sync
 watch *ARGS: (_require "uv" "adb")

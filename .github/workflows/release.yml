@@ -99,27 +99,17 @@ jobs:
             --plugin-file "$PLUGIN_PY" \
             --pyproject-file pyproject.toml
 
-      - name: Build release DEX and pack resources
+      - name: Build the release plugin
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
-        run: |
-          chmod +x gradlew
-          just ci
-
-      - name: Embed DEX, resources and badges-sdk into the plugin
-        env:
-          PLUGIN_PY: ${{ steps.plugin.outputs.file }}
+          VERSION: ${{ inputs.version }}
           PLUGIN_ID: ${{ steps.plugin.outputs.id }}
         run: |
+          chmod +x gradlew
           release_dir="$RUNNER_TEMP/release"
           rm -rf "$release_dir"
           mkdir -p "$release_dir"
-          python tools/embed_assets.py \
-            --dex build/outputs/dex/release/classes.dex \
-            --resources build/resources.zip \
-            --badges-sdk build/badges-sdk/badges-sdk.plugin \
-            "$PLUGIN_PY" \
-            "$release_dir/${PLUGIN_ID}.plugin"
+          just ci-release "$VERSION" "$release_dir/${PLUGIN_ID}.plugin"
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
