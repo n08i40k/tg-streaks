@@ -11,6 +11,7 @@ import org.telegram.messenger.R
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
+import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.FireworksOverlay
 import org.telegram.ui.Components.LayoutHelper
@@ -29,7 +30,6 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     companion object Fields {
         private val CLASS = PremiumPreviewBottomSheet::class.java
 
-        val FRAGMENT = getField(CLASS, "fragment")
         val FIREWORKS_OVERLAY = getField(CLASS, "fireworksOverlay")
         val BUTTON_CONTAINER = getField(CLASS, "buttonContainer")
         val STAR_PARTICLES_VIEW = getField(CLASS, "starParticlesView")
@@ -87,14 +87,16 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     private val streakViewData: StreakViewData
 
     constructor(
-        base: PremiumPreviewBottomSheet,
+        fragment: BaseFragment,
+        currentAccount: Int,
         user: TLRPC.User,
+        resourcesProvider: Theme.ResourcesProvider?,
         streakViewData: StreakViewData
     ) : super(
-        FRAGMENT.getAsUnchecked<BaseFragment>(base),
-        base.currentAccount,
+        fragment,
+        currentAccount,
         user,
-        base.resourcesProvider
+        resourcesProvider
     ) {
         this.overrideTitleIcon = BackupImageView(context).apply {
             AnimatedEmojiView.apply(

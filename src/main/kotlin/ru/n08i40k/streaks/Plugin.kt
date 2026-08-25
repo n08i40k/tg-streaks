@@ -64,7 +64,6 @@ import ru.n08i40k.streaks.extension.resolveLanguageCode
 import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
-import ru.n08i40k.streaks.hook.impl.PremiumPreviewBottomSheetHookBundle
 import ru.n08i40k.streaks.hook.impl.ServiceMessagesHookBundle
 import ru.n08i40k.streaks.hook.impl.UpdatesHookBundle
 import ru.n08i40k.streaks.i18n.MessagePluralFormatter
@@ -785,7 +784,6 @@ class Plugin {
         val bundles = listOf(
             AccountSwitchHookBundle(),
             PetFabHookBundle(),
-            PremiumPreviewBottomSheetHookBundle(),
             ServiceMessagesHookBundle(),
             UpdatesHookBundle(),
         )

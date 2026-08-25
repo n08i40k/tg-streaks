@@ -6,14 +6,13 @@ import android.view.MotionEvent
 import android.view.View
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
-import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import ru.n08i40k.badges.compat.BadgesViewFactory
+import ru.n08i40k.streaks.Plugin
+import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.getLastFragment
 
 class StreakEmojiViewFactory : BadgesViewFactory {
-    // SDK рисует эту view сам и никогда не добавляет её в иерархию, поэтому
-    // родителем эмодзи выступает view клиента: только её invalidate доходит до экрана
     @SuppressLint("ViewConstructor")
     private class BadgeView(parent: View, heightPx: Int) : View(parent.context) {
         private val streakEmoji = StreakEmoji(parent, heightPx)
@@ -79,14 +78,21 @@ class StreakEmojiViewFactory : BadgesViewFactory {
                 .getUser(streakEmoji.getPeerUserId())
                 ?: return
 
-            val fragment = getLastFragment() ?: return
+            val streakViewData = Plugin.getInstance()
+                .streaksController
+                .getViewData(accountId, user.id)
+                ?: return
+
+            val fragment = getLastFragment()
+                ?: return
 
             fragment.showDialog(
-                PremiumPreviewBottomSheet(
+                StreakInfoBottomSheet(
                     fragment,
                     accountId,
                     user,
-                    fragment.resourceProvider
+                    fragment.resourceProvider,
+                    streakViewData
                 )
             )
         }
