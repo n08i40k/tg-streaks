@@ -7,7 +7,7 @@ import shutil
 import threading
 import traceback
 import zipfile
-from typing import Callable, Optional, cast
+from typing import Optional, cast
 
 import requests
 from java import dynamic_proxy, jarray, jbyte
@@ -20,12 +20,11 @@ from android.webkit import ValueCallback
 from android_utils import copy_to_clipboard, run_on_ui_thread
 from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
 from client_utils import get_last_fragment
-from com.exteragram.messenger.plugins import PluginsController
 from dalvik.system import InMemoryDexClassLoader
 from java.lang import Boolean, Class, Integer, Long, String
 from java.nio import ByteBuffer
 from java.util import Locale
-from org.telegram.messenger import ApplicationLoader, LocaleController, Utilities
+from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.messenger import R as R_tg
 from org.telegram.ui.ActionBar import AlertDialog
 from typing_extensions import Any
@@ -55,15 +54,6 @@ REPO_NAME = __id__
 # Resource hashes
 DEX_BLOCK = ("# === EMDEDDED DEX BEGIN ===", "# === EMDEDDED DEX END ===")
 RESOURCES_BLOCK = ("# === EMDEDDED RESOURCES BEGIN ===", "# === EMDEDDED RESOURCES END ===")
-BADGES_SDK_BLOCK = ("# === EMDEDDED BADGES SDK BEGIN ===", "# === EMDEDDED BADGES SDK END ===")
-
-# Badges SDK bootstrap
-
-BADGES_SDK_ID = "badges-sdk"
-# stamped by tools/embed_assets.py from the embedded badges-sdk.plugin
-BADGES_SDK_VERSION = "1.0.2"
-BADGES_SDK_BOOTSTRAP_RETRY_SECONDS = 2.0
-BADGES_SDK_BOOTSTRAP_MAX_RETRIES = 15
 
 # Plugin official resource links
 
@@ -573,167 +563,51 @@ class ZipResourcesBridge:
                 os.remove(self.zip_path)
 
 
-class BadgesSdkBootstrap:
-    """Проверяет начилие, версию и состояние Badges SDK"""
+class BadgesSdk:
+    """Загружает движок Badges SDK через встроенный лоадер"""
 
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
-        self.cache_dir = get_plugin_cache_dir("badges_sdk")
-        self.plugin_path = os.path.join(self.cache_dir, f"{BADGES_SDK_ID}.plugin")
+        self.loader: Optional[Any] = None
 
-    def ensure_installed(self, attempt: int = 0):
+        loader_class = globals().get("BadgesSdkLoader")
+
+        if loader_class is None:
+            plugin.log("Badges SDK loader is not embedded into this build")
+            return
+
+        self.loader = loader_class(__id__, logger=plugin.log)
+
+    def remove_standalone_plugin(self):
+        if self.loader is None:
+            return
+
         try:
-            controller = PluginsController.getInstance()
-            plugin = controller.plugins.get(BADGES_SDK_ID)
-
-            if plugin is None:
-                self._handle_unregistered(controller, attempt)
-                return
-
-            if not plugin.isEnabled():
-
-                class EmptyCallback(dynamic_proxy(Utilities.Callback)):
-                    def run(self, arg0: String) -> None:
-                        pass
-
-                controller.setPluginEnabled(BADGES_SDK_ID, True, EmptyCallback())
-
-                self._retry(attempt, self.ensure_installed, "Badges SDK is disabled")
-                return
-
-            installed_version = str(plugin.getVersion())
-
-            if not _is_version_older(installed_version, BADGES_SDK_VERSION):
-                return
-
-            self._offer_install(installed_version, attempt)
+            self.loader.remove_standalone_plugin()
         except Exception as e:
-            self.plugin.log_exception("Failed to bootstrap Badges SDK", e)
+            self.plugin.log_exception("Failed to remove the standalone Badges SDK", e)
 
-    def _handle_unregistered(self, controller: Any, attempt: int):
-        installed_version = self._version_on_disk(controller)
-
-        if installed_version is None or _is_version_older(
-            installed_version, BADGES_SDK_VERSION
-        ):
-            self._offer_install(installed_version, attempt)
+    def load(self):
+        if self.loader is None:
             return
 
-        self._retry(attempt, self.ensure_installed, "Badges SDK is not registered yet")
-
-    def _offer_install(self, installed_version: Optional[str], attempt: int):
         try:
-            payload = self.plugin.assets.read(
-                BADGES_SDK_BLOCK, f"{BADGES_SDK_ID}.plugin"
-            )
-        except EmbeddedAssetError as e:
-            self.plugin.log(f"Badges SDK is not embedded into this build: {e}")
-            return
-
-        self._write_payload(payload)
-
-        self.plugin.log(
-            f"Offering Badges SDK {BADGES_SDK_VERSION} "
-            f"(installed: {installed_version or 'none'})"
-        )
-        self._show_install_dialog(attempt)
-
-    def _version_on_disk(self, controller: Any) -> Optional[str]:
-        path = self._installed_plugin_path(controller)
-
-        if path is None:
-            return None
-
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as source:
-                for index, line in enumerate(source):
-                    if index >= 200:
-                        break
-
-                    stripped = line.strip()
-
-                    if not stripped.startswith("__version__"):
-                        continue
-
-                    _, _, raw = stripped.partition("=")
-
-                    return raw.strip().strip("\"'") or None
-        except OSError as e:
-            self.plugin.log_exception("Failed to read installed Badges SDK", e)
-
-        return None
-
-    def _installed_plugin_path(self, controller: Any) -> Optional[str]:
-        directories: list[str] = []
-
-        plugins_dir_getter = globals().get("get_plugins_dir")
-        if callable(plugins_dir_getter):
-            try:
-                directories.append(str(plugins_dir_getter()))
-            except Exception as e:
-                self.plugin.log_exception("Failed to resolve plugins directory", e)
-
-        try:
-            plugins_dir = controller.getPluginsDir()
-
-            if plugins_dir is not None:
-                directories.append(str(plugins_dir.getAbsolutePath()))
+            result = self.loader.load()
         except Exception as e:
-            self.plugin.log_exception("Failed to resolve plugins directory", e)
-
-        own_file = globals().get("__file__")
-        if isinstance(own_file, str) and own_file:
-            directories.append(os.path.dirname(own_file))
-
-        for directory in directories:
-            path = os.path.join(directory, f"{BADGES_SDK_ID}.py")
-
-            if os.path.isfile(path):
-                return path
-
-        return None
-
-    def _write_payload(self, payload: bytes):
-        os.makedirs(self.cache_dir, exist_ok=True)
-        staging_path = f"{self.plugin_path}.tmp"
-
-        with open(staging_path, "wb") as f:
-            f.write(payload)
-
-        os.replace(staging_path, self.plugin_path)
-
-    def _retry(self, attempt: int, action: Callable[[int], None], reason: str):
-        if attempt >= BADGES_SDK_BOOTSTRAP_MAX_RETRIES:
-            self.plugin.log(f"Badges SDK bootstrap dropped: {reason}")
+            self.plugin.log_exception("Failed to load Badges SDK", e)
             return
 
-        timer = threading.Timer(
-            BADGES_SDK_BOOTSTRAP_RETRY_SECONDS, lambda: action(attempt + 1)
-        )
-        timer.daemon = True
-        timer.start()
+        if not result.usable:
+            self.plugin.log(f"Badges SDK is unavailable: {result}")
 
-    def _show_install_dialog(self, attempt: int = 0):
-        def show():
-            try:
-                fragment = get_last_fragment()
-            except Exception:
-                fragment = None
+    def unload(self):
+        if self.loader is None:
+            return
 
-            if fragment is None:
-                self._retry(
-                    attempt, self._show_install_dialog, "UI context is unavailable"
-                )
-                return
-
-            try:
-                PluginsController.getInstance().showInstallDialog(
-                    fragment, self.plugin_path, True
-                )
-            except Exception as e:
-                self.plugin.log_exception("Failed to show Badges SDK install dialog", e)
-
-        run_on_ui_thread(show)
+        try:
+            self.loader.unload()
+        except Exception as e:
+            self.plugin.log_exception("Failed to unload Badges SDK", e)
 
 
 class ChatContextMenu:
@@ -2181,8 +2055,7 @@ class TgStreaksPlugin(BasePlugin):
             self.update_checker = PluginUpdateChecker(self)
             self.update_checker.start()
 
-            self.badges_sdk_bootstrap = BadgesSdkBootstrap(self)
-            self.badges_sdk_bootstrap.ensure_installed()
+            self.badges_sdk.load()
         except BaseException as e:
             self._handle_load_failure("plugin load", e)
             return
@@ -2203,6 +2076,11 @@ class TgStreaksPlugin(BasePlugin):
             if self._should_block_load_for_downgrade():
                 return None
 
+            self.badges_sdk = BadgesSdk(self)
+
+            if not DEBUG_MODE:
+                self.badges_sdk.remove_standalone_plugin()
+
             if allow_update_pause and self._should_pause_full_load_for_update():
                 return None
 
@@ -2216,6 +2094,11 @@ class TgStreaksPlugin(BasePlugin):
             self.update_checker.stop()
         except Exception:
             pass
+
+        badges_sdk = getattr(self, "badges_sdk", None)
+
+        if badges_sdk is not None:
+            badges_sdk.unload()
 
         jvm_plugin = getattr(self, "jvm_plugin", None)
 

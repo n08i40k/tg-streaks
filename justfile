@@ -5,8 +5,8 @@ RESOURCES_DIR := "resources"
 RESOURCES_ZIP := `realpath -m dist/resources.zip`
 
 BADGES_SDK_REPO := "n08i40k/badges-sdk"
-BADGES_SDK_VERSION := "1.0.2"
-BADGES_SDK_PLUGIN := `realpath -m build/badges-sdk/badges-sdk.plugin`
+BADGES_SDK_VERSION := "1.1.0"
+BADGES_SDK_LOADER := `realpath -m build/badges-sdk/badges-sdk-loader.py`
 BADGES_SDK_COMPAT_AAR := `realpath -m libs/badges-sdk-compat.aar`
 
 PLUGIN_PY := `grep -ls '^__id__ = ' -- *.py | head -n1`
@@ -52,9 +52,9 @@ badges-sdk: (_require "curl")
 
     base='https://github.com/{{ BADGES_SDK_REPO }}/releases/download/{{ BADGES_SDK_VERSION }}'
 
-    mkdir -p "$(dirname '{{ BADGES_SDK_COMPAT_AAR }}')" "$(dirname '{{ BADGES_SDK_PLUGIN }}')"
+    mkdir -p "$(dirname '{{ BADGES_SDK_COMPAT_AAR }}')" "$(dirname '{{ BADGES_SDK_LOADER }}')"
     curl -fsSL "$base/badges-sdk-compat.aar" -o '{{ BADGES_SDK_COMPAT_AAR }}'
-    curl -fsSL "$base/badges-sdk.plugin" -o '{{ BADGES_SDK_PLUGIN }}'
+    curl -fsSL "$base/badges-sdk-loader.py" -o '{{ BADGES_SDK_LOADER }}'
 
     echo "fetched badges-sdk {{ BADGES_SDK_VERSION }}"
 
@@ -73,8 +73,8 @@ embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY SOURCE=PLUGIN_PY: (_require "uv")
     mkdir -p "$(dirname '{{ OUTPUT }}')"
 
     badges_sdk_args=()
-    if [ -s '{{ BADGES_SDK_PLUGIN }}' ]; then
-        badges_sdk_args=(--badges-sdk '{{ BADGES_SDK_PLUGIN }}')
+    if [ -s '{{ BADGES_SDK_LOADER }}' ]; then
+        badges_sdk_args=(--badges-sdk '{{ BADGES_SDK_LOADER }}')
     else
         echo "badges-sdk is not fetched, embedding without it (run 'just badges-sdk' for a release build)" >&2
     fi
@@ -101,7 +101,7 @@ ci-release VERSION OUTPUT=DIST_PLUGIN *FLAGS: (_require "java" "uv")
     if [ "$offline" -eq 0 ]; then
         just badges-sdk
     else
-        for asset in '{{ BADGES_SDK_COMPAT_AAR }}' '{{ BADGES_SDK_PLUGIN }}'; do
+        for asset in '{{ BADGES_SDK_COMPAT_AAR }}' '{{ BADGES_SDK_LOADER }}'; do
             if [ ! -s "$asset" ]; then
                 echo "--offline needs badges-sdk {{ BADGES_SDK_VERSION }} fetched already: $asset is missing (run 'just badges-sdk' once)" >&2
                 exit 1

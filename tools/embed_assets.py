@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Встраивает classes.dex, resources.zip и badges-sdk.plugin в плагин
-в виде комментария с кодировкой base64 и сжатием LZMA.
+"""Встраивает classes.dex и resources.zip в плагин в виде комментария
+с кодировкой base64 и сжатием LZMA, а badges-sdk-loader.py — как есть.
 
 Использование: embed_assets.py [--dex classes.dex] [--resources resources.zip]
-                               [--badges-sdk badges-sdk.plugin] <source.py> [output.py]
+                               [--badges-sdk badges-sdk-loader.py] <source.py> [output.py]
 
 Если output.py не указан, скрипт перезаписывает source.py.
 """
@@ -11,7 +11,6 @@
 import argparse
 import base64
 import lzma
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +20,6 @@ RESOURCES_BEGIN = "# === EMDEDDED RESOURCES BEGIN ==="
 RESOURCES_END = "# === EMDEDDED RESOURCES END ==="
 BADGES_SDK_BEGIN = "# === EMDEDDED BADGES SDK BEGIN ==="
 BADGES_SDK_END = "# === EMDEDDED BADGES SDK END ==="
-BADGES_SDK_VERSION_PREFIX = "BADGES_SDK_VERSION = "
 
 LINE_WIDTH = 120
 LZMA_PRESET = 9 | lzma.PRESET_EXTREME
@@ -31,8 +29,8 @@ def compress(data: bytes) -> bytes:
     return lzma.compress(data, format=lzma.FORMAT_XZ, preset=LZMA_PRESET)
 
 
-def embed_block(source: str, begin: str, end: str, data: bytes) -> str:
-    """Возвращает цельный блок с упакованным телом обёрнутым в begin и end."""
+def replace_block(source: str, begin: str, end: str, payload: list[str]) -> str:
+    """Возвращает исходник с телом payload между маркерами begin и end."""
 
     lines = source.splitlines()
 
@@ -45,37 +43,27 @@ def embed_block(source: str, begin: str, end: str, data: bytes) -> str:
     if end_idx <= begin_idx:
         raise ValueError(f"END marker precedes BEGIN marker: {begin}")
 
+    new_lines = lines[: begin_idx + 1] + payload + lines[end_idx:]
+    return "\n".join(new_lines) + "\n"
+
+
+def embed_block(source: str, begin: str, end: str, data: bytes) -> str:
+    """Возвращает цельный блок с упакованным телом обёрнутым в begin и end."""
+
     encoded = base64.b64encode(compress(data)).decode("ascii")
     payload = [
         f"# {encoded[i : i + LINE_WIDTH]}" for i in range(0, len(encoded), LINE_WIDTH)
     ]
 
-    new_lines = lines[: begin_idx + 1] + payload + lines[end_idx:]
-    return "\n".join(new_lines) + "\n"
+    return replace_block(source, begin, end, payload)
 
 
-def _plugin_version(plugin_source: bytes) -> str:
-    """Парсит версию плагина из метатега ``__version__``."""
+def embed_plain_block(source: str, begin: str, end: str, data: bytes) -> str:
+    """Вставляет исходник как есть: лоадер сам читает вшитый в него DEX."""
 
-    for line in plugin_source.decode("utf-8", "replace").splitlines():
-        match = re.fullmatch(r"""__version__ = ["'](.+)["']""", line.strip())
-        if match:
-            return match.group(1)
+    payload = data.decode("utf-8").splitlines()
 
-    raise ValueError("badges-sdk payload has no __version__")
-
-
-def stamp_badges_sdk_version(source: str, version: str) -> str:
-    """Меняет pinned версию Badges SDK в комментарии."""
-
-    lines = source.splitlines()
-
-    for i, line in enumerate(lines):
-        if line.startswith(BADGES_SDK_VERSION_PREFIX):
-            lines[i] = f'{BADGES_SDK_VERSION_PREFIX}"{version}"'
-            return "\n".join(lines) + "\n"
-
-    raise ValueError(f"{BADGES_SDK_VERSION_PREFIX.strip()} not found in source")
+    return replace_block(source, begin, end, payload)
 
 
 def embed_source(
@@ -93,8 +81,7 @@ def embed_source(
         source = embed_block(source, RESOURCES_BEGIN, RESOURCES_END, resources)
 
     if badges_sdk is not None:
-        source = embed_block(source, BADGES_SDK_BEGIN, BADGES_SDK_END, badges_sdk)
-        source = stamp_badges_sdk_version(source, _plugin_version(badges_sdk))
+        source = embed_plain_block(source, BADGES_SDK_BEGIN, BADGES_SDK_END, badges_sdk)
 
     return source
 
@@ -107,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("output",       type=Path, nargs="?",   help="Output file (defaults to rewriting the source in place)")
     parser.add_argument("--dex",        type=Path,              help="classes.dex to embed")
     parser.add_argument("--resources",  type=Path,              help="resources.zip to embed")
-    parser.add_argument("--badges-sdk", type=Path,              help="badges-sdk.plugin to embed for the on-device bootstrap")
+    parser.add_argument("--badges-sdk", type=Path,              help="badges-sdk-loader.py to embed for the in-process engine loading")
     # fmt: on
 
     return parser.parse_args()
