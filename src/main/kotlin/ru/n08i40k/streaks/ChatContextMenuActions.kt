@@ -192,8 +192,11 @@ class ChatContextMenuActions(private val plugin: Plugin) {
 
                         streaksController.rebuild(accountId, peerUser)
 
-                        if (streakPetsController.exists(accountId, peerUserId))
+                        if (streaksController.exists(accountId, peerUserId) &&
+                            streakPetsController.exists(accountId, peerUserId)
+                        ) {
                             streakPetsController.rebuild(accountId, peerUser)
+                        }
 
                         refreshState()
                     }

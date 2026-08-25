@@ -296,7 +296,7 @@ class StreakPetsController(
         }
     }
 
-    // do not call this func if streak pet is not existing
+    // do not call this func if streak & pet is not existing
     suspend fun rebuild(accountId: Int, peerUser: TLRPC.User) {
         if (!rebuildLock.compareAndSet(false, true)) {
             Logger.info("Unable to rebuild peer $accountId:${peerUser.id} because another rebuild is already running")
