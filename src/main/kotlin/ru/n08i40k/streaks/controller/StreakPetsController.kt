@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.controller
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import org.telegram.messenger.MessagesController
@@ -288,6 +289,8 @@ class StreakPetsController(
             )
         } catch (_: InvalidPeerException) {
             removeInvalidPeerPet(accountId, peerUser.id)
+        } catch (_: CancellationException) {
+            // suppress background scope cancellation
         } catch (e: Throwable) {
             Logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         }

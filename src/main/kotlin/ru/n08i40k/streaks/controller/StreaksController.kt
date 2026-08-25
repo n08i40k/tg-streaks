@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.controller
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
@@ -530,6 +531,8 @@ class StreaksController(
             return targetStreak
         } catch (_: InvalidPeerException) {
             removeInvalidPeerStreak(accountId, peerUser.id)
+        } catch (_: CancellationException) {
+            // suppress background scope cancellation
         } catch (e: Throwable) {
             Logger.fatal("Failed to rebuild peer $accountId:${peerUser.id}", e)
         }
