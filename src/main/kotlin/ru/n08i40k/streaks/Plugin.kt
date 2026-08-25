@@ -75,7 +75,6 @@ import ru.n08i40k.streaks.registry.LockableCallbackRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.ui.StreakPetUiManager
 import ru.n08i40k.streaks.util.AccountTaskExecutor
-import ru.n08i40k.streaks.util.BadgesCompat
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.CheckNotificationHelper
 import ru.n08i40k.streaks.util.DatabaseTransactor
@@ -622,8 +621,6 @@ class Plugin {
 
     private fun onInject() {
         PluginBadges.add()
-
-        BadgesCompat.init()
 
         CheckNotificationHelper.createChannel()
 
