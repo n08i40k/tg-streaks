@@ -110,11 +110,14 @@ jobs:
           rm -rf "$release_dir"
           mkdir -p "$release_dir"
           just ci-release "$VERSION" "$release_dir/${PLUGIN_ID}.plugin"
+          cp dist/dex/release/classes.dex "$release_dir/classes.dex"
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: ${{ runner.temp }}/release/${{ steps.plugin.outputs.id }}.plugin
+          subject-path: |
+            ${{ runner.temp }}/release/${{ steps.plugin.outputs.id }}.plugin
+            ${{ runner.temp }}/release/classes.dex
 
       - name: Configure Git author
         run: |
@@ -154,5 +157,6 @@ jobs:
           release_dir="$RUNNER_TEMP/release"
           gh release create "$VERSION" \
             "$release_dir/${PLUGIN_ID}.plugin#${PLUGIN_ID}.plugin" \
+            "$release_dir/classes.dex#classes.dex" \
             --title "$VERSION" \
             --notes ""
