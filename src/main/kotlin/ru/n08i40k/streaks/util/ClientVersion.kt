@@ -1,36 +1,20 @@
 package ru.n08i40k.streaks.util
 
+import android.content.pm.PackageInfo
+import com.exteragram.messenger.utils.text.LocaleUtils
 import org.telegram.messenger.ApplicationLoader
 
-fun getClientName(): String {
-    if (Package.getPackage("com.radolyn.ayugram") != null)
-        return "AyuGram"
+fun getClientName(): String = LocaleUtils.getAppName()
 
-    if (Package.getPackage("com.exteragram.messenger") != null)
-        return "exteraGram"
+private fun packageInfo(): PackageInfo =
+    with(ApplicationLoader.applicationContext) { packageManager.getPackageInfo(packageName, 0) }
 
-    return "Telegram"
-}
+fun getClientVersionName(): String =
+    packageInfo().versionName ?: "unknown"
 
-fun getClientVersionName(): String {
-    val context = ApplicationLoader.applicationContext
-    val packageName = context.packageName
-    val packageInfo = context.packageManager.getPackageInfo(packageName, 0)
-    return packageInfo.versionName ?: "0.0.0"
-}
-
-fun getClientVersionFull(): String {
-    val context = ApplicationLoader.applicationContext
-    val packageName = context.packageName
-    val packageInfo = context.packageManager.getPackageInfo(packageName, 0)
-
-    val versionName = packageInfo.versionName ?: "0.0.0"
-
-    @Suppress("DEPRECATION")
-    val versionCode = packageInfo.versionCode
-
-    return "$versionName ($versionCode)"
-}
+@Suppress("DEPRECATION")
+fun getClientVersionFull(): String =
+    with(packageInfo()) { "${versionName ?: "unknown"} $versionCode" }
 
 fun isClientVersionBelow(target: String): Boolean {
     fun parseVersion(version: String): List<Int> =
