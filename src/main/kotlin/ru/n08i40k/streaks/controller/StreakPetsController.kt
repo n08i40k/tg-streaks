@@ -305,6 +305,9 @@ class StreakPetsController(
         }
 
         try {
+            if (!streaksController.exists(accountId, peerUser.id))
+                return
+
             val states: MutableList<UserRebuildState> =
                 mutableListOf(UserRebuildState.Pending(peerUser))
             val sheet = RebuildBottomSheet.launch(RebuildBottomSheet.TYPE_STREAK_PET, states)
