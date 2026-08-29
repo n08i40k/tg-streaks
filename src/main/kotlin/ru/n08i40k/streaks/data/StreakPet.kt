@@ -19,6 +19,7 @@ data class StreakPet(
     @ColumnInfo(name = "name") val name: String,
     @ColumnInfo(name = "points") val points: Int,
     @ColumnInfo(name = "fab_enabled") val fabEnabled: Boolean = true,
+    @ColumnInfo(name = "last_checked_mid") val lastCheckedMid: Int = 0,
 
     @ColumnInfo(name = "raw_offset") val timeZone: TimeZone,
 ) {

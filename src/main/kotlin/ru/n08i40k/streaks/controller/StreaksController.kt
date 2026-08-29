@@ -36,6 +36,7 @@ import ru.n08i40k.streaks.extension.prev
 import ru.n08i40k.streaks.extension.toEpochSeconds
 import ru.n08i40k.streaks.extension.toInstant
 import ru.n08i40k.streaks.extension.toLocalDate
+import ru.n08i40k.streaks.ui.AccountCacheReader
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.DatabaseTransactor
@@ -595,9 +596,48 @@ class StreaksController(
         }
     }
 
+    private data class DeathWarning(
+        val isInWindow: Boolean,
+        val timeUntilDeathSeconds: Long,
+    )
+
+    private fun computeDeathWarning(streak: Streak): DeathWarning {
+        val timeZone = streak.timeZone
+
+        val lastActiveDay = minOf(
+            streak.updateFromOwnerAt.toLocalDate(timeZone),
+            streak.updateFromPeerAt.toLocalDate(timeZone)
+        )
+
+        val deathEpochSeconds = lastActiveDay.plusDays(2).toEpochSeconds(timeZone)
+        val timeUntilDeathSeconds = deathEpochSeconds - System.currentTimeMillis() / 1000L
+
+        return DeathWarning(timeUntilDeathSeconds in 1..(8 * 3600), timeUntilDeathSeconds)
+    }
+
+    // если новых сообщений не появилось, проверяем, есть ли смысл дальше вести проверку
+    private fun isCheckRedundant(
+        streak: Streak,
+        updateFromOwnerDay: LocalDate,
+        updateFromPeerDay: LocalDate,
+        startDay: LocalDate,
+        now: LocalDate,
+    ): Boolean {
+        // тот же день (уведомлений о смерти и т.д. не будет)
+        if (startDay >= now)
+            return computeDeathWarning(streak).isInWindow == streak.warningNotified
+
+        // стрик уже умер, увед уже отправлен, можно восстановить
+        return updateFromOwnerDay == updateFromPeerDay &&
+                streak.deathNotified &&
+                streak.canRestore &&
+                !streak.warningNotified
+    }
+
     private suspend fun checkForUpdates(
         accountId: Int,
         streak: Streak,
+        lastMessageId: Int?,
         onProgressUpdate: ((daysChecked: Int, totalDays: Int) -> Unit)? = null,
     ) {
         val timeZone = streak.timeZone
@@ -613,8 +653,6 @@ class StreaksController(
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val peerUserId = streak.peerUserId
 
-        val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId) ?: return
-
         // if last checked day is active, check next
         var currentDay = minOf(updateFromOwnerDay, updateFromPeerDay)
             .let {
@@ -625,6 +663,19 @@ class StreaksController(
             }
 
         val startDay = currentDay
+
+        if (lastMessageId != null &&
+            lastMessageId == streak.lastCheckedMid &&
+            isCheckRedundant(streak, updateFromOwnerDay, updateFromPeerDay, startDay, now)
+        )
+            return
+
+        val checkedMid = lastMessageId
+            ?: streak.lastCheckedMid
+
+        val peerUser = MessagesController.getInstance(accountId)
+            .getUser(peerUserId)
+            ?: return
 
         val totalDays = (now.toEpochDays() - startDay.toEpochDays() + 1L)
             .coerceAtLeast(0L)
@@ -724,7 +775,8 @@ class StreaksController(
                     if (dynStreak.canRestore) {
                         val resStreak = dynStreak.copy(
                             deathNotified = true,
-                            warningNotified = false
+                            warningNotified = false,
+                            lastCheckedMid = checkedMid
                         )
 
                         transactor.wrap {
@@ -778,16 +830,12 @@ class StreaksController(
                 dynStreak.updateFromPeerAt != streak.updateFromPeerAt ||
                 dynStreak.restoresCount != streak.restoresCount
 
-        val lastActiveDay = minOf(
-            dynStreak.updateFromOwnerAt.toLocalDate(timeZone),
-            dynStreak.updateFromPeerAt.toLocalDate(timeZone)
+        val (isInWarningWindow, timeUntilDeathSeconds) = computeDeathWarning(dynStreak)
+
+        dynStreak = dynStreak.copy(
+            warningNotified = isInWarningWindow,
+            lastCheckedMid = checkedMid
         )
-
-        val deathEpochSeconds = lastActiveDay.plusDays(2).toEpochSeconds(timeZone)
-        val timeUntilDeathSeconds = deathEpochSeconds - System.currentTimeMillis() / 1000L
-        val isInWarningWindow = timeUntilDeathSeconds in 1..(8 * 3600)
-
-        dynStreak = dynStreak.copy(warningNotified = isInWarningWindow)
 
         transactor.wrap {
             dao.update(dynStreak)
@@ -826,15 +874,26 @@ class StreaksController(
         accountId: Int,
         onProgressUpdate: ((index: Int, total: Int, peerName: String, daysChecked: Int, totalDays: Int) -> Unit)? = null,
     ) {
+        val messagesController = MessagesController.getInstance(accountId)
         val streaks = dao.findAllByOwnerUserId(UserConfig.getInstance(accountId).clientUserId)
 
+        if (streaks.isEmpty())
+            return
+
+        val lastMessageIds =
+            AccountCacheReader.getLastMessageId(accountId, streaks.map { it.peerUserId })
+
         streaks.forEachIndexed { index, streak ->
-            val peerName = MessagesController.getInstance(accountId)
+            val peerName = messagesController
                 .getUser(streak.peerUserId)?.label
                 ?: streak.peerUserId.toString()
 
             try {
-                checkForUpdates(accountId, streak) { daysChecked, totalDays ->
+                checkForUpdates(
+                    accountId,
+                    streak,
+                    lastMessageIds[streak.peerUserId]
+                ) { daysChecked, totalDays ->
                     onProgressUpdate?.invoke(index, streaks.size, peerName, daysChecked, totalDays)
                 }
             } catch (_: InvalidPeerException) {

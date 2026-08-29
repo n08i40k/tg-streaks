@@ -63,6 +63,7 @@ import ru.n08i40k.streaks.extension.onEachWithOnMainThreadBlocking
 import ru.n08i40k.streaks.extension.resolveLanguageCode
 import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
+import ru.n08i40k.streaks.hook.impl.ForegroundHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.ServiceMessagesHookBundle
 import ru.n08i40k.streaks.hook.impl.UpdatesHookBundle
@@ -84,6 +85,7 @@ import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.lang.reflect.Member
+import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
 import kotlin.concurrent.thread
 import kotlin.time.Instant
@@ -571,26 +573,20 @@ class Plugin {
     fun enqueueTask(name: String, callback: suspend () -> Unit) =
         taskQueue.enqueueTask(name, callback)
 
-    fun enqueueAccountInitializationTasks(accountId: Int, reason: String) {
-        AccountTaskExecutor.enqueue(
-            accountId,
-            "prune invalid streaks and pets for account $accountId ($reason)"
-        ) {
-            streaksController.pruneInvalid(accountId)
-            streakPetsController.pruneInvalid(accountId)
-        }
+    // возврат в foreground может произойти несколько раз подряд,
+    // пока предыдущая проверка ещё стоит в очереди
+    private val pendingUpdateChecks = ConcurrentHashMap.newKeySet<Int>()
 
-        AccountTaskExecutor.enqueue(
-            accountId,
-            "refresh streak badges for account $accountId ($reason)"
-        ) {
-            BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
-        }
+    fun enqueueUpdatesCheck(accountId: Int, reason: String) {
+        if (!pendingUpdateChecks.add(accountId))
+            return
 
         AccountTaskExecutor.enqueue(
             accountId,
             "check for updates and update UI for account $accountId ($reason)"
         ) {
+            pendingUpdateChecks.remove(accountId)
+
             withContext(RateLimitContext { throttlingClock ->
                 if (throttlingClock == null) {
                     CheckNotificationHelper.cancelRateLimitNotification()
@@ -616,6 +612,27 @@ class Plugin {
 
             streaksController.flushCurrentChatPopup()
         }
+    }
+
+    fun enqueueAccountInitializationTasks(accountId: Int, reason: String) {
+        pendingUpdateChecks.clear()
+
+        AccountTaskExecutor.enqueue(
+            accountId,
+            "prune invalid streaks and pets for account $accountId ($reason)"
+        ) {
+            streaksController.pruneInvalid(accountId)
+            streakPetsController.pruneInvalid(accountId)
+        }
+
+        AccountTaskExecutor.enqueue(
+            accountId,
+            "refresh streak badges for account $accountId ($reason)"
+        ) {
+            BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
+        }
+
+        enqueueUpdatesCheck(accountId, reason)
     }
 
     private fun onInject() {
@@ -783,6 +800,7 @@ class Plugin {
 
         val bundles = listOf(
             AccountSwitchHookBundle(),
+            ForegroundHookBundle(),
             PetFabHookBundle(),
             ServiceMessagesHookBundle(),
             UpdatesHookBundle(),

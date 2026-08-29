@@ -26,6 +26,8 @@ data class Streak(
     @ColumnInfo(name = "death_notified") val deathNotified: Boolean = false,
     @ColumnInfo(name = "warning_notified") val warningNotified: Boolean = false,
 
+    @ColumnInfo(name = "last_checked_mid") val lastCheckedMid: Int = 0,
+
     @ColumnInfo(name = "raw_offset") val timeZone: TimeZone,
 ) {
     companion object {

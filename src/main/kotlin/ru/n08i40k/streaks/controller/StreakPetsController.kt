@@ -30,6 +30,7 @@ import ru.n08i40k.streaks.extension.removeCountBy
 import ru.n08i40k.streaks.extension.removeFirstBy
 import ru.n08i40k.streaks.extension.toInstant
 import ru.n08i40k.streaks.extension.toLocalDate
+import ru.n08i40k.streaks.ui.AccountCacheReader
 import ru.n08i40k.streaks.ui.rebuild.RebuildBottomSheet
 import ru.n08i40k.streaks.ui.rebuild.UserRebuildState
 import ru.n08i40k.streaks.util.DatabaseTransactor
@@ -334,6 +335,7 @@ class StreakPetsController(
     private suspend fun checkForUpdates(
         accountId: Int,
         streakPet: StreakPet,
+        lastMessageId: Int?,
         notCompletedTasks: List<StreakPetTask>
     ) {
         var currentPet = streakPet
@@ -341,6 +343,14 @@ class StreakPetsController(
 
         val lastCheckedDay = currentPet.lastCheckedAt.toLocalDate(timeZone)
         val now = LocalDate.now(timeZone)
+
+        // ура
+        if (lastMessageId != null && lastMessageId == currentPet.lastCheckedMid) {
+            if (lastCheckedDay != now)
+                dao.update(currentPet.copy(lastCheckedAt = now.toInstant(timeZone)))
+
+            return
+        }
 
         val peerUserId = currentPet.peerUserId
 
@@ -483,6 +493,7 @@ class StreakPetsController(
                     dao.update(
                         copy(
                             lastCheckedAt = now.toInstant(timeZone),
+                            lastCheckedMid = lastMessageId ?: lastCheckedMid,
                             points = this.points + points
                         )
                     )
@@ -496,6 +507,12 @@ class StreakPetsController(
     suspend fun checkAllForUpdates(accountId: Int) {
         val ownerUserId = UserConfig.getInstance(accountId).clientUserId
         val streakPets = dao.findAllByOwnerUserId(ownerUserId)
+
+        if (streakPets.isEmpty())
+            return
+
+        val lastMessageIds =
+            AccountCacheReader.getLastMessageId(accountId, streakPets.map { it.peerUserId })
 
         for (streakPet in streakPets) {
             val timeZone = streakPet.timeZone
@@ -544,7 +561,12 @@ class StreakPetsController(
                     }
                 }
 
-                checkForUpdates(accountId, streakPet, notCompletedTasks)
+                checkForUpdates(
+                    accountId,
+                    streakPet,
+                    lastMessageIds[streakPet.peerUserId],
+                    notCompletedTasks
+                )
             } catch (_: InvalidPeerException) {
                 removeInvalidPeerPet(accountId, streakPet.peerUserId)
             }

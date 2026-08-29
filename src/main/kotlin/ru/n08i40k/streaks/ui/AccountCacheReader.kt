@@ -15,6 +15,13 @@ object AccountCacheReader {
         ORDER BY date DESC, mid DESC
         """
 
+    private const val LAST_ID_QUERY =
+        """
+        SELECT
+            did, last_mid
+        FROM dialogs
+        """
+
     class MessageHistoryIterator(
         private val accountUserId: Long,
         private val cursor: SQLiteCursor
@@ -48,7 +55,7 @@ object AccountCacheReader {
             return message
         }
 
-        override fun hasNext(): Boolean = hasNext()
+        override fun hasNext(): Boolean = hasNext
     }
 
     fun getHistoryCursor(
@@ -64,5 +71,29 @@ object AccountCacheReader {
             .queryFinalized(HISTORY_QUERY, userId, fromLocalEpoch, toLocalEpoch)
 
         return MessageHistoryIterator(accountUserId, cursor)
+    }
+
+    fun getLastMessageId(accountId: Int, dialogIds: Collection<Long>): Map<Long, Int> {
+        val cursor = MessagesStorage.getInstance(accountId)
+            .database
+            .queryFinalized(LAST_ID_QUERY)
+
+        val result = hashMapOf<Long, Int>()
+
+        try {
+            while (cursor.next()) {
+                val dialogId = cursor.longValue(0)
+                val lastMessageId = cursor.intValue(1)
+
+                if (!dialogIds.contains(dialogId))
+                    continue
+
+                result[dialogId] = lastMessageId
+            }
+        } finally {
+            cursor.dispose()
+        }
+
+        return result
     }
 }
