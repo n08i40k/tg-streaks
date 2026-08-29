@@ -2,48 +2,14 @@ package ru.n08i40k.streaks.chat_history_fetcher
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import org.telegram.messenger.MessagesStorage
-import org.telegram.messenger.UserConfig
-import org.telegram.tgnet.NativeByteBuffer
 import org.telegram.tgnet.TLRPC
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.toEpochSeconds
+import ru.n08i40k.streaks.ui.AccountCacheReader
 import kotlin.time.Instant
 
 class CachedChatHistoryFetcher : ChatHistoryFetcher {
-    companion object {
-        const val QUERY =
-            """
-            SELECT
-                mid, out, data
-            FROM messages_v2
-            WHERE uid = ? AND date >= ? AND date < ?
-            ORDER BY date DESC, mid DESC
-            """
-    }
-
-    private fun parseMessage(
-        id: Int,
-        buffer: NativeByteBuffer,
-        out: Boolean,
-        selfId: Long
-    ): TLRPC.Message {
-        return try {
-            TLRPC.Message
-                .TLdeserialize(buffer, buffer.readInt32(false), false)
-                .apply {
-                    this.id = id
-                    this.out = out
-                }
-                .also {
-                    it.readAttachPath(buffer, selfId)
-                }
-        } finally {
-            buffer.reuse()
-        }
-    }
-
     override suspend fun fetchActivity(
         accountId: Int,
         peerUserId: Long,
@@ -51,13 +17,8 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         day: LocalDate,
         untilRestore: Boolean
     ): ChatHistoryFetcher.DayActivity {
-        val selfId = UserConfig.getInstance(accountId).clientUserId
-
         val startLocalEpoch = day.toEpochSeconds(timeZone)
         val endLocalEpoch = day.next().toEpochSeconds(timeZone)
-
-        val db = MessagesStorage.getInstance(accountId).database
-        val cursor = db.queryFinalized(QUERY, peerUserId, startLocalEpoch, endLocalEpoch)
 
         var fromOwner = false
         var fromPeer = false
@@ -65,14 +26,14 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         var lastOwnerAt: Instant? = null
         var lastPeerAt: Instant? = null
 
-        while (cursor.next()) {
-            val message = parseMessage(
-                cursor.intValue(0),
-                if (cursor.isNull(2)) continue else cursor.byteBufferValue(2),
-                cursor.intValue(1) > 0,
-                selfId
-            )
+        val historyIterator = AccountCacheReader.getHistoryCursor(
+            accountId,
+            startLocalEpoch,
+            endLocalEpoch,
+            peerUserId
+        )
 
+        for (message in historyIterator) {
             if (message.message == ServiceMessage.RESTORE_TEXT) {
                 wasRestored = true
 
@@ -118,26 +79,21 @@ class CachedChatHistoryFetcher : ChatHistoryFetcher {
         fromOwnerMax: Int,
         fromPeerMax: Int,
     ): List<TLRPC.Message> {
-        val selfId = UserConfig.getInstance(accountId).clientUserId
-
         val startLocalEpoch = day.toEpochSeconds(timeZone)
         val endLocalEpoch = day.next().toEpochSeconds(timeZone)
-
-        val db = MessagesStorage.getInstance(accountId).database
-        val cursor = db.queryFinalized(QUERY, peerUserId, startLocalEpoch, endLocalEpoch)
 
         val messages = mutableListOf<TLRPC.Message>()
         var fromOwnerCount = 0
         var fromPeerCount = 0
 
-        while (cursor.next()) {
-            val message = parseMessage(
-                cursor.intValue(0),
-                if (cursor.isNull(2)) continue else cursor.byteBufferValue(2),
-                cursor.intValue(1) > 0,
-                selfId
-            )
+        val historyIterator = AccountCacheReader.getHistoryCursor(
+            accountId,
+            startLocalEpoch,
+            endLocalEpoch,
+            peerUserId
+        )
 
+        for (message in historyIterator) {
             messages.add(message)
 
             if (message.out)
