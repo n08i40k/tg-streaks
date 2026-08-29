@@ -160,3 +160,40 @@ jobs:
             "$release_dir/classes.dex#classes.dex" \
             --title "$VERSION" \
             --notes ""
+
+      - name: Update file in the channel post
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+          MESSAGE_ID: ${{ vars.TELEGRAM_MESSAGE_ID }}
+          PLUGIN_CAPTION: ${{ vars.TELEGRAM_PLUGIN_CAPTION }}
+          CHANGELOG_TEXT: ${{ vars.TELEGRAM_CHANGELOG_TEXT }}
+          VERSION: ${{ inputs.version }}
+          PLUGIN_ID: ${{ steps.plugin.outputs.id }}
+        run: |
+          FILE_PATH="$RUNNER_TEMP/release/${PLUGIN_ID}.plugin"
+
+          MEDIA=$( \
+            jq -nc \
+            --arg cap "$PLUGIN_CAPTION" \
+            '{ type: "document", media: "attach://doc", caption: $cap, parse_mode: "HTML" }' \
+          )
+
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/editMessageMedia" \
+            --form-string "chat_id=${CHAT_ID}" \
+            --form-string "message_id=${MESSAGE_ID}" \
+            --form-string "media=$MEDIA" \
+            -F "doc=@${FILE_PATH};filename=tg-streaks ${VERSION}.plugin" \
+            --fail-with-body
+          
+          NEW_POST=$(
+            jq -nc \
+            --arg text "$CHANGELOG_TEXT" \
+            --arg chat_id "$CHAT_ID" \
+            --arg msg_id "$MESSAGE_ID" \
+            '{ chat_id: $chat_id, text: $text, parse_mode: "HTML", reply_parameters: { message_id: ($msg_id|tonumber) } }'
+          )
+          
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --json "$NEW_POST" \
+            --fail-with-body
