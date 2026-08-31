@@ -6,11 +6,11 @@ import android.view.MotionEvent
 import android.view.View
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
+import org.telegram.ui.LaunchActivity
 import ru.n08i40k.badges.compat.BadgesViewFactory
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.util.Logger
-import ru.n08i40k.streaks.util.getLastFragment
 
 class StreakEmojiViewFactory : BadgesViewFactory {
     @SuppressLint("ViewConstructor")
@@ -83,7 +83,7 @@ class StreakEmojiViewFactory : BadgesViewFactory {
                 .getViewData(accountId, user.id)
                 ?: return
 
-            val fragment = getLastFragment()
+            val fragment = LaunchActivity.getSafeLastFragment()
                 ?: return
 
             fragment.showDialog(
