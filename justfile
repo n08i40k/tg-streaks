@@ -125,7 +125,8 @@ ci-release VERSION OUTPUT=DIST_PLUGIN *FLAGS: (_require "java" "uv")
 
 # watch the plugin source, debug DEX and resources, and live-reload on device via extera dev-sync
 watch *ARGS: (_require "uv" "adb")
-    uv run python tools/dev_watch.py '{{ PLUGIN_PY }}' '{{ DEBUG_DEX_PATH }}' '{{ RESOURCES_DIR }}' {{ ARGS }}
+    uv run python tools/dev_watch.py '{{ PLUGIN_PY }}' '{{ DEBUG_DEX_PATH }}' '{{ RESOURCES_DIR }}' \
+        --badges-sdk '{{ BADGES_SDK_LOADER }}' {{ ARGS }}
 
 # generate new Telegram[-compile].jar from updated extera/Ayu-Gram apk
 update-apk PATH_TO_APK: (_require "dex2jar" "jbang" "git")
