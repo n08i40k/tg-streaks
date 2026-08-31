@@ -14,6 +14,7 @@ object MessageSender {
     private enum class SendMessagesHelperRev {
         Pre_12_2_0,
         Pre_12_7_0,
+        Pre_12_10_0,
         Latest;
     }
 
@@ -23,6 +24,9 @@ object MessageSender {
 
         if (isClientVersionBelow("12.7.0"))
             return@lazy SendMessagesHelperRev.Pre_12_7_0
+
+        if (isClientVersionBelow("12.10.0"))
+            return@lazy SendMessagesHelperRev.Pre_12_10_0
 
         return@lazy SendMessagesHelperRev.Latest
     }
@@ -52,6 +56,7 @@ object MessageSender {
                     Long::class.java
                 )
 
+            SendMessagesHelperRev.Pre_12_10_0,
             SendMessagesHelperRev.Latest ->
                 SendMessagesHelper::class.java.getDeclaredMethod(
                     "prepareSendingText",
@@ -97,7 +102,7 @@ object MessageSender {
                 )
 
             SendMessagesHelperRev.Pre_12_7_0,
-            SendMessagesHelperRev.Latest ->
+            SendMessagesHelperRev.Pre_12_10_0 ->
                 SendMessagesHelper::class.java.getDeclaredMethod(
                     "prepareSendingDocuments",
                     AccountInstance::class.java,
@@ -125,6 +130,49 @@ object MessageSender {
                     Long::class.java,
                     MessageSuggestionParams::class.java
                 )
+
+            SendMessagesHelperRev.Latest ->
+                SendMessagesHelper::class.java.getDeclaredMethod(
+                    "prepareSendingDocuments",
+                    AccountInstance::class.java,
+                    ArrayList::class.java,
+                    ArrayList::class.java,
+                    ArrayList::class.java,
+                    String::class.java,
+                    ArrayList::class.java,
+                    String::class.java,
+                    Long::class.java,
+                    MessageObject::class.java,
+                    MessageObject::class.java,
+                    TL_stories.StoryItem::class.java,
+                    ChatActivity.ReplyQuote::class.java,
+                    MessageObject::class.java,
+                    Boolean::class.java,
+                    Int::class.java,
+                    Int::class.java,
+                    InputContentInfoCompat::class.java,
+                    Class.forName("org.telegram.messenger.SendMessageChatArguments"),
+                    Long::class.java,
+                    Boolean::class.java,
+                    Long::class.java,
+                    Long::class.java,
+                    MessageSuggestionParams::class.java
+                )
+        }
+    }
+
+    private val sendMessageChatArguments by lazy {
+        when (currentRevision) {
+            SendMessagesHelperRev.Pre_12_2_0,
+            SendMessagesHelperRev.Pre_12_7_0,
+            SendMessagesHelperRev.Pre_12_10_0 -> null
+
+            SendMessagesHelperRev.Latest -> {
+                Class
+                    .forName("org.telegram.messenger.SendMessageChatArguments")
+                    .getDeclaredField("EMPTY")
+                    .get(null)
+            }
         }
     }
 
@@ -138,6 +186,7 @@ object MessageSender {
             SendMessagesHelperRev.Pre_12_7_0 ->
                 prepareSendingText.invoke(null, account, message, peerId, false, 0, 0, 0L)
 
+            SendMessagesHelperRev.Pre_12_10_0,
             SendMessagesHelperRev.Latest ->
                 prepareSendingText.invoke(
                     null,
@@ -185,7 +234,7 @@ object MessageSender {
                 )
 
             SendMessagesHelperRev.Pre_12_7_0,
-            SendMessagesHelperRev.Latest ->
+            SendMessagesHelperRev.Pre_12_10_0 ->
                 prepareSendingDocuments.invoke(
                     null,
                     account, // accountInstance
@@ -207,6 +256,34 @@ object MessageSender {
                     null, // inputContent
                     null, // quickReplyShortcut
                     0, // quickReplyShortcutId
+                    0, // effectId
+                    false, // invertMedia
+                    0, // payStars
+                    0, // monoForumPeerId
+                    null // suggestionParams
+                )
+
+            SendMessagesHelperRev.Latest ->
+                prepareSendingDocuments.invoke(
+                    null,
+                    account, // accountInstance
+                    null, // paths
+                    null, // originalPaths
+                    arrayListOf(uri), // uris
+                    caption, // caption
+                    arrayListOf<Unit>(), // entities
+                    null, // mime
+                    peerId, // dialogId
+                    null, // replyToMsg
+                    null, // replyToTopMsg
+                    null, // storyItem
+                    null, // quote
+                    null, // editingMessageObject
+                    true, // notify
+                    0, // scheduleDate
+                    0, // scheduleRepeatPeriod
+                    null, // inputContent
+                    sendMessageChatArguments, // sendMessageChatArguments
                     0, // effectId
                     false, // invertMedia
                     0, // payStars
