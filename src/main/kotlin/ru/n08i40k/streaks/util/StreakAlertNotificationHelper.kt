@@ -12,12 +12,19 @@ class StreakAlertNotificationHelper {
         private const val CHANNEL_ID = "tg_streaks_alerts"
     }
 
+    private var available = false
+
     private val manager: NotificationManager
         get() = ApplicationLoader.applicationContext
             .getSystemService(NotificationManager::class.java)
 
     init {
-        createChannel()
+        try {
+            createChannel()
+        } catch (_: IllegalStateException) {
+            Logger.info("Unable to create notification channel because of exceeded quota")
+            available = false
+        }
     }
 
     private fun createChannel() {
@@ -49,7 +56,9 @@ class StreakAlertNotificationHelper {
         5_000_000 + (peerUserId % 1_000_000).toInt().let { if (it < 0) -it else it }
 
     private fun notify(id: Int, notification: Notification) {
-        if (!manager.areNotificationsEnabled()) return
+        if (!available || !manager.areNotificationsEnabled())
+            return
+
         try {
             manager.notify(id, notification)
         } catch (_: SecurityException) {
@@ -98,10 +107,16 @@ class StreakAlertNotificationHelper {
     }
 
     fun cancelNearDeath(peerUserId: Long) {
+        if (!available)
+            return
+
         manager.cancel(nearDeathNotificationId(peerUserId))
     }
 
     fun cancelDeath(peerUserId: Long) {
+        if (!available)
+            return
+
         manager.cancel(deathNotificationId(peerUserId))
     }
 }
