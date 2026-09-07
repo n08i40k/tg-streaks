@@ -825,6 +825,8 @@ class StreakPetsController(
             )
         )
 
+        rebuild(accountId, peerUser)
+
         return true
     }
 
