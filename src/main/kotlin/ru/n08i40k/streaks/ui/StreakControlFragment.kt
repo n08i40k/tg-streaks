@@ -162,6 +162,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
                         listAdapter.notifyRowChanged(Row.TIME_ZONE_SELECTOR)
                         listAdapter.notifyRowChanged(Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW)
                         listAdapter.notifyRowChanged(Row.SYNC_OFFER_BTN)
+                        listAdapter.notifyRowChanged(Row.PET_CREATE_BTN)
                         listAdapter.notifyRowChanged(Row.PET_FAB_SW)
                         listAdapter.notifyRowChanged(Row.ACTIONS_RESTORE_STREAK_BTN)
                     }
