@@ -128,8 +128,8 @@ watch *ARGS: (_require "uv" "adb")
     uv run python tools/dev_watch.py '{{ PLUGIN_PY }}' '{{ DEBUG_DEX_PATH }}' '{{ RESOURCES_DIR }}' \
         --badges-sdk '{{ BADGES_SDK_LOADER }}' {{ ARGS }}
 
-# generate new Telegram[-compile].jar from updated extera/Ayu-Gram apk
-update-apk PATH_TO_APK: (_require "dex2jar" "jbang" "git")
+# generate new Telegram.jar from updated extera/Ayu-Gram apk
+update-apk PATH_TO_APK: (_require "dex2jar" "git")
     #!/usr/bin/env bash
     set -veuo pipefail
 
@@ -143,17 +143,13 @@ update-apk PATH_TO_APK: (_require "dex2jar" "jbang" "git")
     # convert apk to jar
     dex2jar -f -o "$tmp/Telegram.jar" "$tmp/Telegram.apk"
 
-    # fix class inheritance and exclude unneded packages
-    jbang ./tools/FixTelegramJar.java "$tmp/Telegram.jar" "$tmp/Telegram-compile.jar"
-
-    # copy generated jars
+    # copy generated jar
     mkdir -p ./libs/
     cp "$tmp/Telegram.jar" ./libs/Telegram.jar
-    cp "$tmp/Telegram-compile.jar" ./libs/Telegram-compile.jar
 
-    # and commit them
-    git add -N -- ./libs/Telegram.jar ./libs/Telegram-compile.jar
-    git commit -m "chore: bump telegram version" -- ./libs/Telegram.jar ./libs/Telegram-compile.jar
+    # and commit it
+    git add -N -- ./libs/Telegram.jar
+    git commit -m "chore: bump telegram version" -- ./libs/Telegram.jar
 
 # generate stubs for python
 gen-stubs PATH_TO_RT_JAR PATH_TO_ANDROID_JAR: (_require "java2pyi")
