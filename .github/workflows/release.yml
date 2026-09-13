@@ -50,14 +50,12 @@ jobs:
           echo "file=${plugin_py}" >> "$GITHUB_OUTPUT"
           echo "id=${plugin_id}" >> "$GITHUB_OUTPUT"
 
-      - name: Ensure Telegram JARs exist
+      - name: Ensure Telegram JAR exists
         run: |
-          for jar in libs/Telegram.jar libs/Telegram-compile.jar; do
-            if [[ ! -s "$jar" ]]; then
-              echo "$jar is missing. Commit the host JARs to libs/ (see 'just update-apk')." >&2
-              exit 1
-            fi
-          done
+          if [[ ! -s libs/Telegram.jar ]]; then
+            echo "libs/Telegram.jar is missing. Commit the host JAR to libs/ (see 'just update-apk')." >&2
+            exit 1
+          fi
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -72,7 +70,7 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platform-tools" "build-tools;36.1.0" "platforms;android-36.1"
+          sdkmanager "platforms;android-36.1"
 
       - name: Point Gradle to runner Android SDK
         run: |

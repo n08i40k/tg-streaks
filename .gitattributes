@@ -1,3 +1,2 @@
 libs/Telegram.jar filter=lfs diff=lfs merge=lfs -text
-libs/Telegram-compile.jar filter=lfs diff=lfs merge=lfs -text
 *.webm filter=lfs diff=lfs merge=lfs -text
