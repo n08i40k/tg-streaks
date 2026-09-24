@@ -70,8 +70,8 @@ kotlin {
 }
 
 dependencies {
-    implementation(libs.badges.sdk)
-    implementation(libs.badges.sdk.api)
+    implementation(project(":badges-sdk:api"))
+    implementation(project(":badges-sdk"))
 
     compileOnly(libs.aliuhook)
     compileOnly(libs.androidx.lifecycle.viewmodel)
