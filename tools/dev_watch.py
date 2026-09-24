@@ -3,7 +3,7 @@
 после чего отправляет собраный tg-streaks.plugin на устройство
 
 Использование: dev_watch.py <source.py> <classes.dex> <resources-dir>
-                            [--badges-sdk badges-sdk-loader.py] [--debug] [--poll SECONDS]
+                            [--debug] [--poll SECONDS]
 """
 
 import argparse
@@ -57,7 +57,6 @@ def _build_temp(
     source_path: str,
     dex_path: str,
     resources_dir: str,
-    badges_sdk_path: str | None,
     zip_path: str,
     temp_path: str,
 ) -> str | None:
@@ -74,12 +73,7 @@ def _build_temp(
         with open(zip_path, "rb") as f:
             resources = f.read()
 
-        badges_sdk = None
-        if badges_sdk_path is not None:
-            with open(badges_sdk_path, "rb") as f:
-                badges_sdk = f.read()
-
-        content = embed_source(source, dex, resources, badges_sdk)
+        content = embed_source(source, dex, resources)
     except (OSError, ValueError) as e:
         logger.error(f"Failed to embed assets into '{source_path}': {e}")
         return None
@@ -92,7 +86,6 @@ def _build_temp(
         for name, payload in (
             ("dex", dex),
             ("resources", resources),
-            ("badges-sdk", badges_sdk),
         )
         if payload is not None
     )
@@ -108,7 +101,6 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("source",                           help="Plugin Python source file")
     parser.add_argument("dex",                              help="Compiled classes.dex to embed")
     parser.add_argument("resources",                        help="Resources directory to pack and embed")
-    parser.add_argument("--badges-sdk",                     help="badges-sdk-loader.py to embed for the in-process engine loading")
     parser.add_argument("--debug", action="store_true",     help="Enable device debugger")
     parser.add_argument("--poll", type=float, default=1.0,  help="Poll interval in seconds")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], default="INFO")
@@ -144,14 +136,6 @@ def main() -> int:
 
     plugin_id = metadata.id
 
-    badges_sdk_path = args.badges_sdk
-    if badges_sdk_path is not None and not os.path.isfile(badges_sdk_path):
-        logger.warning(
-            f"badges-sdk loader '{badges_sdk_path}' is missing, embedding without it "
-            "(run 'just badges-sdk' to fetch it)"
-        )
-        badges_sdk_path = None
-
     adb = AdbManager()
 
     if not adb.setup_device(args.debug):
@@ -175,14 +159,13 @@ def main() -> int:
     )
 
     # при запуске принудительно загружаем билд
-    last_source = last_dex = last_resources = last_badges_sdk = object()
+    last_source = last_dex = last_resources = object()
 
     try:
         while True:
             source_mtime = _mtime(args.source)
             dex_mtime = _mtime(args.dex)
             resources_mtime = _tree_mtime(args.resources)
-            badges_sdk_mtime = _mtime(badges_sdk_path) if badges_sdk_path else None
 
             if dex_mtime is None:
                 if last_dex is not None:
@@ -191,27 +174,24 @@ def main() -> int:
                 time.sleep(args.poll)
                 continue
 
-            if (source_mtime, dex_mtime, resources_mtime, badges_sdk_mtime) == (
+            if (source_mtime, dex_mtime, resources_mtime) == (
                 last_source,
                 last_dex,
                 last_resources,
-                last_badges_sdk,
             ):
                 time.sleep(args.poll)
                 continue
 
-            last_source, last_dex, last_resources, last_badges_sdk = (
+            last_source, last_dex, last_resources = (
                 source_mtime,
                 dex_mtime,
                 resources_mtime,
-                badges_sdk_mtime,
             )
 
             content = _build_temp(
                 args.source,
                 args.dex,
                 args.resources,
-                badges_sdk_path,
                 zip_path,
                 temp_path,
             )

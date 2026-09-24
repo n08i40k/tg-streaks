@@ -7,12 +7,12 @@ import android.view.View
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.LaunchActivity
-import ru.n08i40k.badges.compat.BadgesViewFactory
+import ru.n08i40k.badges.api.ViewFactory
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.util.Logger
 
-class StreakEmojiViewFactory : BadgesViewFactory {
+class StreakEmojiViewFactory : ViewFactory {
     @SuppressLint("ViewConstructor")
     private class BadgeView(parent: View, heightPx: Int) : View(parent.context) {
         private val streakEmoji = StreakEmoji(parent, heightPx)
@@ -109,10 +109,14 @@ class StreakEmojiViewFactory : BadgesViewFactory {
         fun destroy() = streakEmoji.detach()
     }
 
-    override fun create(parent: View, heightPx: Int): View = BadgeView(parent, heightPx)
+    override fun getPluginId(): String =
+        Plugin.ID
 
-    override fun bind(view: View, userId: Long): Boolean =
-        (view as? BadgeView)?.bind(userId) ?: false
+    override fun create(params: ViewFactory.CreateParams): View =
+        BadgeView(params.parent, params.heightInPx)
+
+    override fun bind(params: ViewFactory.BindParams): Boolean =
+        (params.view as? BadgeView)?.bind(params.userId) ?: false
 
     override fun destroy(view: View) {
         (view as? BadgeView)?.destroy()

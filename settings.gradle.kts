@@ -1,3 +1,5 @@
+import java.util.Properties
+
 pluginManagement {
     repositories {
         google {
@@ -30,3 +32,15 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Streaks Plugin"
+
+private val localProperties = Properties().apply {
+    file("local.properties")
+        .takeIf(File::exists)
+        ?.run { inputStream().use(::load) }
+}
+
+private val badgesSdkDir =
+    providers.gradleProperty("badgesSdk.dir").orNull
+        ?: localProperties.getProperty("badgesSdk.dir")
+
+includeBuild(badgesSdkDir)

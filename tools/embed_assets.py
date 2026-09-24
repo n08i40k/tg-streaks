@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Встраивает classes.dex и resources.zip в плагин в виде комментария
-с кодировкой base64 и сжатием LZMA, а badges-sdk-loader.py — как есть.
+с кодировкой base64 и сжатием LZMA.
 
 Использование: embed_assets.py [--dex classes.dex] [--resources resources.zip]
-                               [--badges-sdk badges-sdk-loader.py] <source.py> [output.py]
+                               <source.py> [output.py]
 
 Если output.py не указан, скрипт перезаписывает source.py.
 """
@@ -18,8 +18,6 @@ DEX_BEGIN = "# === EMDEDDED DEX BEGIN ==="
 DEX_END = "# === EMDEDDED DEX END ==="
 RESOURCES_BEGIN = "# === EMDEDDED RESOURCES BEGIN ==="
 RESOURCES_END = "# === EMDEDDED RESOURCES END ==="
-BADGES_SDK_BEGIN = "# === EMDEDDED BADGES SDK BEGIN ==="
-BADGES_SDK_END = "# === EMDEDDED BADGES SDK END ==="
 
 LINE_WIDTH = 120
 LZMA_PRESET = 9 | lzma.PRESET_EXTREME
@@ -70,7 +68,6 @@ def embed_source(
     source: str,
     dex: Optional[bytes] = None,
     resources: Optional[bytes] = None,
-    badges_sdk: Optional[bytes] = None,
 ) -> str:
     """Встраивает данные файлов в плагин."""
 
@@ -79,9 +76,6 @@ def embed_source(
 
     if resources is not None:
         source = embed_block(source, RESOURCES_BEGIN, RESOURCES_END, resources)
-
-    if badges_sdk is not None:
-        source = embed_plain_block(source, BADGES_SDK_BEGIN, BADGES_SDK_END, badges_sdk)
 
     return source
 
@@ -94,7 +88,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("output",       type=Path, nargs="?",   help="Output file (defaults to rewriting the source in place)")
     parser.add_argument("--dex",        type=Path,              help="classes.dex to embed")
     parser.add_argument("--resources",  type=Path,              help="resources.zip to embed")
-    parser.add_argument("--badges-sdk", type=Path,              help="badges-sdk-loader.py to embed for the in-process engine loading")
     # fmt: on
 
     return parser.parse_args()
@@ -105,17 +98,16 @@ def main() -> int:
 
     output: Path = args.output or args.source
 
-    if args.dex is None and args.resources is None and args.badges_sdk is None:
-        print("error: nothing to embed, pass --dex, --resources and/or --badges-sdk")
+    if args.dex is None and args.resources is None:
+        print("error: nothing to embed, pass --dex and/or --resources")
         return 2
 
     dex = args.dex.read_bytes() if args.dex else None
     resources = args.resources.read_bytes() if args.resources else None
-    badges_sdk = args.badges_sdk.read_bytes() if args.badges_sdk else None
 
     try:
         embedded = embed_source(
-            args.source.read_text(encoding="utf-8"), dex, resources, badges_sdk
+            args.source.read_text(encoding="utf-8"), dex, resources
         )
     except ValueError as e:
         print(f"error: {e} ({args.source})")
@@ -128,7 +120,6 @@ def main() -> int:
         for name, payload in (
             ("dex", dex),
             ("resources", resources),
-            ("badges-sdk", badges_sdk),
         )
         if payload is not None
     )

@@ -10,10 +10,10 @@ private val targetSdkMinorProperty: Provider<Int> =
     providers.gradleProperty("targetSdkMinor").map { it.toInt() }
 
 plugins {
-    id("com.android.library") version "9.4.0"
-    id("com.google.devtools.ksp") version "2.3.5"
-    id("de.comahe.i18n4k") version "0.11.2"
-    id("io.github.exterastuff.plugin") version "0.1.0"
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.exterastuff.plugin)
+    alias(libs.plugins.i18n4k)
+    alias(libs.plugins.ksp)
 }
 
 i18n4k {
@@ -70,23 +70,22 @@ kotlin {
 }
 
 dependencies {
-    implementation(files("./libs/badges-sdk-compat.aar"))
+    implementation(libs.badges.sdk)
+    implementation(libs.badges.sdk.api)
 
     compileOnly(libs.aliuhook)
-
+    compileOnly(libs.androidx.lifecycle.viewmodel)
+    compileOnly(libs.androidx.recyclerview)
+    compileOnly(libs.jetbrains.annotations)
+    implementation(libs.androidx.annotation)
+    implementation(libs.i18n4k.core)
     implementation(libs.jetbrains.kotlin.stdlib)
-    implementation(libs.kotlinx.datetime)
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.kotlinx.coroutines.core)
-
-    compileOnly(libs.androidx.recyclerview)
-    compileOnly(libs.androidx.lifecycle.viewmodel)
-
-    implementation(libs.room.runtime)
+    implementation(libs.kotlinx.datetime)
     implementation(libs.room.ktx)
+    implementation(libs.room.runtime)
     ksp(libs.androidx.room.compiler)
-
-    implementation(libs.i18n4k.core)
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
@@ -128,6 +127,8 @@ extera {
                 "androidx/collection/LongSparseArray"
             )
         }
+
+        relocate("ru.n08i40k.badges")
     }
 
     dexOutputDir = project.layout.projectDirectory.dir("dist/dex")

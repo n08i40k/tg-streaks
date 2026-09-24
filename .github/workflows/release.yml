@@ -25,6 +25,15 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Checkout Badges SDK repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.BADGES_SDK_REPO }}
+          ref: ${{ vars.BADGES_SDK_REF }}
+          path: badges-sdk
+          fetch-depth: 0
+          lfs: true
+
       - name: Validate release version
         env:
           VERSION: ${{ inputs.version }}
@@ -65,12 +74,7 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
-        run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platforms;android-36.1"
+        uses: android-actions/setup-android@v4
 
       - name: Point Gradle to runner Android SDK
         run: |
@@ -92,7 +96,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           PLUGIN_PY: ${{ steps.plugin.outputs.file }}
         run: |
-          python scripts/prepare_release.py \
+          python tools/prepare_release.py \
             --version "$VERSION" \
             --plugin-file "$PLUGIN_PY" \
             --pyproject-file pyproject.toml
@@ -102,12 +106,13 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
           VERSION: ${{ inputs.version }}
           PLUGIN_ID: ${{ steps.plugin.outputs.id }}
+          BADGES_SDK_DIR: ${{ vars.BADGES_SDK_DIR }}
         run: |
           chmod +x gradlew
           release_dir="$RUNNER_TEMP/release"
           rm -rf "$release_dir"
           mkdir -p "$release_dir"
-          just ci-release "$VERSION" "$release_dir/${PLUGIN_ID}.plugin"
+          just ci-release "$BADGES_SDK_DIR" "$VERSION" "$release_dir/${PLUGIN_ID}.plugin"
           cp dist/dex/release/classes.dex "$release_dir/classes.dex"
 
       - name: Attest build provenance
@@ -183,6 +188,8 @@ jobs:
             --form-string "media=$MEDIA" \
             -F "doc=@${FILE_PATH};filename=tg-streaks ${VERSION}.plugin" \
             --fail-with-body
+          
+          CHANGELOG_TEXT=$(echo "$CHANGELOG_TEXT" | sed "s/\$VERSION/$VERSION/")
           
           NEW_POST=$(
             jq -nc \

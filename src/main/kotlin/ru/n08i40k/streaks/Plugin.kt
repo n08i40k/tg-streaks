@@ -34,7 +34,8 @@ import org.telegram.messenger.LocaleController
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.NotificationCenter
 import org.telegram.messenger.UserConfig
-import ru.n08i40k.badges.compat.BadgesSdkProvider
+import ru.n08i40k.badges.BadgesSdkProvider
+import ru.n08i40k.badges.api.BadgesSdk
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.controller.PluginRelationController
 import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
@@ -88,6 +89,7 @@ import java.lang.reflect.Member
 import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
 import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 typealias LogReceiver = ValueCallback<String>
@@ -113,7 +115,7 @@ class Plugin {
 
         @JvmStatic
         fun getBuildDate(): String = Instant
-            .fromEpochMilliseconds(BuildConfig.BUILD_TIME.toLong())
+            .fromEpochMilliseconds(BuildConfig.BUILD_TIME)
             .toString()
 
         @JvmStatic
@@ -280,6 +282,9 @@ class Plugin {
     val serviceMessageCategoriesController: ServiceMessageCategoriesController
     val petUiManager: StreakPetUiManager
 
+    // P-in-P
+    lateinit var badgesSdk: BadgesSdk
+
     constructor(resourcesProvider: ResourcesProvider) {
         try {
             this.resourcesProvider = resourcesProvider
@@ -342,7 +347,11 @@ class Plugin {
     @UiThread
     private fun refreshStreakViews() {
         streaksController.refreshViewCache()
-        BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
+        badgesSdk.rebindViews(
+            BadgesSdk.RebindViewsParams
+                .builder(streakEmojiViewFactory)
+                .build()
+        )
     }
 
     @OptIn(FlowPreview::class)
@@ -356,7 +365,12 @@ class Plugin {
         EventBus.stream
             .filterIsInstance<PluginEvent.StreakEvent>()
             .onEachWithOnMainThreadBlocking {
-                BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory, peerUserId)
+                badgesSdk.rebindViews(
+                    BadgesSdk.RebindViewsParams
+                        .builder(streakEmojiViewFactory)
+                        .userId(peerUserId)
+                        .build()
+                )
 
                 when (this) {
                     is PluginEvent.StreakCreatedEvent -> {
@@ -413,8 +427,14 @@ class Plugin {
         // debounced dialog cells refresh
         EventBus.stream
             .filterIsInstance<PluginEvent.StreakEvent>()
-            .debounce(100)
-            .onEachOnMainThread { BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory) }
+            .debounce(100.milliseconds)
+            .onEachOnMainThread {
+                badgesSdk.rebindViews(
+                    BadgesSdk.RebindViewsParams
+                        .builder(streakEmojiViewFactory)
+                        .build()
+                )
+            }
             .launchIn(backgroundScope)
 
         // sync
@@ -427,7 +447,11 @@ class Plugin {
                 petUiManager.refreshFabForOpenChat()
                 petUiManager.refreshOpenedDialog(accountId, peerUserId)
 
-                BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
+                badgesSdk.rebindViews(
+                    BadgesSdk.RebindViewsParams
+                        .builder(streakEmojiViewFactory)
+                        .build()
+                )
             }
             .launchIn(backgroundScope)
 
@@ -629,7 +653,11 @@ class Plugin {
             accountId,
             "refresh streak badges for account $accountId ($reason)"
         ) {
-            BadgesSdkProvider.scheduleRebind(streakEmojiViewFactory)
+            badgesSdk.rebindViews(
+                BadgesSdk.RebindViewsParams
+                    .builder(streakEmojiViewFactory)
+                    .build()
+            )
         }
 
         enqueueUpdatesCheck(accountId, reason)
@@ -666,15 +694,8 @@ class Plugin {
             ::hookMethods
         )
 
-        // the sdk plugin may not be loaded yet: the factory is registered as soon as
-        // it appears, so the load order of the two plugins does not matter
-        BadgesSdkProvider.setLogger { message, error ->
-            if (error == null)
-                Logger.info(message)
-            else
-                Logger.fatal(message, error, preventEject = true)
-        }
-        BadgesSdkProvider.addBadgeFactory(ID, streakEmojiViewFactory)
+        badgesSdk = BadgesSdkProvider.create()
+        badgesSdk.installViewFactory(streakEmojiViewFactory)
 
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
 
@@ -724,7 +745,7 @@ class Plugin {
 
             petUiManager.dismissAll()
 
-            BadgesSdkProvider.shutdown()
+            BadgesSdkProvider.destroy()
         }
 
         // database (will be closed after notifying all subscribers except logger)

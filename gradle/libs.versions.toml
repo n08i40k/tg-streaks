@@ -1,26 +1,41 @@
 [versions]
+agp = "9.4.1"
 aliuhook = "1.1.3"
+badgesSdk = "1.2.1"
+badgesSdkApi = "1.2.0"
 desugar_jdk_libs = "2.1.5"
+exteraPlugin = "0.1.1"
+i18n4k = "0.11.2"
 #noinspection GradleDependency
 kotlin = "2.2.0"
-kotlinxCoroutinesCore = "1.10.2"
+kotlinxCollectionsImmutable = "0.5.2"
+kotlinxCoroutinesCore = "1.11.0"
 kotlinxDatetime = "0.8.0"
-kotlinxCollectionsImmutable = "0.4.0"
-roomRuntime = "2.8.4"
+ksp = "2.3.5"
+lifecycle = "2.11.0"
 recyclerview = "1.4.0"
-lifecycle = "2.6.2"
-i18n4k = "0.11.2"
+roomRuntime = "2.8.5"
 
 [libraries]
 aliuhook = { module = "com.aliucord:Aliuhook", version.ref = "aliuhook" }
+androidx-annotation = { module = "androidx.annotation:annotation", version = "1.11.0" }
+androidx-lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }
+androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomRuntime" }
+badges-sdk = { module = "ru.n08i40k:badges-sdk", version.ref = "badgesSdk" }
+badges-sdk-api = { module = "ru.n08i40k:badges-sdk-api", version.ref = "badgesSdkApi" }
 desugar_jdk_libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar_jdk_libs" }
+i18n4k-core = { module = "de.comahe.i18n4k:i18n4k-core", version.ref = "i18n4k" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version = "26.1.0" }
 jetbrains-kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlinx-collections-immutable = { module = "org.jetbrains.kotlinx:kotlinx-collections-immutable", version.ref = "kotlinxCollectionsImmutable" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutinesCore" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
-kotlinx-collections-immutable = { module = "org.jetbrains.kotlinx:kotlinx-collections-immutable", version.ref = "kotlinxCollectionsImmutable" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomRuntime" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
-androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
-androidx-lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }
-i18n4k-core = { module = "de.comahe.i18n4k:i18n4k-core", version.ref = "i18n4k" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+exterastuff-plugin = { id = "io.github.exterastuff.plugin", version.ref = "exteraPlugin" }
+i18n4k = { id = "de.comahe.i18n4k", version.ref = "i18n4k" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

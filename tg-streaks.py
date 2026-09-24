@@ -563,53 +563,6 @@ class ZipResourcesBridge:
                 os.remove(self.zip_path)
 
 
-class BadgesSdk:
-    """Загружает движок Badges SDK через встроенный лоадер"""
-
-    def __init__(self, plugin: "TgStreaksPlugin"):
-        self.plugin = plugin
-        self.loader: Optional[Any] = None
-
-        loader_class = globals().get("BadgesSdkLoader")
-
-        if loader_class is None:
-            plugin.log("Badges SDK loader is not embedded into this build")
-            return
-
-        self.loader = loader_class(__id__, logger=plugin.log)
-
-    def remove_standalone_plugin(self):
-        if self.loader is None:
-            return
-
-        try:
-            self.loader.remove_standalone_plugin()
-        except Exception as e:
-            self.plugin.log_exception("Failed to remove the standalone Badges SDK", e)
-
-    def load(self):
-        if self.loader is None:
-            return
-
-        try:
-            result = self.loader.load()
-        except Exception as e:
-            self.plugin.log_exception("Failed to load Badges SDK", e)
-            return
-
-        if not result.usable:
-            self.plugin.log(f"Badges SDK is unavailable: {result}")
-
-    def unload(self):
-        if self.loader is None:
-            return
-
-        try:
-            self.loader.unload()
-        except Exception as e:
-            self.plugin.log_exception("Failed to unload Badges SDK", e)
-
-
 class ChatContextMenu:
     """Отвечает за регистрацию кнопок в контекстном меню чата"""
 
@@ -2054,8 +2007,6 @@ class TgStreaksPlugin(BasePlugin):
 
             self.update_checker = PluginUpdateChecker(self)
             self.update_checker.start()
-
-            self.badges_sdk.load()
         except BaseException as e:
             self._handle_load_failure("plugin load", e)
             return
@@ -2076,11 +2027,6 @@ class TgStreaksPlugin(BasePlugin):
             if self._should_block_load_for_downgrade():
                 return None
 
-            self.badges_sdk = BadgesSdk(self)
-
-            if not DEBUG_MODE:
-                self.badges_sdk.remove_standalone_plugin()
-
             if allow_update_pause and self._should_pause_full_load_for_update():
                 return None
 
@@ -2094,11 +2040,6 @@ class TgStreaksPlugin(BasePlugin):
             self.update_checker.stop()
         except Exception:
             pass
-
-        badges_sdk = getattr(self, "badges_sdk", None)
-
-        if badges_sdk is not None:
-            badges_sdk.unload()
 
         jvm_plugin = getattr(self, "jvm_plugin", None)
 
@@ -2149,5 +2090,3 @@ class TgStreaksPlugin(BasePlugin):
 # === EMDEDDED DEX END ===
 # === EMDEDDED RESOURCES BEGIN ===
 # === EMDEDDED RESOURCES END ===
-# === EMDEDDED BADGES SDK BEGIN ===
-# === EMDEDDED BADGES SDK END ===
