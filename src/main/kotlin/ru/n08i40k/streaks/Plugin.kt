@@ -664,7 +664,8 @@ class Plugin {
     }
 
     private fun onInject() {
-        PluginBadges.add()
+        // suppress missing classes, methods and fields
+        runCatching { PluginBadges.add() }
 
         CheckNotificationHelper.createChannel()
 
@@ -716,10 +717,8 @@ class Plugin {
     private fun onEject() {
         Logger.info("onEject called!")
 
-        Logger.tryOrFatal(
-            "remove plugin badges",
-            PluginBadges::remove
-        )
+        // suppress missing classes, methods and fields
+        runCatching { PluginBadges.remove() }
 
         // hooks
         hooks.forEach {
