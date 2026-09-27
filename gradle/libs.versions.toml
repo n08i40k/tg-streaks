@@ -10,15 +10,11 @@ kotlinxCollectionsImmutable = "0.5.2"
 kotlinxCoroutinesCore = "1.11.0"
 kotlinxDatetime = "0.8.0"
 ksp = "2.3.5"
-lifecycle = "2.11.0"
-recyclerview = "1.4.0"
 roomRuntime = "2.8.5"
 
 [libraries]
 aliuhook = { module = "com.aliucord:Aliuhook", version.ref = "aliuhook" }
 androidx-annotation = { module = "androidx.annotation:annotation", version = "1.11.0" }
-androidx-lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }
-androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomRuntime" }
 desugar_jdk_libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar_jdk_libs" }
 i18n4k-core = { module = "de.comahe.i18n4k:i18n4k-core", version.ref = "i18n4k" }

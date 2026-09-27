@@ -9,13 +9,11 @@ class AlphaAwareItemAnimator : DefaultItemAnimator() {
     override fun animateChange(
         oldHolder: RecyclerView.ViewHolder,
         newHolder: RecyclerView.ViewHolder,
-        fromLeft: Int,
-        fromTop: Int,
-        toLeft: Int,
-        toTop: Int,
+        holderInfo0: ItemHolderInfo,
+        holderInfo1: ItemHolderInfo,
     ): Boolean {
         if (oldHolder !== newHolder)
-            return super.animateChange(oldHolder, newHolder, fromLeft, fromTop, toLeft, toTop)
+            return super.animateChange(oldHolder, newHolder, holderInfo0, holderInfo1)
 
         val view = newHolder.itemView
         val targetAlpha = view.alpha

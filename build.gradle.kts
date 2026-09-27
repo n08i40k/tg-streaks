@@ -74,8 +74,6 @@ dependencies {
     implementation(project(":badges-sdk"))
 
     compileOnly(libs.aliuhook)
-    compileOnly(libs.androidx.lifecycle.viewmodel)
-    compileOnly(libs.androidx.recyclerview)
     compileOnly(libs.jetbrains.annotations)
     implementation(libs.androidx.annotation)
     implementation(libs.i18n4k.core)
@@ -97,16 +95,8 @@ extera {
         conflictingPackages = listOf(
             "kotlin",
             "kotlinx",
-            "androidx.annotation",
-            "androidx.arch",
-            "androidx.collection",
-            "androidx.core",
-            "androidx.customview",
-            "androidx.lifecycle",
-            "androidx.recyclerview",
             "androidx.room",
             "androidx.sqlite",
-            "androidx.versionedparcelable",
         )
     }
 
@@ -120,13 +110,7 @@ extera {
 
         relocate("kotlin", "kotlinx", "de.comahe.i18n4k")
 
-        relocate("androidx") {
-            exclude(
-                "androidx/recyclerview/**",
-                "androidx/core/view/inputmethod/InputContentInfoCompat",
-                "androidx/collection/LongSparseArray"
-            )
-        }
+        relocate("androidx.room", "androidx.sqlite", "androidx.arch.core")
 
         relocate("ru.n08i40k.badges")
     }
