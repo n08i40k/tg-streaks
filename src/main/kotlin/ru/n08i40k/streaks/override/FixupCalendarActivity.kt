@@ -10,6 +10,8 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.number
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.ActionBar.AlertDialog
@@ -171,10 +173,14 @@ class FixupCalendarActivity : CalendarActivity {
         val listView = listViewField.getAs<RecyclerListView>(this)
             ?: return view
 
-        disableBuiltInSelectionUi()
-        installActivityStatusDecoration(listView)
-        installMonthViewInterceptors(listView)
+        listView.postSafe {
+            disableBuiltInSelectionUi()
+            installActivityStatusDecoration(listView)
+            installMonthViewInterceptors(listView)
+        }
+
         loadCachedSnapshot(listView)
+
         return view
     }
 
@@ -206,7 +212,7 @@ class FixupCalendarActivity : CalendarActivity {
         }
 
         decoratedListViewRef.set(listView)
-        listView.post { listView.addItemDecoration(activityStatusDecoration) }
+        listView.addItemDecoration(activityStatusDecoration)
     }
 
     private fun installMonthViewInterceptors(listView: RecyclerListView) {
@@ -215,6 +221,7 @@ class FixupCalendarActivity : CalendarActivity {
         }
 
         interceptedListViewRef.set(listView)
+
         listView.addOnChildAttachStateChangeListener(
             object : RecyclerView.OnChildAttachStateChangeListener {
                 override fun onChildViewAttachedToWindow(view: View) {
@@ -418,24 +425,25 @@ class FixupCalendarActivity : CalendarActivity {
                 markDay(newRestoresByMonthKey, restoreDay)
             }
 
-            runOnMainThread {
-                activeDaysByMonthKey.clear()
-                cachedRestoresByMonthKey.clear()
-                manualRestoresUsed = snapshot.manualRestoresUsed
+            activeDaysByMonthKey.clear()
+            cachedRestoresByMonthKey.clear()
+            manualRestoresUsed = snapshot.manualRestoresUsed
 
-                for (index in 0 until newActiveByMonthKey.size()) {
-                    val monthKey = newActiveByMonthKey.keyAt(index)
-                    activeDaysByMonthKey.put(monthKey, newActiveByMonthKey.valueAt(index))
-                }
+            for (index in 0 until newActiveByMonthKey.size()) {
+                val monthKey = newActiveByMonthKey.keyAt(index)
+                activeDaysByMonthKey.put(monthKey, newActiveByMonthKey.valueAt(index))
+            }
 
-                for (index in 0 until newRestoresByMonthKey.size()) {
-                    val monthKey = newRestoresByMonthKey.keyAt(index)
-                    cachedRestoresByMonthKey.put(monthKey, newRestoresByMonthKey.valueAt(index))
-                }
+            for (index in 0 until newRestoresByMonthKey.size()) {
+                val monthKey = newRestoresByMonthKey.keyAt(index)
+                cachedRestoresByMonthKey.put(monthKey, newRestoresByMonthKey.valueAt(index))
+            }
 
-                messagesByYearMonthProxy?.repatchAll()
+            messagesByYearMonthProxy?.repatchAll()
+
+            listView.postSafe {
                 listView.invalidate()
-                listView.post { listView.invalidateItemDecorations() }
+                listView.invalidateItemDecorations()
             }
         }
     }

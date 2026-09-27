@@ -11,7 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -26,13 +25,13 @@ import org.telegram.ui.Cells.TextInfoPrivacyCell
 import org.telegram.ui.Cells.TextSettingsCell
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RecyclerListView
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.extension.collectOnMainThread
 import ru.n08i40k.streaks.extension.setSectionsCompat
 import ru.n08i40k.streaks.extension.setTextAndValueAndCheckCompat
 import ru.n08i40k.streaks.extension.toOffsetString
 import ru.n08i40k.streaks.i18n.Strings
+import ru.n08i40k.streaks.util.postSafe
 
 
 class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
@@ -148,24 +147,17 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
 
         viewModel.state()
             .observe { state ->
-                Plugin.getInstance().backgroundScope.launch {
-                    while (listView.isComputingLayout) {
-                        delay(100)
-                    }
+                listView.postSafe {
+                    viewState = state
 
-                    listView.post {
-                        viewState = state
-
-                        listView.stopScroll()
-                        listAdapter.notifyRowChanged(Row.DANGER_ZONE_REBUILD_PET_BTN)
-                        listAdapter.notifyRowChanged(Row.DANGER_ZONE_DELETE_PET_BTN)
-                        listAdapter.notifyRowChanged(Row.TIME_ZONE_SELECTOR)
-                        listAdapter.notifyRowChanged(Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW)
-                        listAdapter.notifyRowChanged(Row.SYNC_OFFER_BTN)
-                        listAdapter.notifyRowChanged(Row.PET_CREATE_BTN)
-                        listAdapter.notifyRowChanged(Row.PET_FAB_SW)
-                        listAdapter.notifyRowChanged(Row.ACTIONS_RESTORE_STREAK_BTN)
-                    }
+                    listAdapter.notifyRowChanged(Row.DANGER_ZONE_REBUILD_PET_BTN)
+                    listAdapter.notifyRowChanged(Row.DANGER_ZONE_DELETE_PET_BTN)
+                    listAdapter.notifyRowChanged(Row.TIME_ZONE_SELECTOR)
+                    listAdapter.notifyRowChanged(Row.SYNC_PEER_HAS_PLUGIN_ENABLED_SW)
+                    listAdapter.notifyRowChanged(Row.SYNC_OFFER_BTN)
+                    listAdapter.notifyRowChanged(Row.PET_CREATE_BTN)
+                    listAdapter.notifyRowChanged(Row.PET_FAB_SW)
+                    listAdapter.notifyRowChanged(Row.ACTIONS_RESTORE_STREAK_BTN)
                 }
             }
     }
