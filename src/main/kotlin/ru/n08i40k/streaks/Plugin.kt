@@ -283,7 +283,7 @@ class Plugin {
     val petUiManager: StreakPetUiManager
 
     // P-in-P
-    lateinit var badgesSdk: BadgesSdk
+    var badgesSdk: BadgesSdk? = null
 
     constructor(resourcesProvider: ResourcesProvider) {
         try {
@@ -347,7 +347,7 @@ class Plugin {
     @UiThread
     private fun refreshStreakViews() {
         streaksController.refreshViewCache()
-        badgesSdk.rebindViews(
+        badgesSdk?.rebindViews(
             BadgesSdk.RebindViewsParams
                 .builder(streakEmojiViewFactory)
                 .build()
@@ -365,7 +365,7 @@ class Plugin {
         EventBus.stream
             .filterIsInstance<PluginEvent.StreakEvent>()
             .onEachWithOnMainThreadBlocking {
-                badgesSdk.rebindViews(
+                badgesSdk?.rebindViews(
                     BadgesSdk.RebindViewsParams
                         .builder(streakEmojiViewFactory)
                         .userId(peerUserId)
@@ -429,7 +429,7 @@ class Plugin {
             .filterIsInstance<PluginEvent.StreakEvent>()
             .debounce(100.milliseconds)
             .onEachOnMainThread {
-                badgesSdk.rebindViews(
+                badgesSdk?.rebindViews(
                     BadgesSdk.RebindViewsParams
                         .builder(streakEmojiViewFactory)
                         .build()
@@ -447,7 +447,7 @@ class Plugin {
                 petUiManager.refreshFabForOpenChat()
                 petUiManager.refreshOpenedDialog(accountId, peerUserId)
 
-                badgesSdk.rebindViews(
+                badgesSdk?.rebindViews(
                     BadgesSdk.RebindViewsParams
                         .builder(streakEmojiViewFactory)
                         .build()
@@ -653,7 +653,7 @@ class Plugin {
             accountId,
             "refresh streak badges for account $accountId ($reason)"
         ) {
-            badgesSdk.rebindViews(
+            badgesSdk?.rebindViews(
                 BadgesSdk.RebindViewsParams
                     .builder(streakEmojiViewFactory)
                     .build()
@@ -690,13 +690,13 @@ class Plugin {
             streaksController.loadCaches()
         }
 
+        badgesSdk = BadgesSdkProvider.create()
+            .apply { installViewFactory(streakEmojiViewFactory) }
+
         Logger.tryOrFatal(
             "hook methods",
             ::hookMethods
         )
-
-        badgesSdk = BadgesSdkProvider.create()
-        badgesSdk.installViewFactory(streakEmojiViewFactory)
 
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
 
