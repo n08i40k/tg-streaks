@@ -1,39 +1,31 @@
 package ru.n08i40k.streaks.util
 
+import android.os.Looper
 import androidx.annotation.AnyThread
 import kotlinx.coroutines.runBlocking
 import org.telegram.messenger.AndroidUtilities
 
 @AnyThread
-inline fun <R> runOnUIThread(crossinline block: () -> R) {
+inline fun <R> runOnMainThread(crossinline block: () -> R) {
     RefCounter.inc()
 
-    AndroidUtilities.runOnUIThread {
+    val wrappedBlock: () -> Unit = {
         try {
             block.invoke()
+        } catch (e: Throwable) {
+            Logger.fatal("run on UI thread", e)
         } finally {
             RefCounter.dec()
         }
     }
-}
 
-@AnyThread
-inline fun <R> runOnMainThread(crossinline block: () -> R) =
-    runOnUIThread(block)
-
-@AnyThread
-inline fun <R> runBlockingOnUIThread(crossinline block: suspend () -> R) {
-    RefCounter.inc()
-
-    AndroidUtilities.runOnUIThread {
-        try {
-            runBlocking { block.invoke() }
-        } finally {
-            RefCounter.dec()
-        }
-    }
+    if (Looper.myLooper() === Looper.getMainLooper())
+        wrappedBlock.invoke()
+    else
+        AndroidUtilities.runOnUIThread(wrappedBlock)
 }
 
 @AnyThread
 inline fun <R> runBlockingOnMainThread(crossinline block: suspend () -> R) =
-    runBlockingOnUIThread(block)
+    runOnMainThread { runBlocking { block.invoke() } }
+
