@@ -690,6 +690,10 @@ class Plugin {
             streaksController.loadCaches()
         }
 
+        BadgesSdkProvider.setFatalExceptionHandler {
+            Logger.fatal("An exception occurred in Badges SDK", it)
+        }
+
         badgesSdk = BadgesSdkProvider.create()
             .apply { installViewFactory(streakEmojiViewFactory) }
 
