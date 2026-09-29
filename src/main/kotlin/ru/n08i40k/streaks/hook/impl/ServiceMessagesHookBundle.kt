@@ -28,6 +28,7 @@ import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.`ChatActionCell$currentMessageObject`
 import ru.n08i40k.streaks.util.`ChatActionCell$imageReceiver`
+import ru.n08i40k.streaks.util.`ChatActionCell$setStarsPaused`
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.StreakEmojiPackCodec
 import ru.n08i40k.streaks.util.`TLRPC$Message$$fields`
@@ -697,6 +698,16 @@ class ServiceMessagesHookBundle : HookBundle() {
                 -AndroidUtilities.dp(19.5f)
         }
 
+        // Звёздочки на кнопке перерисовывают сообщение каждый кадр пока оно на экране
+        after(
+            ChatActionCell::class.java.getDeclaredMethod("onAttachedToWindow")
+        ) { param ->
+            val thisObject = param.thisObject as ChatActionCell
+
+            if (isGiftStyled(thisObject.messageObject))
+                `ChatActionCell$setStarsPaused`.invokeExact(thisObject, true)
+        }
+
         // Удаление анимации у gift
         after(
             ChatActionCell::class.java.getDeclaredMethod(
@@ -705,16 +716,16 @@ class ServiceMessagesHookBundle : HookBundle() {
                 Boolean::class.java,
             )
         ) { param ->
-            val messageObject = param.args[0] as? MessageObject
-                ?: return@after
-
-            val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
-                ?: return@after
-
-            if (!ServiceMessage.isGiftStyled(prizeStars.transaction_id))
-                return@after
-
             val thisObject = param.thisObject as ChatActionCell
+            val giftStyled = isGiftStyled(param.args[0] as? MessageObject)
+
+            `ChatActionCell$setStarsPaused`.invokeExact(
+                thisObject,
+                giftStyled || !thisObject.isAttachedToWindow
+            )
+
+            if (!giftStyled)
+                return@after
 
             (`ChatActionCell$imageReceiver`.invokeExact(thisObject) as ImageReceiver)
                 .apply {
@@ -741,5 +752,12 @@ class ServiceMessagesHookBundle : HookBundle() {
         param.args[5] = action
         param.args[9] = false
         param.args[10] = true
+    }
+
+    private fun isGiftStyled(messageObject: MessageObject?): Boolean {
+        val prizeStars = messageObject?.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
+            ?: return false
+
+        return ServiceMessage.isGiftStyled(prizeStars.transaction_id)
     }
 }

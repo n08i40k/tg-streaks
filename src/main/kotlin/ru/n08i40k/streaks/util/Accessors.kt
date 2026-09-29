@@ -26,6 +26,10 @@ val `ChatActionCell$imageReceiver` =
     getFieldGetter(ChatActionCell::class.java, "imageReceiver")
 
 @JvmField
+val `ChatActionCell$setStarsPaused` =
+    getMethodHandle(ChatActionCell::class.java, "setStarsPaused", Boolean::class.javaPrimitiveType!!)
+
+@JvmField
 val `TLRPC$Message$$fields` =
     getAccessibleFields(TLRPC.Message::class.java)
 
