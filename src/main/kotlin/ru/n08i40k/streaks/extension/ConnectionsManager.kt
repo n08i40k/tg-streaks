@@ -5,6 +5,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
+import kotlin.time.Duration.Companion.milliseconds
 
 sealed class RequestOutcome {
     data class Success(val response: TLObject) : RequestOutcome() {
@@ -52,7 +53,7 @@ suspend fun ConnectionsManager.sendRequestBlocking(
         }, 2 or 64 or 1024
     )
 
-    return withTimeoutOrNull(timeout) { deferred.await() } ?: run {
+    return withTimeoutOrNull(timeout.milliseconds) { deferred.await() } ?: run {
         this.cancelRequest(requestId, true)
         return@run RequestOutcome.TimeOut
     }

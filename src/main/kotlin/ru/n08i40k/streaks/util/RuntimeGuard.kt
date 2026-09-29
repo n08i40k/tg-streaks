@@ -3,6 +3,7 @@ package ru.n08i40k.streaks.util
 import kotlinx.coroutines.delay
 import org.telegram.messenger.ApplicationLoader
 import org.telegram.tgnet.ConnectionsManager
+import kotlin.time.Duration.Companion.milliseconds
 
 object RuntimeGuard {
     private const val POLL_DELAY_MS = 1_000L
@@ -25,7 +26,7 @@ object RuntimeGuard {
                 loggedWait = true
             }
 
-            delay(POLL_DELAY_MS)
+            delay(POLL_DELAY_MS.milliseconds)
         }
 
         if (loggedWait)
@@ -60,7 +61,7 @@ object RuntimeGuard {
                 loggedWait = true
             }
 
-            delay(POLL_DELAY_MS)
+            delay(POLL_DELAY_MS.milliseconds)
         }
     }
 
@@ -77,7 +78,7 @@ object RuntimeGuard {
             onTick?.invoke(remainingMs, totalMs)
 
             val chunkMs = minOf(remainingMs, POLL_DELAY_MS)
-            delay(chunkMs)
+            delay(chunkMs.milliseconds)
             remainingMs -= chunkMs
         }
     }

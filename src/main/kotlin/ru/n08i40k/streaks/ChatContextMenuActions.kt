@@ -23,6 +23,7 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.presentFragment
 import ru.n08i40k.streaks.util.runOnMainThread
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 
 class ChatContextMenuActions(private val plugin: Plugin) {
     @OptIn(DelicateCoroutinesApi::class)
@@ -305,7 +306,7 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                         val jumpTs = streak.createdAt.epochSeconds.toInt()
 
                         // wait for dialog activity appear
-                        delay(2000)
+                        delay(2000.milliseconds)
 
                         runOnMainThread {
                             val chatActivity =

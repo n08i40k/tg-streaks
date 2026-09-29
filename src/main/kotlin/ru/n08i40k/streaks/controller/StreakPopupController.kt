@@ -34,6 +34,7 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Duration.Companion.milliseconds
 
 class StreakPopupController(
     private val dao: ScheduledStreakPopupDao,
@@ -285,7 +286,7 @@ class StreakPopupController(
                 Plugin.getInstance()
                     .backgroundScope
                     .launch {
-                        delay(POPUP_AUTO_DISMISS_MS)
+                        delay(POPUP_AUTO_DISMISS_MS.milliseconds)
 
                         runOnMainThread {
                             try {
