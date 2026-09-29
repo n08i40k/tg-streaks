@@ -1,6 +1,28 @@
-# disallow shrinking and obfuscation
--keep,allowoptimization class ru.n08i40k.streaks.** {
+# disallow shrinking
+-keep,allowoptimization,allowobfuscation class ru.n08i40k.streaks.** {
     *;
+}
+
+-keepnames class ru.n08i40k.streaks.database.** {
+    *;
+}
+
+-keepnames class ru.n08i40k.streaks.Plugin {
+    boolean isInjected();
+    java.lang.String getBuildDate();
+    java.lang.String getVersion();
+
+    void inject(java.lang.String, android.webkit.ValueCallback, java.lang.String);
+    void finalizeInject();
+    void eject();
+
+    void invokeChatContextMenuCallback(java.lang.String, long);
+    void invokeSettingsActionCallback(java.lang.String);
+
+    void setPetFabSizeDp(int);
+    void setAutoStreakCreationEnabled(boolean);
+
+    android.content.SharedPreferences getSharedPrefs();
 }
 
 # disallow optimization and obfuscation of runtime refs

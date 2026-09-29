@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.webkit.ValueCallback
 import androidx.annotation.AnyThread
+import androidx.annotation.Keep
 import androidx.annotation.UiThread
 import androidx.room.Room
 import androidx.room.useWriterConnection
@@ -97,6 +98,7 @@ typealias LogReceiver = ValueCallback<String>
 class Plugin {
     @Suppress("unused")
     companion object {
+        @Keep
         const val ID = "tg-streaks"
 
         private const val HANDLE_KEY = "ru.n08i40k.streaks.handle"
@@ -109,18 +111,23 @@ class Plugin {
 
         private var VERSION: String? = null
 
+        @Keep
+        @JvmStatic
         fun isInjected(): Boolean = INSTANCE != null
 
         internal fun getInstance(): Plugin = INSTANCE!!
 
+        @Keep
         @JvmStatic
         fun getBuildDate(): String = Instant
             .fromEpochMilliseconds(BuildConfig.BUILD_TIME)
             .toString()
 
+        @Keep
         @JvmStatic
         fun getVersion(): String? = VERSION
 
+        @Keep
         @Synchronized
         @Blocking
         @JvmStatic
@@ -172,16 +179,19 @@ class Plugin {
             }
         }
 
+        @Keep
         @JvmStatic
         fun invokeChatContextMenuCallback(key: String, id: Long) = with(INSTANCE!!) {
             chatContextMenuCallbackRegistry.get(key).accept(id)
         }
 
+        @Keep
         @JvmStatic
         fun invokeSettingsActionCallback(key: String) = with(INSTANCE!!) {
             settingsActionCallbackRegistry.get(key).run()
         }
 
+        @Keep
         @Blocking
         @Synchronized
         @JvmStatic
@@ -194,11 +204,13 @@ class Plugin {
             INSTANCE!!.onFinalizeInject()
         }
 
+        @Keep
         @JvmStatic
         fun setPetFabSizeDp(sizeDp: Int) = with(INSTANCE!!) {
             petUiManager.setFabSizeDp(sizeDp)
         }
 
+        @Keep
         @JvmStatic
         fun setAutoStreakCreationEnabled(enabled: Boolean) = with(INSTANCE!!) {
             streaksController.setAutoCreationEnabled(enabled)
@@ -220,12 +232,14 @@ class Plugin {
                 block = ::ejectSynchronized
             )
 
+        @Keep
         @AnyThread
         @JvmStatic
         fun eject() {
             ejectPromise()
         }
 
+        @Keep
         @AnyThread
         @JvmStatic
         fun getSharedPrefs(): SharedPreferences =
