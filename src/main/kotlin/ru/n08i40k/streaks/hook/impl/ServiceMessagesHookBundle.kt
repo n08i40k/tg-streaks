@@ -25,28 +25,18 @@ import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.ui.emojiPack.share.StreakEmojiPackImportBottomSheet
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
+import ru.n08i40k.streaks.util.`ChatActionCell$currentMessageObject`
+import ru.n08i40k.streaks.util.`ChatActionCell$imageReceiver`
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.StreakEmojiPackCodec
+import ru.n08i40k.streaks.util.`TLRPC$Message$$fields`
 import ru.n08i40k.streaks.util.cloneFields
-import ru.n08i40k.streaks.util.getAccessibleFields
-import ru.n08i40k.streaks.util.getAs
-import ru.n08i40k.streaks.util.getAsUnchecked
-import ru.n08i40k.streaks.util.getField
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
 import java.util.AbstractMap
 import kotlin.time.Clock
 
 class ServiceMessagesHookBundle : HookBundle() {
-    companion object Fields {
-        private val CLASS = ChatActionCell::class.java
-
-        val CURRENT_MESSAGE_OBJECT = getField(CLASS, "currentMessageObject")
-        val IMAGE_RECEIVER = getField(CLASS, "imageReceiver")
-
-        val MESSAGE_FIELDS = getAccessibleFields(TLRPC.Message::class.java)
-    }
-
     override fun inject(
         before: InstallHook,
         after: InstallHook
@@ -343,7 +333,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             param.args[1] = TLRPC.TL_messageService()
                 .apply {
-                    cloneFields(message, this, MESSAGE_FIELDS)
+                    cloneFields(message, this, `TLRPC$Message$$fields`)
 
                     this.action = action
                     this.message = null
@@ -384,8 +374,9 @@ class ServiceMessagesHookBundle : HookBundle() {
                 "openStarsGiftTransaction",
             )
         ) { param ->
-            val messageObject = CURRENT_MESSAGE_OBJECT.getAs<MessageObject>(param.thisObject)
-                ?: return@before
+            val messageObject =
+                `ChatActionCell$currentMessageObject`.invokeExact(param.thisObject as ChatActionCell) as? MessageObject?
+                    ?: return@before
 
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@before
@@ -613,8 +604,9 @@ class ServiceMessagesHookBundle : HookBundle() {
                 Boolean::class.java
             )
         ) { param ->
-            val messageObject = CURRENT_MESSAGE_OBJECT.getAs<MessageObject>(param.thisObject)
-                ?: return@before
+            val messageObject =
+                `ChatActionCell$currentMessageObject`.invokeExact(param.thisObject as ChatActionCell) as? MessageObject?
+                    ?: return@before
 
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@before
@@ -679,8 +671,9 @@ class ServiceMessagesHookBundle : HookBundle() {
                 "isNewStyleButtonLayout",
             )
         ) { param ->
-            val messageObject = CURRENT_MESSAGE_OBJECT.getAs<MessageObject>(param.thisObject)
-                ?: return@after
+            val messageObject =
+                `ChatActionCell$currentMessageObject`.invokeExact(param.thisObject as ChatActionCell) as? MessageObject?
+                    ?: return@after
 
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
@@ -698,8 +691,9 @@ class ServiceMessagesHookBundle : HookBundle() {
                 MessageObject::class.java
             )
         ) { param ->
-            val messageObject = CURRENT_MESSAGE_OBJECT.getAs<MessageObject>(param.thisObject)
-                ?: return@after
+            val messageObject =
+                `ChatActionCell$currentMessageObject`.invokeExact(param.thisObject as ChatActionCell) as? MessageObject?
+                    ?: return@after
 
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
@@ -729,7 +723,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             val thisObject = param.thisObject as ChatActionCell
 
-            IMAGE_RECEIVER.getAsUnchecked<ImageReceiver>(thisObject)
+            (`ChatActionCell$imageReceiver`.invokeExact(thisObject) as ImageReceiver)
                 .apply {
                     setAllowStartLottieAnimation(false)
                     setDelegate(null)

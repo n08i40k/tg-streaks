@@ -9,16 +9,12 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.util.AccountTaskExecutor
+import ru.n08i40k.streaks.util.`BaseController$currentAccount`
 import ru.n08i40k.streaks.util.TLCompat
-import ru.n08i40k.streaks.util.getField
 import kotlin.time.Clock
 import kotlin.time.Instant
 
 class UpdatesHookBundle : HookBundle() {
-    companion object Fields {
-        val CURRENT_ACCOUNT = getField(BaseController::class.java, "currentAccount")
-    }
-
     private data class PendingIncomingUpdate(
         val peerUserId: Long,
         val at: Instant,
@@ -140,7 +136,7 @@ class UpdatesHookBundle : HookBundle() {
         ) { param ->
             val thisObject = param.thisObject as BaseController
 
-            val accountId = CURRENT_ACCOUNT.getInt(thisObject)
+            val accountId = `BaseController$currentAccount`.invokeExact(thisObject) as Int
 
             if (accountId != UserConfig.selectedAccount)
                 return@before
@@ -161,7 +157,7 @@ class UpdatesHookBundle : HookBundle() {
             val thisObject = param.thisObject as BaseController
 
             val sendMessageParams = param.args[0] as SendMessagesHelper.SendMessageParams
-            val accountId = CURRENT_ACCOUNT.getInt(thisObject)
+            val accountId = `BaseController$currentAccount`.invokeExact(thisObject) as Int
 
             // TODO: fill message id
             val update = PendingIncomingUpdate(

@@ -3,33 +3,22 @@ package ru.n08i40k.streaks.override
 import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.constants.TrustedSources
 import ru.n08i40k.streaks.i18n.Strings
-import ru.n08i40k.streaks.util.getAs
-import ru.n08i40k.streaks.util.getField
+import ru.n08i40k.streaks.util.`ApiBadgeSource$cache`
+import ru.n08i40k.streaks.util.`BadgeDTO$$init`
+import ru.n08i40k.streaks.util.`BadgeInfo$$init`
+import ru.n08i40k.streaks.util.`BadgesController$apiBadgeSource`
+import ru.n08i40k.streaks.util.ProfileStatus
 import ru.n08i40k.streaks.util.isClientVersionBelow
 
 @Suppress("LocalVariableName")
 object PluginBadges {
     // все классы принадлежат клиенту и могут отсутствовать, поэтому резолв ленивый
     private fun resolveCache(): Any? {
-        val BadgesController =
-            Class.forName("com.exteragram.messenger.badges.BadgesController")
-
-        val BadgesController_INSTANCE =
-            getField(BadgesController, "INSTANCE")
-
-        val BadgesController_apiBadgeSource =
-            getField(BadgesController_INSTANCE.type, "apiBadgeSource")
-
-        val ApiBadgeSource_cache =
-            getField(BadgesController_apiBadgeSource.type, "cache")
-
-        val badgesController = BadgesController_INSTANCE.getAs<Any>(null)
+        val apiBadgeSource = `BadgesController$apiBadgeSource`
+            ?.invokeExact()
             ?: return null
 
-        val apiBadgeSource = BadgesController_apiBadgeSource.getAs<Any>(badgesController)
-            ?: return null
-
-        return ApiBadgeSource_cache.getAs<Any>(apiBadgeSource)
+        return `ApiBadgeSource$cache`?.invokeExact(apiBadgeSource)
     }
 
     val TRUSTED_IDS = mapOf(
@@ -44,44 +33,30 @@ object PluginBadges {
         NoSuchMethodException::class
     )
     fun add() {
-        val BadgeDTO =
-            Class.forName("com.exteragram.messenger.api.dto.BadgeDTO")
+        val badgesCache = resolveCache()
+            ?: return
 
-        val ProfileStatus =
-            Class.forName("com.exteragram.messenger.api.model.ProfileStatus")
-
-        val badgesCache = resolveCache() ?: return
+        // ensure
+        `BadgeDTO$$init` ?: return
+        `BadgeInfo$$init` ?: return
+        ProfileStatus ?: return
 
         // на версии 12.1.1 ConcurrentHashMap почему-то в неймспейсе $j, вместо java
-        val ConcurrentHashMap_put = badgesCache::class.java
+        val `ConcurrentHashMap$put` = badgesCache::class.java
             .getDeclaredMethod("put", Any::class.java, Any::class.java)
 
-        val BadgeDTO_constructor = BadgeDTO
-            .getDeclaredConstructor(Long::class.java, String::class.java)
-            .apply { isAccessible = true }
-
-        val BadgeInfo_constructor =
-            Class.forName("com.exteragram.messenger.badges.source.BadgeInfo")
-                .let {
-                    if (isClientVersionBelow("12.2.10"))
-                        it.getDeclaredConstructor(BadgeDTO, ProfileStatus)
-                    else
-                        it.getDeclaredConstructor(BadgeDTO, ProfileStatus, Boolean::class.java)
-                }
-                .apply { isAccessible = true }
-
         // Используется DEVELOPER, ибо у дефолтного есть кнопка "Подробнее", которая может ввести в заблуждение
-        val ProfileStatus_DEVELOPER = ProfileStatus.enumConstants!![1]
+        val `ProfileStatus$DEVELOPER` = ProfileStatus.enumConstants!![1]
 
         TRUSTED_IDS.forEach { (id, text) ->
-            val badge = BadgeDTO_constructor.newInstance(Emoji.DEFAULT_BADGE, text())
+            val badge = `BadgeDTO$$init`.newInstance(Emoji.DEFAULT_BADGE, text())
 
-            val info = if (isClientVersionBelow("12.2.10"))
-                BadgeInfo_constructor.newInstance(badge, ProfileStatus_DEVELOPER)
+            val badgeInfo = if (isClientVersionBelow("12.2.10"))
+                `BadgeInfo$$init`.newInstance(badge, `ProfileStatus$DEVELOPER`)
             else
-                BadgeInfo_constructor.newInstance(badge, ProfileStatus_DEVELOPER, false)
+                `BadgeInfo$$init`.newInstance(badge, `ProfileStatus$DEVELOPER`, false)
 
-            ConcurrentHashMap_put.invoke(badgesCache, id, info)
+            `ConcurrentHashMap$put`.invoke(badgesCache, id, badgeInfo)
         }
     }
 
@@ -93,9 +68,9 @@ object PluginBadges {
     fun remove() {
         val badgesCache = resolveCache() ?: return
 
-        val ConcurrentHashMap_remove = badgesCache::class.java
+        val `ConcurrentHashMap$remove` = badgesCache::class.java
             .getDeclaredMethod("remove", Any::class.java)
 
-        TRUSTED_IDS.forEach { (id, _) -> ConcurrentHashMap_remove.invoke(badgesCache, id) }
+        TRUSTED_IDS.forEach { (id, _) -> `ConcurrentHashMap$remove`.invoke(badgesCache, id) }
     }
 }

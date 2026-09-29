@@ -19,26 +19,17 @@ import org.telegram.ui.Components.Premium.GLIcon.GLIconTextureView
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet
 import org.telegram.ui.Components.Premium.StarParticlesView
 import org.telegram.ui.PremiumPreviewFragment
-import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.data.StreakViewData
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AnimatedEmojiView
-import ru.n08i40k.streaks.util.getAs
-import ru.n08i40k.streaks.util.getAsUnchecked
-import ru.n08i40k.streaks.util.getField
+import ru.n08i40k.streaks.util.`FireworksOverlay$paint`
+import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$buttonContainer`
+import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$fireworksOverlay$$setter`
+import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$iconTextureView`
+import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$starParticlesView`
+import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$starParticlesView$$setter`
 
 class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
-    companion object Fields {
-        private val CLASS = PremiumPreviewBottomSheet::class.java
-
-        val FIREWORKS_OVERLAY = getField(CLASS, "fireworksOverlay")
-        val BUTTON_CONTAINER = getField(CLASS, "buttonContainer")
-        val STAR_PARTICLES_VIEW = getField(CLASS, "starParticlesView")
-        val ICON_TEXTURE_VIEW = getField(CLASS, "iconTextureView")
-
-        // FireworksOverlay, статическое поле
-        val PAINT = getField(FireworksOverlay::class.java, "paint")
-    }
-
     private class StreakFireworksOverlay : FireworksOverlay {
         private val accentColor: Color
 
@@ -61,7 +52,8 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             this._colors[4] = Color.HSVToColor(buffer.apply { this[1] = saturation * 1.3f })
             this._colors[5] = Color.HSVToColor(buffer.apply { this[1] = saturation * 1.5f })
 
-            this._paint = PAINT.getAsUnchecked<Array<Paint>>(null)
+            @Suppress("UNCHECKED_CAST")
+            this._paint = `FireworksOverlay$paint`.invokeExact() as Array<Paint>
         }
 
         override fun start(withStars: Boolean) {
@@ -170,10 +162,12 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
                 LayoutHelper.createFrame(-1, -1f)
             )
 
-            FIREWORKS_OVERLAY.set(this, fireworksOverlay)
+            `PremiumPreviewBottomSheet$fireworksOverlay$$setter`
+                .invokeExact(this as PremiumPreviewBottomSheet, fireworksOverlay as FireworksOverlay)
         }
 
-        BUTTON_CONTAINER.getAs<FrameLayout>(this)?.visibility = View.GONE
+        (`PremiumPreviewBottomSheet$buttonContainer`.invokeExact(this as PremiumPreviewBottomSheet) as FrameLayout?)
+            ?.visibility = View.GONE
     }
 
     override fun getTitle(): CharSequence =
@@ -182,7 +176,9 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     override fun onContainerDraw(canvas: Canvas?) {
         super.onContainerDraw(canvas)
 
-        val starParticlesView = STAR_PARTICLES_VIEW.getAs<StarParticlesView>(this)
+        val starParticlesView = `PremiumPreviewBottomSheet$starParticlesView`
+            .invokeExact(this as PremiumPreviewBottomSheet) as StarParticlesView?
+
         starParticlesView?.drawable?.paint?.setColor(this.streakViewData.accentColor.toArgb())
         starParticlesView?.drawable?.init()
     }
@@ -236,15 +232,17 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
             }
         }
 
-        val old = STAR_PARTICLES_VIEW.getAsUnchecked<StarParticlesView>(this)
+        val old = `PremiumPreviewBottomSheet$starParticlesView`
+            .invokeExact(this as PremiumPreviewBottomSheet) as StarParticlesView
 
         parentView.removeView(old)
         parentView.addView(starParticlesView, 0)
 
-        ICON_TEXTURE_VIEW.getAs<GLIconTextureView>(this)
+        (`PremiumPreviewBottomSheet$iconTextureView`.invokeExact(this as PremiumPreviewBottomSheet) as GLIconTextureView?)
             ?.setStarParticlesView(starParticlesView)
 
-        STAR_PARTICLES_VIEW.set(this, starParticlesView)
+        `PremiumPreviewBottomSheet$starParticlesView$$setter`
+            .invokeExact(this as PremiumPreviewBottomSheet, starParticlesView as StarParticlesView)
 
         super.afterCellCreated(viewType, view)
     }

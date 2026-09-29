@@ -75,7 +75,19 @@ kotlin {
     }
 }
 
+// no sun.misc.Unsafe
+val compileUnsafeStub = tasks.register<JavaCompile>("compileUnsafeStub") {
+    description = "Compiles an sun.misc.Unsafe stub"
+    source = fileTree("java-stubs")
+    classpath = files()
+    destinationDirectory = layout.buildDirectory.dir("java-stubs/classes")
+    sourceCompatibility = "11"
+    targetCompatibility = "11"
+    options.compilerArgs.addAll(listOf("--limit-modules", "java.base"))
+}
+
 dependencies {
+    compileOnly(files(compileUnsafeStub))
     implementation(project(":badges-sdk:api"))
     implementation(project(":badges-sdk"))
 

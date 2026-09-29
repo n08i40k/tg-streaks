@@ -35,16 +35,18 @@ import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
-import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.constants.TrustedSources
 import ru.n08i40k.streaks.extension.RequestOutcome
 import ru.n08i40k.streaks.extension.format
 import ru.n08i40k.streaks.extension.sendRequestBlocking
+import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AnimatedEmojiView
 import ru.n08i40k.streaks.util.MessageSender
 import ru.n08i40k.streaks.util.getClientName
 import ru.n08i40k.streaks.util.getClientVersionFull
 import ru.n08i40k.streaks.util.getClientVersionName
+import ru.n08i40k.streaks.util.getFieldGetter
+import ru.n08i40k.streaks.util.retype
 
 class CrashBottomSheet(
     context: Context,
@@ -77,7 +79,9 @@ class CrashBottomSheet(
 
         // в части клиентов геттера нет, тогда поле читается напрямую
         private val GET_PLUGINS by lazy { CLASS.declaredMethods.find { it.name == "getPlugins" } }
-        private val PLUGINS by lazy { CLASS.getField("plugins") }
+        private val PLUGINS by lazy {
+            getFieldGetter(CLASS, "plugins").retype(Any::class.java, CLASS)
+        }
 
         @Suppress("UNCHECKED_CAST")
         val plugins: Collection<com.exteragram.messenger.plugins.Plugin>
@@ -85,7 +89,7 @@ class CrashBottomSheet(
                 val controller = GET_INSTANCE.invoke(null) as PluginsController
 
                 val map = GET_PLUGINS?.invoke(controller)
-                    ?: PLUGINS.get(controller)
+                    ?: (PLUGINS.invokeExact(controller) as Any)
 
                 return map.javaClass.getDeclaredMethod("values")
                     .invoke(map) as Collection<com.exteragram.messenger.plugins.Plugin>
@@ -454,7 +458,7 @@ class CrashBottomSheet(
 
             val chat = resolvedPeer.chats.firstOrNull() ?: return@launch
 
-            MessageSender.send(UserConfig.selectedAccount, -chat.id, buildReportText())
+            MessageSender.sendText(UserConfig.selectedAccount, -chat.id, buildReportText())
 
             AndroidUtilities.runOnUIThread {
                 LaunchActivity.getSafeLastFragment()?.presentFragment(ChatActivity.of(-chat.id))

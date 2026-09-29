@@ -20,11 +20,26 @@ import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.controller.StreaksController
-import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.toLocalDate
-import ru.n08i40k.streaks.util.getAs
-import ru.n08i40k.streaks.util.getField
+import ru.n08i40k.streaks.i18n.Strings
+import ru.n08i40k.streaks.util.`CalendarActivity$MonthView`
+import ru.n08i40k.streaks.util.`CalendarActivity$MonthView$currentMonthInYear`
+import ru.n08i40k.streaks.util.`CalendarActivity$MonthView$currentYear`
+import ru.n08i40k.streaks.util.`CalendarActivity$MonthView$daysInMonth`
+import ru.n08i40k.streaks.util.`CalendarActivity$MonthView$gestureDetector$$setter`
+import ru.n08i40k.streaks.util.`CalendarActivity$MonthView$startDayOfWeek`
+import ru.n08i40k.streaks.util.`CalendarActivity$PeriodDay$hasImage$$setter`
+import ru.n08i40k.streaks.util.`CalendarActivity$bottomBar`
+import ru.n08i40k.streaks.util.`CalendarActivity$dateSelectedEnd$$setter`
+import ru.n08i40k.streaks.util.`CalendarActivity$dateSelectedStart$$setter`
+import ru.n08i40k.streaks.util.`CalendarActivity$inSelectionMode$$setter`
+import ru.n08i40k.streaks.util.`CalendarActivity$listView`
+import ru.n08i40k.streaks.util.`CalendarActivity$messagesByYearMounth`
+import ru.n08i40k.streaks.util.`CalendarActivity$messagesByYearMounth$$setter`
+import ru.n08i40k.streaks.util.`CalendarActivity$removeDaysButton`
+import ru.n08i40k.streaks.util.`CalendarActivity$selectDaysButton`
+import ru.n08i40k.streaks.util.GestureDetectorCompat
 import ru.n08i40k.streaks.util.postSafe
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.concurrent.atomic.AtomicReference
@@ -35,52 +50,6 @@ class FixupCalendarActivity : CalendarActivity {
         private const val PRE_RESTORE_ACTIVITY_COLOR = 0xFFFFCC00.toInt()
         private const val RESTORE_ACTIVITY_COLOR = 0xFF5AC8FA.toInt()
         private const val ACTIVITY_COLOR_ALPHA = 170
-
-        private val monthViewClass: Class<*> by lazy {
-            Class.forName($$"org.telegram.ui.CalendarActivity$MonthView")
-        }
-
-        private val currentYearField by lazy {
-            monthViewClass.getDeclaredField("currentYear").apply { isAccessible = true }
-        }
-
-        private val currentMonthInYearField by lazy {
-            monthViewClass.getDeclaredField("currentMonthInYear").apply { isAccessible = true }
-        }
-
-        private val daysInMonthField by lazy {
-            monthViewClass.getDeclaredField("daysInMonth").apply { isAccessible = true }
-        }
-
-        private val startDayOfWeekField by lazy {
-            monthViewClass.getDeclaredField("startDayOfWeek").apply { isAccessible = true }
-        }
-
-        private val gestureDetectorField by lazy {
-            monthViewClass.getDeclaredField("gestureDetector").apply { isAccessible = true }
-        }
-
-        private val gestureDetectorCompatClass: Class<*> by lazy {
-            Class.forName("androidx.core.view.GestureDetectorCompat")
-        }
-
-        private val hasImageField by lazy {
-            getField(
-                Class.forName($$"org.telegram.ui.CalendarActivity$PeriodDay"),
-                "hasImage"
-            )
-        }
-
-        private val thisClass = CalendarActivity::class.java
-
-        private val listViewField = getField(thisClass, "listView")
-        private val bottomBarField = getField(thisClass, "bottomBar")
-        private val selectDaysButtonField = getField(thisClass, "selectDaysButton")
-        private val removeDaysButtonField = getField(thisClass, "removeDaysButton")
-        private val inSelectionModeField = getField(thisClass, "inSelectionMode")
-        private val dateSelectedStartField = getField(thisClass, "dateSelectedStart")
-        private val dateSelectedEndField = getField(thisClass, "dateSelectedEnd")
-        private val messagesByYearMounthField = getField(thisClass, "messagesByYearMounth")
 
         fun create(peerUserId: Long, chatActivity: ChatActivity): FixupCalendarActivity {
             val bundle = Bundle()
@@ -98,10 +67,7 @@ class FixupCalendarActivity : CalendarActivity {
     private val cachedRestoresByMonthKey = SparseArray<SparseBooleanArray>()
     private val decoratedListViewRef = AtomicReference<RecyclerListView?>()
     private val interceptedListViewRef = AtomicReference<RecyclerListView?>()
-    private val activityPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-        }
+    private val activityPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private var messagesByYearMonthProxy: MessagesByYearMonthProxy? = null
     private var cachedSnapshotLoaded = false
     private var manualRestoresUsed = 0
@@ -120,14 +86,22 @@ class FixupCalendarActivity : CalendarActivity {
 
                 for (childIndex in 0 until parent.childCount) {
                     val monthView = parent.getChildAt(childIndex)
-                    if (!monthViewClass.isInstance(monthView)) {
-                        continue
-                    }
 
-                    val year = currentYearField.getInt(monthView)
-                    val monthIndex = currentMonthInYearField.getInt(monthView)
-                    val daysInMonth = daysInMonthField.getInt(monthView)
-                    var column = startDayOfWeekField.getInt(monthView)
+                    if (!`CalendarActivity$MonthView`.isInstance(monthView))
+                        continue
+
+                    val year = `CalendarActivity$MonthView$currentYear`
+                        .invokeExact(monthView) as Int
+
+                    val monthIndex = `CalendarActivity$MonthView$currentMonthInYear`
+                        .invokeExact(monthView) as Int
+
+                    val daysInMonth = `CalendarActivity$MonthView$daysInMonth`
+                        .invokeExact(monthView) as Int
+
+                    var column = `CalendarActivity$MonthView$startDayOfWeek`
+                        .invokeExact(monthView) as Int
+
                     var row = 0
 
                     for (dayIndex in 0 until daysInMonth) {
@@ -159,18 +133,20 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     override fun onFragmentCreate(): Boolean {
-        val created = super.onFragmentCreate()
-        if (created) {
+        if (super.onFragmentCreate()) {
             installMessagesByYearMonthProxy()
+            return true
         }
-        return created
+
+        return false
     }
 
     override fun createView(context: Context): View {
         val view = super.createView(context)
 
-        val listView = listViewField.getAs<RecyclerListView>(this)
-            ?: return view
+        val listView =
+            `CalendarActivity$listView`.invokeExact(this as CalendarActivity) as? RecyclerListView?
+                ?: return view
 
         listView.postSafe {
             disableBuiltInSelectionUi()
@@ -184,25 +160,25 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private fun disableBuiltInSelectionUi() {
-        bottomBarField.getAs<View>(this)
+        (`CalendarActivity$bottomBar`.invokeExact(this as CalendarActivity) as View?)
             ?.apply {
                 visibility = View.GONE
                 isEnabled = false
             }
-        selectDaysButtonField.getAs<View>(this)
+        (`CalendarActivity$selectDaysButton`.invokeExact(this as CalendarActivity) as View?)
             ?.apply {
                 visibility = View.GONE
                 isEnabled = false
             }
-        removeDaysButtonField.getAs<View>(this)
+        (`CalendarActivity$removeDaysButton`.invokeExact(this as CalendarActivity) as View?)
             ?.apply {
                 visibility = View.GONE
                 isEnabled = false
             }
 
-        inSelectionModeField.set(this, false)
-        dateSelectedStartField.set(this, 0)
-        dateSelectedEndField.set(this, 0)
+        `CalendarActivity$inSelectionMode$$setter`.invokeExact(this as CalendarActivity, false)
+        `CalendarActivity$dateSelectedStart$$setter`.invokeExact(this as CalendarActivity, 0)
+        `CalendarActivity$dateSelectedEnd$$setter`.invokeExact(this as CalendarActivity, 0)
     }
 
     private fun installActivityStatusDecoration(listView: RecyclerListView) {
@@ -237,13 +213,16 @@ class FixupCalendarActivity : CalendarActivity {
     }
 
     private fun patchMonthViewInteraction(view: View) {
-        if (!monthViewClass.isInstance(view)) {
+        if (!`CalendarActivity$MonthView`.isInstance(view)) {
             return
         }
 
         val gestureDetector =
-            gestureDetectorCompatClass
-                .getConstructor(Context::class.java, GestureDetector.OnGestureListener::class.java)
+            GestureDetectorCompat
+                .getConstructor(
+                    Context::class.java,
+                    GestureDetector.OnGestureListener::class.java
+                )
                 .newInstance(
                     view.context,
                     object : GestureDetector.SimpleOnGestureListener() {
@@ -259,10 +238,11 @@ class FixupCalendarActivity : CalendarActivity {
                     }
                 )
 
-        gestureDetectorCompatClass
+        GestureDetectorCompat
             .getMethod("setIsLongpressEnabled", Boolean::class.javaPrimitiveType)
             .invoke(gestureDetector, false)
-        gestureDetectorField.set(view, gestureDetector)
+
+        `CalendarActivity$MonthView$gestureDetector$$setter`.invokeExact(view, gestureDetector)
     }
 
     private fun handleDayTap(day: LocalDate) {
@@ -452,7 +432,7 @@ class FixupCalendarActivity : CalendarActivity {
         x: Float,
         y: Float,
     ): LocalDate? {
-        if (!monthViewClass.isInstance(monthView) || x < 0f || y < 0f) {
+        if (!`CalendarActivity$MonthView`.isInstance(monthView) || x < 0f || y < 0f) {
             return null
         }
 
@@ -467,16 +447,18 @@ class FixupCalendarActivity : CalendarActivity {
 
         val column = (x / cellWidth).toInt()
         val row = (contentY / rowHeight).toInt()
-        val startDayOfWeek = startDayOfWeekField.getInt(monthView)
+        val startDayOfWeek =
+            `CalendarActivity$MonthView$startDayOfWeek`.invokeExact(monthView) as Int
         val dayIndex = row * 7 + column - startDayOfWeek
-        val daysInMonth = daysInMonthField.getInt(monthView)
+        val daysInMonth = `CalendarActivity$MonthView$daysInMonth`.invokeExact(monthView) as Int
 
         if (column !in 0..6 || dayIndex !in 0 until daysInMonth) {
             return null
         }
 
-        val year = currentYearField.getInt(monthView)
-        val monthIndex = currentMonthInYearField.getInt(monthView)
+        val year = `CalendarActivity$MonthView$currentYear`.invokeExact(monthView) as Int
+        val monthIndex =
+            `CalendarActivity$MonthView$currentMonthInYear`.invokeExact(monthView) as Int
         return LocalDate(year, monthIndex + 1, dayIndex + 1)
     }
 
@@ -520,8 +502,10 @@ class FixupCalendarActivity : CalendarActivity {
             return
         }
 
-        val original = messagesByYearMounthField.getAs<SparseArray<Any>>(this)
-            ?: return
+        @Suppress("UNCHECKED_CAST")
+        val original =
+            `CalendarActivity$messagesByYearMounth`.invokeExact(this as CalendarActivity) as? SparseArray<Any>?
+                ?: return
 
         if (original is MessagesByYearMonthProxy) {
             messagesByYearMonthProxy = original
@@ -530,7 +514,10 @@ class FixupCalendarActivity : CalendarActivity {
 
         val proxy = MessagesByYearMonthProxy().apply { copyFrom(original) }
         messagesByYearMonthProxy = proxy
-        messagesByYearMounthField.set(this, proxy)
+        `CalendarActivity$messagesByYearMounth$$setter`.invokeExact(
+            this as CalendarActivity,
+            proxy as SparseArray<*>
+        )
     }
 
     private fun patchPeriodDay(monthKey: Int, dayIndex: Int, value: Any?): Any? {
@@ -541,7 +528,7 @@ class FixupCalendarActivity : CalendarActivity {
         val monthIndex = monthKey % 100
 
         if (shouldDecorateDay(year, monthIndex, dayIndex))
-            hasImageField.set(value, false)
+            `CalendarActivity$PeriodDay$hasImage$$setter`.invokeExact(value, false)
 
         return value
     }

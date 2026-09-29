@@ -1,194 +1,57 @@
 package ru.n08i40k.streaks.util
 
 import android.net.Uri
-import androidx.core.view.inputmethod.InputContentInfoCompat
 import org.telegram.messenger.AccountInstance
-import org.telegram.messenger.MessageObject
-import org.telegram.messenger.MessageSuggestionParams
-import org.telegram.messenger.SendMessagesHelper
-import org.telegram.tgnet.tl.TL_stories
-import org.telegram.ui.ChatActivity
 
 object MessageSender {
     @Suppress("EnumEntryName")
-    private enum class SendMessagesHelperRev {
+    private enum class Revision {
         Pre_12_2_0,
         Pre_12_7_0,
         Pre_12_10_0,
         Latest;
     }
 
-    private val currentRevision by lazy {
+    private val currentRevision =
         if (isClientVersionBelow("12.2.0"))
-            return@lazy SendMessagesHelperRev.Pre_12_2_0
+            Revision.Pre_12_2_0
+        else if (isClientVersionBelow("12.7.0"))
+            Revision.Pre_12_7_0
+        else if (isClientVersionBelow("12.10.0"))
+            Revision.Pre_12_10_0
+        else
+            Revision.Latest
 
-        if (isClientVersionBelow("12.7.0"))
-            return@lazy SendMessagesHelperRev.Pre_12_7_0
-
-        if (isClientVersionBelow("12.10.0"))
-            return@lazy SendMessagesHelperRev.Pre_12_10_0
-
-        return@lazy SendMessagesHelperRev.Latest
-    }
-
-    private val prepareSendingText by lazy {
-        when (currentRevision) {
-            SendMessagesHelperRev.Pre_12_2_0 ->
-                SendMessagesHelper::class.java.getDeclaredMethod(
-                    "prepareSendingText",
-                    AccountInstance::class.java,
-                    String::class.java,
-                    Long::class.java,
-                    Boolean::class.java,
-                    Int::class.java,
-                    Long::class.java
-                )
-
-            SendMessagesHelperRev.Pre_12_7_0 ->
-                SendMessagesHelper::class.java.getDeclaredMethod(
-                    "prepareSendingText",
-                    AccountInstance::class.java,
-                    String::class.java,
-                    Long::class.java,
-                    Boolean::class.java,
-                    Int::class.java,
-                    Int::class.java,
-                    Long::class.java
-                )
-
-            SendMessagesHelperRev.Pre_12_10_0,
-            SendMessagesHelperRev.Latest ->
-                SendMessagesHelper::class.java.getDeclaredMethod(
-                    "prepareSendingText",
-                    AccountInstance::class.java,
-                    CharSequence::class.java,
-                    Long::class.java,
-                    Boolean::class.java,
-                    Int::class.java,
-                    Int::class.java,
-                    Long::class.java
-                )
-        }
-    }
-
-    private val prepareSendingDocuments by lazy {
-        when (currentRevision) {
-            SendMessagesHelperRev.Pre_12_2_0 ->
-                SendMessagesHelper::class.java.getDeclaredMethod(
-                    "prepareSendingDocuments",
-                    AccountInstance::class.java,
-                    ArrayList::class.java,
-                    ArrayList::class.java,
-                    ArrayList::class.java,
-                    String::class.java,
-                    ArrayList::class.java,
-                    String::class.java,
-                    Long::class.java,
-                    MessageObject::class.java,
-                    MessageObject::class.java,
-                    TL_stories.StoryItem::class.java,
-                    ChatActivity.ReplyQuote::class.java,
-                    MessageObject::class.java,
-                    Boolean::class.java,
-                    Int::class.java,
-                    InputContentInfoCompat::class.java,
-                    String::class.java,
-                    Int::class.java,
-                    Long::class.java,
-                    Boolean::class.java,
-                    Long::class.java,
-                    Long::class.java,
-                    MessageSuggestionParams::class.java
-                )
-
-            SendMessagesHelperRev.Pre_12_7_0,
-            SendMessagesHelperRev.Pre_12_10_0 ->
-                SendMessagesHelper::class.java.getDeclaredMethod(
-                    "prepareSendingDocuments",
-                    AccountInstance::class.java,
-                    ArrayList::class.java,
-                    ArrayList::class.java,
-                    ArrayList::class.java,
-                    String::class.java,
-                    ArrayList::class.java,
-                    String::class.java,
-                    Long::class.java,
-                    MessageObject::class.java,
-                    MessageObject::class.java,
-                    TL_stories.StoryItem::class.java,
-                    ChatActivity.ReplyQuote::class.java,
-                    MessageObject::class.java,
-                    Boolean::class.java,
-                    Int::class.java,
-                    Int::class.java,
-                    InputContentInfoCompat::class.java,
-                    String::class.java,
-                    Int::class.java,
-                    Long::class.java,
-                    Boolean::class.java,
-                    Long::class.java,
-                    Long::class.java,
-                    MessageSuggestionParams::class.java
-                )
-
-            SendMessagesHelperRev.Latest ->
-                SendMessagesHelper::class.java.getDeclaredMethod(
-                    "prepareSendingDocuments",
-                    AccountInstance::class.java,
-                    ArrayList::class.java,
-                    ArrayList::class.java,
-                    ArrayList::class.java,
-                    String::class.java,
-                    ArrayList::class.java,
-                    String::class.java,
-                    Long::class.java,
-                    MessageObject::class.java,
-                    MessageObject::class.java,
-                    TL_stories.StoryItem::class.java,
-                    ChatActivity.ReplyQuote::class.java,
-                    MessageObject::class.java,
-                    Boolean::class.java,
-                    Int::class.java,
-                    Int::class.java,
-                    InputContentInfoCompat::class.java,
-                    Class.forName("org.telegram.messenger.SendMessageChatArguments"),
-                    Long::class.java,
-                    Boolean::class.java,
-                    Long::class.java,
-                    Long::class.java,
-                    MessageSuggestionParams::class.java
-                )
-        }
-    }
-
-    private val sendMessageChatArguments by lazy {
-        when (currentRevision) {
-            SendMessagesHelperRev.Pre_12_2_0,
-            SendMessagesHelperRev.Pre_12_7_0,
-            SendMessagesHelperRev.Pre_12_10_0 -> null
-
-            SendMessagesHelperRev.Latest -> {
-                Class
-                    .forName("org.telegram.messenger.SendMessageChatArguments")
-                    .getDeclaredField("EMPTY")
-                    .get(null)
-            }
-        }
-    }
-
-    fun send(accountId: Int, peerId: Long, message: String) {
+    fun sendText(accountId: Int, peerId: Long, message: String) {
         val account = AccountInstance.getInstance(accountId)
 
         when (currentRevision) {
-            SendMessagesHelperRev.Pre_12_2_0 ->
-                prepareSendingText.invoke(null, account, message, peerId, false, 0, 0L)
+            Revision.Pre_12_2_0 ->
+                `SendMessagesHelper$prepareSendingText`.invoke(
+                    null,
+                    account,
+                    message,
+                    peerId,
+                    false,
+                    0,
+                    0L
+                )
 
-            SendMessagesHelperRev.Pre_12_7_0 ->
-                prepareSendingText.invoke(null, account, message, peerId, false, 0, 0, 0L)
+            Revision.Pre_12_7_0 ->
+                `SendMessagesHelper$prepareSendingText`.invoke(
+                    null,
+                    account,
+                    message,
+                    peerId,
+                    false,
+                    0,
+                    0,
+                    0L
+                )
 
-            SendMessagesHelperRev.Pre_12_10_0,
-            SendMessagesHelperRev.Latest ->
-                prepareSendingText.invoke(
+            Revision.Pre_12_10_0,
+            Revision.Latest ->
+                `SendMessagesHelper$prepareSendingText`.invoke(
                     null,
                     account,
                     message as CharSequence,
@@ -205,8 +68,8 @@ object MessageSender {
         val account = AccountInstance.getInstance(accountId)
 
         when (currentRevision) {
-            SendMessagesHelperRev.Pre_12_2_0 ->
-                prepareSendingDocuments.invoke(
+            Revision.Pre_12_2_0 ->
+                `SendMessagesHelper$prepareSendingDocuments`.invoke(
                     null,
                     account, // accountInstance
                     null, // paths
@@ -233,9 +96,9 @@ object MessageSender {
                     null // suggestionParams
                 )
 
-            SendMessagesHelperRev.Pre_12_7_0,
-            SendMessagesHelperRev.Pre_12_10_0 ->
-                prepareSendingDocuments.invoke(
+            Revision.Pre_12_7_0,
+            Revision.Pre_12_10_0 ->
+                `SendMessagesHelper$prepareSendingDocuments`.invoke(
                     null,
                     account, // accountInstance
                     null, // paths
@@ -263,8 +126,8 @@ object MessageSender {
                     null // suggestionParams
                 )
 
-            SendMessagesHelperRev.Latest ->
-                prepareSendingDocuments.invoke(
+            Revision.Latest ->
+                `SendMessagesHelper$prepareSendingDocuments`.invoke(
                     null,
                     account, // accountInstance
                     null, // paths
@@ -283,7 +146,7 @@ object MessageSender {
                     0, // scheduleDate
                     0, // scheduleRepeatPeriod
                     null, // inputContent
-                    sendMessageChatArguments, // sendMessageChatArguments
+                    `SendMessageChatArguments$EMPTY`, // sendMessageChatArguments
                     0, // effectId
                     false, // invertMedia
                     0, // payStars
