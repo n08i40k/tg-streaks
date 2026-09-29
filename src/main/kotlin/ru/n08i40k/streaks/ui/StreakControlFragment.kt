@@ -396,8 +396,8 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
                         Strings.menu_control_pet_fab_toggle(),
                         Strings.menu_control_pet_fab_toggle_desc(),
                         viewState.petFabEnabled,
-                        false,
-                        true
+                        multiline = false,
+                        divider = true
                     )
 
                 Row.PET_CREATE_BTN.ordinal -> (holder.itemView as TextSettingsCell)

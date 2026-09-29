@@ -42,8 +42,8 @@ import ru.n08i40k.streaks.util.LinearProgressView
 import ru.n08i40k.streaks.util.runOnMainThread
 import kotlin.coroutines.resume
 
-private fun withAlpha(color: Int, alpha: Int): Int =
-    (color and 0x00FFFFFF) or (alpha shl 24)
+private fun withAlpha(color: Int): Int =
+    (color and 0x00FFFFFF) or (0x29 shl 24)
 
 class RebuildBottomSheet(
     baseFragment: BaseFragment,
@@ -554,7 +554,7 @@ class RebuildBottomSheet(
                         listOf(
                             InfoRow(
                                 iconDocumentId = documentId,
-                                iconBg = withAlpha(accentColor, 0x29),
+                                iconBg = withAlpha(accentColor),
                                 iconColor = accentColor,
                                 label = Strings.sheet_rebuild_result_card_days(),
                                 value = record.length.toString(),
@@ -562,7 +562,7 @@ class RebuildBottomSheet(
                             ),
                             InfoRow(
                                 iconDocumentId = Emoji.REBUILD_RESULT_RESTORES,
-                                iconBg = withAlpha(Theme.getColor(Theme.key_dialogButton), 0x29),
+                                iconBg = withAlpha(Theme.getColor(Theme.key_dialogButton)),
                                 iconColor = Theme.getColor(Theme.key_dialogButton),
                                 label = Strings.sheet_rebuild_result_card_restores(),
                                 value = record.restoresCount.toString(),
@@ -577,7 +577,7 @@ class RebuildBottomSheet(
                         listOf(
                             InfoRow(
                                 iconDocumentId = Emoji.REBUILD_RESULT_POINTS,
-                                iconBg = withAlpha(color, 0x29),
+                                iconBg = withAlpha(color),
                                 iconColor = color,
                                 label = Strings.sheet_rebuild_result_card_points(),
                                 value = record.points.toString(),

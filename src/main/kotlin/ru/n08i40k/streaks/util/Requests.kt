@@ -16,7 +16,6 @@ suspend fun fetchPeerUsers(
     val connectionsManager = ConnectionsManager.getInstance(accountId)
     val messagesController = MessagesStorage.getInstance(accountId)
 
-    @Suppress("CAST_NEVER_SUCCEEDS")
     val req = TLRPC.TL_users_getUsers()
         .apply {
             id = ArrayList(
@@ -26,7 +25,8 @@ suspend fun fetchPeerUsers(
 
                     TLRPC.TL_inputUser().apply {
                         user_id = it
-                        access_hash = messagesController.getUserSync(it)?.access_hash
+                        access_hash = messagesController.getUserSync(it)
+                            ?.access_hash
                             ?: return@mapNotNull null
                     }
                 }

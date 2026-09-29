@@ -60,8 +60,9 @@ class StreakEmojiPackCell(
         this.actionListener = listener
     }
 
-    fun setRecycledViewPool(pool: RecyclerView.RecycledViewPool) =
-        streakEmojiListView.setRecycledViewPool(pool)
+    fun setRecycledViewPool(pool: RecyclerView.RecycledViewPool) {
+        streakEmojiListView.recycledViewPool = pool
+    }
 
     fun setEmojiPack(emojiPack: StreakEmojiPack, builtin: Boolean) {
         this.emojiPack = emojiPack

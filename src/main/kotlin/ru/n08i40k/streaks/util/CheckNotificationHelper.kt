@@ -5,8 +5,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import org.telegram.messenger.ApplicationLoader
-import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.event.eject.EjectNotifier
+import ru.n08i40k.streaks.i18n.Strings
 
 object CheckNotificationHelper : EjectNotifier.Delegate {
     init {
@@ -58,25 +58,24 @@ object CheckNotificationHelper : EjectNotifier.Delegate {
         text: String,
         progress: Int,
         max: Int,
-        indeterminate: Boolean,
     ): Notification =
         Notification.Builder(ApplicationLoader.applicationContext, CHANNEL_ID)
             .setSmallIcon(smallIconResId())
             .setContentTitle(title)
             .setContentText(text)
-            .setProgress(max, progress, indeterminate)
+            .setProgress(max, progress, false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .build()
 
-    private fun notify(id: Int, notification: Notification) {
+    private fun notify(notification: Notification) {
         if (!canBeUsed) return
         if (!manager.areNotificationsEnabled()) return
 
         try {
-            manager.notify(id, notification)
+            manager.notify(NOTIFICATION_ID_CHECK, notification)
         } catch (_: SecurityException) {
         }
     }
@@ -87,7 +86,7 @@ object CheckNotificationHelper : EjectNotifier.Delegate {
         val progressDone = (totalSec - remainingSec).coerceIn(0, totalSec)
         val title = Strings.check_notification_rate_limit_title()
         val text = Strings.check_notification_rate_limit_text(remainingSec)
-        notify(NOTIFICATION_ID_CHECK, progressNotification(title, text, progressDone, totalSec, false))
+        notify(progressNotification(title, text, progressDone, totalSec))
     }
 
     fun updateCheckProgress(
@@ -105,10 +104,7 @@ object CheckNotificationHelper : EjectNotifier.Delegate {
             total,
             totalDays,
         )
-        notify(
-            NOTIFICATION_ID_CHECK,
-            progressNotification(title, text, daysChecked, totalDays, false)
-        )
+        notify(progressNotification(title, text, daysChecked, totalDays))
     }
 
     fun cancelCheckProgress() {

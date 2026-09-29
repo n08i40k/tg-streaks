@@ -132,8 +132,8 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
                         Strings.menu_service_categories_lifecycle_title(),
                         Strings.menu_service_categories_lifecycle_desc(),
                         adapter.isCategoryEnabled(ServiceMessageCategory.LIFECYCLE),
-                        true,
-                        true
+                        multiline = true,
+                        divider = true
                     )
 
                 Row.LEVEL_UP_SW.ordinal -> (holder.itemView as TextCheckCell)
@@ -141,8 +141,8 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
                         Strings.menu_service_categories_level_up_title(),
                         Strings.menu_service_categories_level_up_desc(),
                         adapter.isCategoryEnabled(ServiceMessageCategory.LEVEL_UP),
-                        true,
-                        true
+                        multiline = true,
+                        divider = true
                     )
 
                 Row.PET_SW.ordinal -> (holder.itemView as TextCheckCell)
@@ -150,8 +150,8 @@ class ServiceMessageCategoriesFragment(private val adapter: Adapter) : BaseFragm
                         Strings.menu_service_categories_pet_title(),
                         Strings.menu_service_categories_pet_desc(),
                         adapter.isCategoryEnabled(ServiceMessageCategory.PET),
-                        true,
-                        true
+                        multiline = true,
+                        divider = true
                     )
 
                 Row.DESC.ordinal -> (holder.itemView as TextInfoPrivacyCell)
