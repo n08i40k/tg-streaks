@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.ui
 
+import android.os.Looper
 import androidx.annotation.UiThread
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -11,6 +12,7 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
+import ru.n08i40k.streaks.util.RuntimeGuard
 import ru.n08i40k.streaks.util.runOnMainThread
 
 class StreakPetUiManager {
@@ -21,6 +23,8 @@ class StreakPetUiManager {
 
     private var openedDialog: StreakPetDialog? = null
     private var fabDialog: StreakPetFabDialog? = null
+    private var fabWebView: StreakPetFabWebView? = null
+    private var destroyed = false
     private var fabSizeDp: Int = DEFAULT_PET_FAB_SIZE_DP
     private var pendingFabRefresh: Job? = null
 
@@ -35,6 +39,29 @@ class StreakPetUiManager {
     }
 
     @UiThread
+    fun destroy() {
+        destroyed = true
+        dismissAll()
+        fabWebView?.destroy()
+        fabWebView = null
+    }
+
+    fun prewarmFab() = runOnMainThread {
+        Looper.myQueue().addIdleHandler {
+            if (!destroyed && RuntimeGuard.isAppForeground()) {
+                obtainFabWebView()
+            }
+
+            false
+        }
+    }
+
+    @UiThread
+    private fun obtainFabWebView(): StreakPetFabWebView =
+        fabWebView ?: StreakPetFabWebView(Plugin.getInstance().resourcesProvider)
+            .also { fabWebView = it }
+
+    @UiThread
     fun dismissFab() {
         pendingFabRefresh?.cancel()
         pendingFabRefresh = null
@@ -47,9 +74,22 @@ class StreakPetUiManager {
             pendingFabRefresh?.cancel()
             pendingFabRefresh = backgroundScope.launch {
                 delay(delayMs)
+
+                val chatActivity = LaunchActivity.getSafeLastFragment() as? ChatActivity
+                if (chatActivity?.parentLayout?.isTransitionAnimationInProgress == true) {
+                    // обновление придёт из onBecomeFullyVisible после конца анимации
+                    return@launch
+                }
+
                 refreshFabForOpenChat()
             }
         }
+
+    fun refreshFabNow() {
+        pendingFabRefresh?.cancel()
+        pendingFabRefresh = null
+        refreshFabForOpenChat()
+    }
 
     fun setFabSizeDp(sizeDp: Int) {
         if (this.fabSizeDp == sizeDp) {
@@ -148,6 +188,7 @@ class StreakPetUiManager {
                     || currentChat.dialogId != peerUserId
                     || uiState == null
                     || !uiState.pet.fabEnabled
+                    || destroyed
                 ) {
                     dismissFab()
                     return@runOnMainThread
@@ -172,7 +213,7 @@ class StreakPetUiManager {
                     accountId,
                     peerUserId,
                     uiState,
-                    resourcesProvider,
+                    obtainFabWebView(),
                     fabSizeDp,
                 ) {
                     dismissFab()

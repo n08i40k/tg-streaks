@@ -11,14 +11,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
-import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import org.json.JSONObject
 import org.telegram.messenger.AndroidUtilities
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.data.StreakPetLevel
-import ru.n08i40k.streaks.resource.ResourcesProvider
 import kotlin.math.abs
 
 @SuppressLint("DiscouragedApi", "InternalInsetResource")
@@ -27,21 +24,19 @@ class StreakPetFabDialog(
     val accountId: Int,
     val peerUserId: Long,
     initialState: StreakPetsController.ViewStateSnapshot,
-    private val resourcesProvider: ResourcesProvider,
+    private val fabWebView: StreakPetFabWebView,
     initialSizeDp: Int,
     private val onOpenRequested: () -> Unit,
 ) : Dialog(context) {
     private val stages = StreakPetLevel.levels
 
     private var state = initialState
-    private var pageReady = false
     private var destroyed = false
-    private var lastPushedStateJson: String? = null
     private var offsetX = DEFAULT_OFFSET_X
     private var offsetY = DEFAULT_OFFSET_Y
     private var sizeDp = initialSizeDp
 
-    private val webView: WebView = createWebView()
+    private val webView: WebView = fabWebView.webView
 
     fun matches(accountId: Int, peerUserId: Long): Boolean =
         this.accountId == accountId && this.peerUserId == peerUserId
@@ -53,6 +48,9 @@ class StreakPetFabDialog(
         setCanceledOnTouchOutside(false)
 
         window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        fabWebView.attach(context)
+        pushState()
 
         setContentView(
             webView,
@@ -105,54 +103,7 @@ class StreakPetFabDialog(
 
         super.dismiss()
         destroyed = true
-        pageReady = false
-        (webView.parent as? ViewGroup)?.removeView(webView)
-        webView.onPause()
-        webView.stopLoading()
-        webView.loadUrl("about:blank")
-        webView.clearHistory()
-        webView.clearCache(true)
-        webView.removeAllViews()
-        webView.destroy()
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun createWebView(): WebView {
-        return WebView(context).apply {
-            resumeTimers()
-            onResume()
-            setBackgroundColor(Color.TRANSPARENT)
-            isVerticalScrollBarEnabled = false
-            isHorizontalScrollBarEnabled = false
-
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = false
-            settings.cacheMode = WebSettings.LOAD_DEFAULT
-            settings.loadsImagesAutomatically = true
-            settings.allowFileAccess = true
-            settings.allowContentAccess = false
-            settings.mediaPlaybackRequiresUserGesture = false
-            settings.builtInZoomControls = false
-            settings.displayZoomControls = false
-            settings.setSupportZoom(false)
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
-
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    pageReady = true
-                    pushState()
-                }
-            }
-
-            loadDataWithBaseURL(
-                StreakPetUiResources.loadFabBaseUrl(resourcesProvider),
-                buildHtml(),
-                "text/html",
-                "utf-8",
-                null
-            )
-        }
+        fabWebView.detach()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -214,20 +165,11 @@ class StreakPetFabDialog(
     }
 
     private fun pushState() {
-        if (!pageReady || destroyed) {
+        if (destroyed) {
             return
         }
 
-        val json = buildStateJson()
-        if (json == lastPushedStateJson) {
-            return
-        }
-
-        lastPushedStateJson = json
-        webView.evaluateJavascript(
-            "window.applyState(JSON.parse(${JSONObject.quote(json)}));",
-            null
-        )
+        fabWebView.pushState(buildStateJson())
     }
 
     private fun buildStateJson(): String {
@@ -257,9 +199,6 @@ class StreakPetFabDialog(
 
         return unlocked
     }
-
-    private fun buildHtml(): String =
-        StreakPetUiResources.loadFabHtml(resourcesProvider)
 
     private fun fabSizePx(): Int = AndroidUtilities.dp(sizeDp.toFloat())
 

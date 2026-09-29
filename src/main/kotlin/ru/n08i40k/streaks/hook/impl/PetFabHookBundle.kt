@@ -16,6 +16,10 @@ class PetFabHookBundle : HookBundle() {
         ) { Plugin.getInstance().petUiManager.scheduleFabRefreshForOpenChat() }
 
         after(
+            ChatActivity::class.java.getDeclaredMethod("onBecomeFullyVisible")
+        ) { Plugin.getInstance().petUiManager.refreshFabNow() }
+
+        after(
             ChatActivity::class.java.getDeclaredMethod("onPause")
         ) { runOnMainThread { Plugin.getInstance().petUiManager.dismissFab() } }
     }

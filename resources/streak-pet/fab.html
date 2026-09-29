@@ -72,7 +72,19 @@
 
             <script>
                 var currentMediaSrc = null;
+                var mediaSuspended = false;
                 var petVideo = document.getElementById('pet-video');
+
+                function playVideo() {
+                    if (mediaSuspended) {
+                        return;
+                    }
+
+                    var playPromise = petVideo.play();
+                    if (playPromise && typeof playPromise.catch === 'function') {
+                        playPromise.catch(function() {});
+                    }
+                }
 
                 function stopVideo() {
                     try {
@@ -84,14 +96,9 @@
                 }
 
                 function applyMedia(mediaSrc) {
-                    var playPromise;
-
                     if (currentMediaSrc === mediaSrc) {
                         if (mediaSrc) {
-                            playPromise = petVideo.play();
-                            if (playPromise && typeof playPromise.catch === 'function') {
-                                playPromise.catch(function() {});
-                            }
+                            playVideo();
                         }
                         return;
                     }
@@ -99,6 +106,7 @@
                     currentMediaSrc = mediaSrc;
 
                     if (mediaSrc) {
+                        petVideo.style.opacity = '0';
                         petVideo.onloadeddata = function() {
                             petVideo.style.opacity = '1';
                         };
@@ -107,15 +115,26 @@
                         };
                         petVideo.src = mediaSrc;
                         petVideo.load();
-                        playPromise = petVideo.play();
-                        if (playPromise && typeof playPromise.catch === 'function') {
-                            playPromise.catch(function() {});
-                        }
+                        playVideo();
                         return;
                     }
 
                     stopVideo();
                 }
+
+                window.suspendMedia = function() {
+                    mediaSuspended = true;
+                    try {
+                        petVideo.pause();
+                    } catch (_) {}
+                };
+
+                window.resumeMedia = function() {
+                    mediaSuspended = false;
+                    if (currentMediaSrc) {
+                        playVideo();
+                    }
+                };
 
                 window.applyState = function(state) {
                     var root = document.documentElement;

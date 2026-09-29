@@ -132,8 +132,6 @@ class StreakPetDialog(
         webView.onPause()
         webView.stopLoading()
         webView.loadUrl("about:blank")
-        webView.clearHistory()
-        webView.clearCache(true)
         webView.removeAllViews()
         webView.destroy()
     }

@@ -716,6 +716,8 @@ class Plugin {
             ::hookMethods
         )
 
+        petUiManager.prewarmFab()
+
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
 
         backgroundScope.launch {
@@ -760,7 +762,7 @@ class Plugin {
             NotificationCenter.getGlobalInstance()
                 .removeObserver(themeObserver, NotificationCenter.didSetNewTheme)
 
-            petUiManager.dismissAll()
+            petUiManager.destroy()
 
             BadgesSdkProvider.destroy()
         }
