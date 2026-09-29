@@ -60,7 +60,7 @@ object Logger : EjectNotifier.Delegate {
         }
     }
 
-    fun tryOrFatal(action: String, block: () -> Unit): Unit? =
+    inline fun tryOrFatal(action: String, block: () -> Unit): Unit? =
         try {
             block()
         } catch (e: Throwable) {
