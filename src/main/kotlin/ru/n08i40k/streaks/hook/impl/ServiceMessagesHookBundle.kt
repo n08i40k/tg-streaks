@@ -2,6 +2,7 @@ package ru.n08i40k.streaks.hook.impl
 
 import android.graphics.Bitmap
 import androidx.collection.LongSparseArray
+import de.robv.android.xposed.XC_MethodHook
 import kotlinx.coroutines.CompletableDeferred
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.FileLoader
@@ -31,6 +32,7 @@ import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.StreakEmojiPackCodec
 import ru.n08i40k.streaks.util.`TLRPC$Message$$fields`
 import ru.n08i40k.streaks.util.cloneFields
+import ru.n08i40k.streaks.util.isClientVersionBelow
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
 import java.util.AbstractMap
@@ -615,53 +617,40 @@ class ServiceMessagesHookBundle : HookBundle() {
                 val pack = StreakEmojiPackCodec.decode(prizeStars.transaction_id)
                     ?: return@before
 
-                param.args[0] = Strings.service_emoji_pack_import_title()
-                param.args[1] = pack.name
-                param.args[3] = Strings.service_emoji_pack_import_hint()
-                param.args[5] = Strings.service_emoji_pack_import_action()
-                param.args[9] = false
-                param.args[10] = true
-
+                applyGiftLayout(
+                    param,
+                    Strings.service_emoji_pack_import_title(),
+                    pack.name,
+                    Strings.service_emoji_pack_import_hint(),
+                    Strings.service_emoji_pack_import_action(),
+                )
                 return@before
             }
 
             when (prizeStars.transaction_id) {
-                ServiceMessage.DEATH_TEXT -> {
-                    param.args[0] = Strings.service_streak_ended_title()
-                    param.args[1] =
-                        Strings.service_streak_ended_subtitle()
-                    param.args[3] = Strings.service_streak_ended_hint()
-                    param.args[5] =
-                        Strings.service_streak_ended_action()
-                    param.args[9] = false
-                    param.args[10] = true
-                }
+                ServiceMessage.DEATH_TEXT -> applyGiftLayout(
+                    param,
+                    Strings.service_streak_ended_title(),
+                    Strings.service_streak_ended_subtitle(),
+                    Strings.service_streak_ended_hint(),
+                    Strings.service_streak_ended_action(),
+                )
 
-                ServiceMessage.PET_INVITE_TEXT -> {
-                    param.args[0] =
-                        Strings.service_pet_invite_title()
-                    param.args[1] =
-                        Strings.service_pet_invite_description()
-                    param.args[3] =
-                        Strings.service_pet_invite_hint()
-                    param.args[5] =
-                        Strings.service_pet_invite_action()
-                    param.args[9] = false
-                    param.args[10] = true
-                }
+                ServiceMessage.PET_INVITE_TEXT -> applyGiftLayout(
+                    param,
+                    Strings.service_pet_invite_title(),
+                    Strings.service_pet_invite_description(),
+                    Strings.service_pet_invite_hint(),
+                    Strings.service_pet_invite_action(),
+                )
 
-                ServiceMessage.SYNC_OFFER -> {
-                    param.args[0] =
-                        Strings.service_sync_offer_peer_title()
-                    param.args[1] =
-                        Strings.service_sync_offer_peer_subtitle()
-                    param.args[3] =
-                        Strings.service_sync_offer_peer_hint()
-                    param.args[5] =
-                        Strings.service_sync_offer_peer_action()
-                    param.args[9] = false
-                    param.args[10] = true
-                }
+                ServiceMessage.SYNC_OFFER -> applyGiftLayout(
+                    param,
+                    Strings.service_sync_offer_peer_title(),
+                    Strings.service_sync_offer_peer_subtitle(),
+                    Strings.service_sync_offer_peer_hint(),
+                    Strings.service_sync_offer_peer_action(),
+                )
             }
         }
 
@@ -701,7 +690,11 @@ class ServiceMessagesHookBundle : HookBundle() {
             if (!ServiceMessage.isGiftStyled(prizeStars.transaction_id))
                 return@after
 
-            param.result = -AndroidUtilities.dp(19.5f)
+
+            param.result = if (isClientVersionBelow("12.2.0"))
+                -AndroidUtilities.dp(400f) // client will clamp this value by itself (believe me)
+            else
+                -AndroidUtilities.dp(19.5f)
         }
 
         // Удаление анимации у gift
@@ -733,5 +726,20 @@ class ServiceMessagesHookBundle : HookBundle() {
                     setVisible(false, true)
                 }
         }
+    }
+
+    private fun applyGiftLayout(
+        param: XC_MethodHook.MethodHookParam,
+        title: CharSequence,
+        subtitle: CharSequence,
+        hint: CharSequence,
+        action: CharSequence,
+    ) {
+        param.args[0] = title
+        param.args[1] = "$subtitle\n$hint"
+        param.args[3] = null
+        param.args[5] = action
+        param.args[9] = false
+        param.args[10] = true
     }
 }
