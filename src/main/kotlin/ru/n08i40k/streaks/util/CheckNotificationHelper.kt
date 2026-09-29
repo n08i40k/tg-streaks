@@ -16,21 +16,28 @@ object CheckNotificationHelper : EjectNotifier.Delegate {
     private const val CHANNEL_ID = "tg_streaks_check"
     private const val NOTIFICATION_ID_CHECK = 7004
 
+    private var canBeUsed = false
+
     private val manager: NotificationManager
         get() = ApplicationLoader.applicationContext
             .getSystemService(NotificationManager::class.java)
 
     fun createChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            Strings.check_notification_channel_name(),
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            setSound(null, null)
-            enableVibration(false)
-        }
+        try {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                Strings.check_notification_channel_name(),
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                setSound(null, null)
+                enableVibration(false)
+            }
 
-        manager.createNotificationChannel(channel)
+            manager.createNotificationChannel(channel)
+
+            canBeUsed = true
+        } catch (_: Throwable) {
+        }
     }
 
     @SuppressLint("DiscouragedApi")
@@ -65,7 +72,9 @@ object CheckNotificationHelper : EjectNotifier.Delegate {
             .build()
 
     private fun notify(id: Int, notification: Notification) {
+        if (!canBeUsed) return
         if (!manager.areNotificationsEnabled()) return
+
         try {
             manager.notify(id, notification)
         } catch (_: SecurityException) {
@@ -103,14 +112,23 @@ object CheckNotificationHelper : EjectNotifier.Delegate {
     }
 
     fun cancelCheckProgress() {
+        if (!canBeUsed)
+            return
+
         manager.cancel(NOTIFICATION_ID_CHECK)
     }
 
     fun cancelRateLimitNotification() {
+        if (!canBeUsed)
+            return
+
         manager.cancel(NOTIFICATION_ID_CHECK)
     }
 
     fun cancelAll() {
+        if (!canBeUsed)
+            return
+
         manager.cancel(NOTIFICATION_ID_CHECK)
     }
 
