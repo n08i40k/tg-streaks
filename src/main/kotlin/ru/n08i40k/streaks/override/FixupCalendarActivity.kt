@@ -25,8 +25,7 @@ import ru.n08i40k.streaks.extension.next
 import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.util.getAs
 import ru.n08i40k.streaks.util.getField
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.number
+import ru.n08i40k.streaks.util.postSafe
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.concurrent.atomic.AtomicReference
 

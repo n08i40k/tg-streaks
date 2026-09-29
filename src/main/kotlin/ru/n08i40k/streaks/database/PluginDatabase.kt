@@ -41,7 +41,8 @@ import ru.n08i40k.streaks.database.dao.StreakRestoreDao
         ServiceMessageCategories::class,
         StreakEmojiPack::class,
     ],
-    version = 14
+    version = 14,
+    exportSchema = false
 )
 @TypeConverters(
     InstantConverter::class,

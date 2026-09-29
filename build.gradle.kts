@@ -9,6 +9,13 @@ private val targetSdkMajorProperty: Provider<Int> =
 private val targetSdkMinorProperty: Provider<Int> =
     providers.gradleProperty("targetSdkMinor").map { it.toInt() }
 
+buildscript {
+    dependencies {
+        classpath(libs.kotlin.gradle.plugin)
+        classpath(libs.symbol.processing.gradle.plugin)
+    }
+}
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.exterastuff.plugin)
@@ -63,7 +70,6 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_11)
-        freeCompilerArgs.add("-Xmetadata-version=2.2.0")
         freeCompilerArgs.add("-Xdont-warn-on-error-suppression")
         optIn.add("kotlin.time.ExperimentalTime")
     }
