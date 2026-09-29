@@ -114,6 +114,7 @@ jobs:
           mkdir -p "$release_dir"
           just ci-release "$BADGES_SDK_DIR" "$VERSION" "$release_dir/${PLUGIN_ID}.plugin"
           cp dist/dex/release/classes.dex "$release_dir/classes.dex"
+          cp dist/dex/release/mapping.txt "$release_dir/mapping.txt"
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
@@ -161,6 +162,7 @@ jobs:
           gh release create "$VERSION" \
             "$release_dir/${PLUGIN_ID}.plugin#${PLUGIN_ID}.plugin" \
             "$release_dir/classes.dex#classes.dex" \
+            "$release_dir/mapping.txt#mapping.txt" \
             --title "$VERSION" \
             --notes ""
 
