@@ -27,6 +27,9 @@ class StreakEmoji(parentView: View, val size: Int) :
     private var peerUserId: Long = 0
     private var cachedStreakViewData: StreakViewData? = null
 
+    private var lengthText: String? = null
+    private var lengthTextWidth = 0
+
     private fun clearStreakView() {
         set(null as Drawable?, false)
     }
@@ -59,6 +62,14 @@ class StreakEmoji(parentView: View, val size: Int) :
                 .getViewData(UserConfig.selectedAccount, it.id)
         }
 
+        lengthText = cachedStreakViewData
+            ?.length
+            ?.toString()
+
+        lengthTextWidth = lengthText
+            ?.let { gap + ceil(textPaint.measureText(it)).toInt() }
+            ?: 0
+
         applyStreak(cachedStreakViewData)
 
         runOnMainThread(this@StreakEmoji::invalidateSelf)
@@ -70,22 +81,16 @@ class StreakEmoji(parentView: View, val size: Int) :
 
     fun hasStreak(): Boolean = cachedStreakViewData != null
 
-    private fun getText(): String? = cachedStreakViewData?.length?.toString()
-
-    fun getTextWidth(): Int {
-        val text = getText() ?: return 0
-
-        return gap + ceil(textPaint.measureText(text)).toInt()
-    }
+    fun getTextWidth(): Int = lengthTextWidth
 
     // квадрат эмодзи плюс число справа от него
-    fun getTotalWidth(): Int = size + getTextWidth()
+    fun getTotalWidth(): Int = size + lengthTextWidth
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
         val streakViewData = cachedStreakViewData ?: return
-        val text = getText() ?: return
+        val text = lengthText ?: return
 
         textPaint.color = streakViewData.accentColor.toArgb()
 
