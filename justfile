@@ -8,6 +8,10 @@ PLUGIN_PY := `grep -ls '^__id__ = ' -- *.py | head -n1`
 DIST_PY := "dist/" + file_name(PLUGIN_PY)
 DIST_PLUGIN := "dist/" + file_stem(PLUGIN_PY) + ".plugin"
 
+PROFILE_PACKAGE := "org.telegram.messenger"
+PROFILE_DATA := `realpath -m perf/simpleperf.data`
+SIMPLEPERF_DIR := `ls -d "$(sed -n 's/^sdk.dir=//p' local.properties 2>/dev/null)"/ndk/*/simpleperf 2>/dev/null | sort -V | tail -n1`
+
 # fail early if the tools a recipe needs are not installed
 [private]
 _require +COMMANDS:
@@ -106,3 +110,70 @@ update-apk PATH_TO_APK: (_require "dex2jar" "git")
 # generate stubs for python
 gen-stubs PATH_TO_RT_JAR PATH_TO_ANDROID_JAR: (_require "java2pyi")
     java2pyi {{ PATH_TO_RT_JAR }} {{ PATH_TO_ANDROID_JAR }} ./libs/Telegram.jar -o stubs/
+
+[private]
+_require-simpleperf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ -z '{{ SIMPLEPERF_DIR }}' ]; then
+        echo "simpleperf not found: install NDK via Android SDK (sdk.dir in local.properties)" >&2
+        exit 1
+    fi
+
+# sample CPU call stacks of the running client with simpleperf (needs root on device)
+profile SECONDS="10" PACKAGE=PROFILE_PACKAGE: (_require "adb")
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    pid=$(adb shell pidof '{{ PACKAGE }}') || { echo "{{ PACKAGE }} is not running" >&2; exit 1; }
+    remote=/data/local/tmp/tg-streaks-simpleperf.data
+
+    adb shell su -c "simpleperf record -p $pid -g -f 2000 --duration {{ SECONDS }} -o $remote"
+    adb shell su -c "chmod 644 $remote"
+
+    mkdir -p "$(dirname '{{ PROFILE_DATA }}')"
+    adb pull "$remote" '{{ PROFILE_DATA }}'
+    adb shell su -c "rm $remote"
+
+# main-thread plugin frames of the last profile, inclusive time (children) first
+profile-report PACKAGE=PROFILE_PACKAGE: _require-simpleperf
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # simpleperf names the main thread by the process cmdline, i.e. the package
+    '{{ SIMPLEPERF_DIR }}/bin/linux/x86_64/simpleperf' report \
+        -i '{{ PROFILE_DATA }}' \
+        --comms '{{ PACKAGE }}' \
+        --sort symbol \
+        --children \
+        2>/dev/null \
+        | grep -E '^(Samples|Event count)|Choreographer\.doFrame|n08i40k' \
+        | sed 's/ru\.n08i40k\.streaks_shaded\.ru\.n08i40k\.badges/badges/'
+
+# interactive HTML report (flame graphs per thread) of the last profile
+profile-html: _require-simpleperf
+    python3 '{{ SIMPLEPERF_DIR }}/report_html.py' \
+        -i '{{ PROFILE_DATA }}' \
+        -o '{{ without_extension(PROFILE_DATA) }}.html'
+
+# convert the last profile for https://profiler.firefox.com (timeline + flame graph)
+profile-gecko: _require-simpleperf
+    python3 '{{ SIMPLEPERF_DIR }}/gecko_profile_generator.py' \
+        -i '{{ PROFILE_DATA }}' \
+        | gzip > '{{ without_extension(PROFILE_DATA) }}.json.gz'
+
+# plugin-only slice of the last profile: per-method table, then speedscope over plugin stacks
+profile-focus OPEN="true": _require-simpleperf (_require "python3")
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    folded='{{ without_extension(PROFILE_DATA) }}.focus.folded'
+
+    python3 tools/profile_focus.py '{{ PROFILE_DATA }}' \
+        --simpleperf-dir '{{ SIMPLEPERF_DIR }}' \
+        --folded "$folded"
+
+    if [ '{{ OPEN }}' = "true" ]; then
+        npx --yes speedscope "$folded"
+    fi

@@ -33,3 +33,6 @@ resources/
 
 # badges-sdk release assets (see 'just badges-sdk')
 /libs/badges-sdk-*.aar
+
+# perfomance reports
+/perf
