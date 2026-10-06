@@ -124,13 +124,11 @@ extera {
     }
 
     shadow {
-        targetPackage = "ru.n08i40k.streaks_shaded"
+        targetPackage = "o_0"
 
         relocate("kotlin", "kotlinx", "de.comahe.i18n4k")
 
         relocate("androidx.room", "androidx.sqlite", "androidx.arch.core")
-
-        relocate("ru.n08i40k.badges")
     }
 
     dexOutputDir = project.layout.projectDirectory.dir("dist/dex")
