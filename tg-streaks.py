@@ -37,7 +37,7 @@ __id__ = "tg-streaks"
 __name__ = "Streaks"
 __description__ = "Аналог стриков TikTok для Telegram"
 __author__ = "@n08i40k_extera & @RoflPlugins"
-__version__ = "2.21.1"
+__version__ = "2.21.2"
 __icon__ = "tiktok_streak/4"
 __min_version__ = "12.1.1"
 
