@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.hook.impl
 
+import org.telegram.messenger.GenericProvider
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
@@ -17,9 +18,12 @@ class AccountSwitchHookBundle : HookBundle() {
         currentAccountId = UserConfig.selectedAccount
 
         after(
-            LaunchActivity::class.java.declaredMethods
-                .filter { it.name == "switchToAccount" }
-                .maxByOrNull { it.parameterCount }!!
+            LaunchActivity::class.java.getDeclaredMethod(
+                "switchToAccount",
+                Int::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
+                GenericProvider::class.java
+            )
         ) {
             val plugin = Plugin.getInstance()
             val accountId = UserConfig.selectedAccount
