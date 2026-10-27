@@ -12,7 +12,6 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.number
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.CalendarActivity
@@ -40,6 +39,7 @@ import ru.n08i40k.streaks.util.`CalendarActivity$messagesByYearMounth$$setter`
 import ru.n08i40k.streaks.util.`CalendarActivity$removeDaysButton`
 import ru.n08i40k.streaks.util.`CalendarActivity$selectDaysButton`
 import ru.n08i40k.streaks.util.GestureDetectorCompat
+import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.postSafe
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.concurrent.atomic.AtomicReference
@@ -80,8 +80,8 @@ class FixupCalendarActivity : CalendarActivity {
             ) {
                 super.onDraw(canvas, parent, state)
 
-                val rowHeight = AndroidUtilities.dp(52f).toFloat()
-                val dayCircleSize = AndroidUtilities.dp(44f).toFloat()
+                val rowHeight = dp(52).toFloat()
+                val dayCircleSize = dp(44).toFloat()
                 val dayCircleRadius = dayCircleSize / 2f
 
                 for (childIndex in 0 until parent.childCount) {
@@ -437,8 +437,8 @@ class FixupCalendarActivity : CalendarActivity {
         }
 
         val cellWidth = monthView.measuredWidth / 7f
-        val rowHeight = AndroidUtilities.dp(52f).toFloat()
-        val firstRowOffset = AndroidUtilities.dp(44f).toFloat()
+        val rowHeight = dp(52).toFloat()
+        val firstRowOffset = dp(44).toFloat()
         val contentY = y - firstRowOffset
 
         if (cellWidth <= 0f || contentY < 0f || x >= monthView.measuredWidth) {

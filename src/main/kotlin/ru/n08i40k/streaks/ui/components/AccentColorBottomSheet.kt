@@ -8,12 +8,12 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.telegram.messenger.AndroidUtilities
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.ui.ActionBar.BottomSheet
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.ColorPicker
 import org.telegram.ui.Components.LayoutHelper
 import ru.n08i40k.streaks.i18n.Strings
+import ru.n08i40k.streaks.util.dp
 
 class AccentColorBottomSheet(
     context: Context,
@@ -35,7 +35,7 @@ class AccentColorBottomSheet(
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             super.onMeasure(
                 widthMeasureSpec,
-                MeasureSpec.makeMeasureSpec(dp(300f), MeasureSpec.EXACTLY)
+                MeasureSpec.makeMeasureSpec(dp(300), MeasureSpec.EXACTLY)
             )
         }
     }
@@ -71,7 +71,7 @@ class AccentColorBottomSheet(
         setCustomView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
 
-            setPadding(0, dp(16f), 0, 0)
+            setPadding(0, dp(16), 0, 0)
 
             addView(colorPicker, LayoutHelper.createLinear(-1, -2))
 

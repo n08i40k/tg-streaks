@@ -28,6 +28,7 @@ import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$fireworksOverlay$$sett
 import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$iconTextureView`
 import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$starParticlesView`
 import ru.n08i40k.streaks.util.`PremiumPreviewBottomSheet$starParticlesView$$setter`
+import ru.n08i40k.streaks.util.dp
 
 class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
     private class StreakFireworksOverlay : FireworksOverlay {
@@ -227,7 +228,7 @@ class StreakInfoBottomSheet : PremiumPreviewBottomSheet {
                     0f,
                     0f,
                     this.measuredWidth.toFloat(),
-                    this.measuredHeight.toFloat() - AndroidUtilities.dp(52f)
+                    this.measuredHeight.toFloat() - dp(52)
                 )
             }
         }

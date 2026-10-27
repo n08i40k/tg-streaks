@@ -9,7 +9,6 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.telegram.messenger.AndroidUtilities
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.messenger.R.drawable
 import org.telegram.tgnet.TLRPC
 import org.telegram.tgnet.tl.TL_stars
@@ -24,6 +23,7 @@ import ru.n08i40k.streaks.ui.components.AccentColorBottomSheet
 import ru.n08i40k.streaks.ui.components.ColorSwatchView
 import ru.n08i40k.streaks.ui.components.DrawableButton
 import ru.n08i40k.streaks.util.AnimatedEmojiView
+import ru.n08i40k.streaks.util.dp
 import java.lang.Math.clamp
 import kotlin.math.max
 import kotlin.math.min
@@ -67,7 +67,7 @@ class EditableStreakEmojiCell(
         AnimatedEmojiView.apply(
             emojiImageView,
             emojiInfo.documentId,
-            dp(32f),
+            dp(32),
             emojiInfo.accentColor?.toArgb()
         )
     }
@@ -87,23 +87,23 @@ class EditableStreakEmojiCell(
     init {
         layoutParams = LayoutParams(
             LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(dp(12f), dp(6f), dp(12f), dp(6f)) }
+        ).apply { setMargins(dp(12), dp(6), dp(12), dp(6)) }
 
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
 
         background = Theme.createSimpleSelectorRoundRectDrawable(
-            dp(12f),
+            dp(12),
             Theme.getColor(Theme.key_windowBackgroundWhite),
             Theme.getColor(Theme.key_listSelector)
         )
 
-        setPadding(dp(10.5f), dp(8f), dp(10.5f), dp(8f))
+        setPadding(AndroidUtilities.dp(10.5f), dp(8), AndroidUtilities.dp(10.5f), dp(8))
 
         addView(nameTextView.apply {
             layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
 
-            setPadding(dp(8f), 0, 0, 0)
+            setPadding(dp(8), 0, 0, 0)
 
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
@@ -113,7 +113,7 @@ class EditableStreakEmojiCell(
             ellipsize = TextUtils.TruncateAt.END
         })
 
-        addView(resetButton, LayoutParams(dp(32f), dp(32f)))
+        addView(resetButton, LayoutParams(dp(32), dp(32)))
         addView(colorSwatchView, LayoutHelper.createLinear(32, 32, 8f, 0f, 0f, 0f))
         addView(emojiImageView, LayoutHelper.createLinear(32, 32, 8f, 0f, 0f, 0f))
     }
@@ -127,9 +127,9 @@ class EditableStreakEmojiCell(
     }
 
     private fun openEmojiPicker() {
-        val popupWidth = min(dp(340f - 16f), (AndroidUtilities.displaySize.x * 0.95f).toInt())
+        val popupWidth = min(dp(340 - 16), (AndroidUtilities.displaySize.x * 0.95f).toInt())
         val popupHeight =
-            min(dp(410f - 16f - 64f), (AndroidUtilities.displaySize.y * 0.75f).toInt())
+            min(dp(410 - 16 - 64), (AndroidUtilities.displaySize.y * 0.75f).toInt())
 
         val loc = intArrayOf(0, 0)
         emojiImageView.getLocationOnScreen(loc)
@@ -149,9 +149,9 @@ class EditableStreakEmojiCell(
         val down = centerY > AndroidUtilities.displaySize.y / 2
 
         val yoff = if (down)
-            -(emojiImageView.height / 2) + dp(12f) - popupHeight
+            -(emojiImageView.height / 2) + dp(12) - popupHeight
         else
-            -(emojiImageView.height / 2) - dp(16f)
+            -(emojiImageView.height / 2) - dp(16)
 
         val layout = object : SelectAnimatedEmojiDialog(
             LaunchActivity.getSafeLastFragment(),

@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import androidx.collection.LongSparseArray
 import de.robv.android.xposed.XC_MethodHook
 import kotlinx.coroutines.CompletableDeferred
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.FileLoader
 import org.telegram.messenger.ImageReceiver
 import org.telegram.messenger.MessageObject
@@ -38,6 +37,7 @@ import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
 import java.util.AbstractMap
 import kotlin.time.Clock
+import ru.n08i40k.streaks.util.dp
 
 class ServiceMessagesHookBundle : HookBundle() {
     override fun inject(
@@ -693,9 +693,9 @@ class ServiceMessagesHookBundle : HookBundle() {
 
 
             param.result = if (isClientVersionBelow("12.2.0"))
-                -AndroidUtilities.dp(400f) // client will clamp this value by itself (believe me)
+                -dp(400) // client will clamp this value by itself (believe me)
             else
-                -AndroidUtilities.dp(19.5f)
+                -dp(19.5f)
         }
 
         // Звёздочки на кнопке перерисовывают сообщение каждый кадр пока оно на экране

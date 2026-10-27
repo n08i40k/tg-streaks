@@ -7,7 +7,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
 import android.view.animation.DecelerateInterpolator
-import org.telegram.messenger.AndroidUtilities.dp
 
 class LinearProgressView(context: Context) : View(context) {
     companion object {
@@ -28,7 +27,7 @@ class LinearProgressView(context: Context) : View(context) {
             invalidate()
         }
 
-    var trackThickness: Int = dp(4f)
+    var trackThickness: Int = dp(4)
         set(value) {
             field = value
             requestLayout()

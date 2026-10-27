@@ -12,7 +12,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import org.telegram.messenger.AndroidUtilities.dp
+import kotlinx.datetime.TimeZone
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.ActionBar.ActionBarMenuItem
@@ -24,13 +24,13 @@ import org.telegram.ui.Cells.TextInfoPrivacyCell
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RadioButton
 import org.telegram.ui.Components.RecyclerListView
-import kotlinx.datetime.TimeZone
 import ru.n08i40k.streaks.extension.rawOffset
 import ru.n08i40k.streaks.extension.setSectionsCompat
 import ru.n08i40k.streaks.extension.toDisplayName
 import ru.n08i40k.streaks.extension.toLocalStartString
 import ru.n08i40k.streaks.extension.toOffsetString
 import ru.n08i40k.streaks.i18n.Strings
+import ru.n08i40k.streaks.util.dp
 
 class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
     interface Adapter {
@@ -170,7 +170,7 @@ class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
             setPadding(21, 21, 21, 21)
 
             offsetTextView.apply {
-                layoutParams = LayoutParams(dp(52f), LayoutParams.WRAP_CONTENT)
+                layoutParams = LayoutParams(dp(52), LayoutParams.WRAP_CONTENT)
                 gravity = Gravity.CENTER
 
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
@@ -214,7 +214,7 @@ class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
             }
 
             localTextView.apply {
-                layoutParams = LayoutParams(dp(52f), LayoutParams.WRAP_CONTENT)
+                layoutParams = LayoutParams(dp(52), LayoutParams.WRAP_CONTENT)
                 gravity = Gravity.CENTER
 
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
@@ -233,9 +233,9 @@ class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
             }
 
             radioButton.apply {
-                layoutParams = LayoutParams(dp(24f), dp(24f))
+                layoutParams = LayoutParams(dp(24), dp(24))
 
-                setSize(dp(24f))
+                setSize(dp(24))
                 setColor(
                     Theme.getColor(Theme.key_radioBackground, resourcesProvider),
                     Theme.getColor(Theme.key_radioBackgroundChecked, resourcesProvider)

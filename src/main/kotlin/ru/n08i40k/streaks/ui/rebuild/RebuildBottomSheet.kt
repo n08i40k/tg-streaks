@@ -20,7 +20,6 @@ import androidx.annotation.UiThread
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.suspendCancellableCoroutine
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
@@ -39,6 +38,7 @@ import ru.n08i40k.streaks.extension.name
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AnimatedEmojiView
 import ru.n08i40k.streaks.util.LinearProgressView
+import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.runOnMainThread
 import kotlin.coroutines.resume
 
@@ -97,7 +97,7 @@ class RebuildBottomSheet(
                 parent: ViewGroup
             ) : RecyclerView.ViewHolder(FrameLayout(parent.context)) {
                 companion object {
-                    const val AVATAR_SIZE = 48f
+                    const val AVATAR_SIZE = 48
 
                     val GRAYSCALE_COLOR_FILTER = ColorMatrixColorFilter(
                         ColorMatrix().apply { setSaturation(0f) }
@@ -112,11 +112,11 @@ class RebuildBottomSheet(
 
                 init {
                     with(itemView as FrameLayout) {
-                        setPadding(dp(8f), 0, dp(8f), 0)
+                        setPadding(dp(8), 0, dp(8), 0)
 
                         addView(
                             avatarImageView,
-                            LayoutHelper.createFrame(AVATAR_SIZE.toInt(), AVATAR_SIZE)
+                            LayoutHelper.createFrame(AVATAR_SIZE, AVATAR_SIZE.toFloat())
                         )
                     }
                 }
@@ -263,7 +263,7 @@ class RebuildBottomSheet(
             private val avatarDrawable = AvatarDrawable()
 
             private val avatarImageView = BackupImageView(context).apply {
-                setRoundRadius(dp(24f))
+                setRoundRadius(dp(24))
             }
 
             private val nameTextView = TextView(context).apply {
@@ -281,27 +281,27 @@ class RebuildBottomSheet(
                 isIndeterminate = true
                 indicatorColor = Theme.getColor(Theme.key_dialogButton)
                 trackColor = Theme.getColor(Theme.key_dialog_inlineProgressBackground)
-                trackThickness = dp(4f)
+                trackThickness = dp(4)
             }
 
             init {
                 orientation = VERTICAL
                 setPadding(
-                    dp(12f),
-                    dp(12f),
-                    dp(12f),
-                    dp(12f)
+                    dp(12),
+                    dp(12),
+                    dp(12),
+                    dp(12)
                 )
 
                 background = GradientDrawable().apply {
                     setColor(Theme.getColor(Theme.key_dialogBackgroundGray))
-                    cornerRadius = dp(12f).toFloat()
+                    cornerRadius = dp(12).toFloat()
                 }
 
                 addView(LinearLayout(context).apply {
                     orientation = HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, 0, 0, dp(12f))
+                    setPadding(0, 0, 0, dp(12))
 
                     addView(avatarImageView, LayoutHelper.createFrame(48, 48f, 0, 0f, 0f, 8f, 0f))
 
@@ -420,19 +420,19 @@ class RebuildBottomSheet(
 
             background = GradientDrawable().apply {
                 setColor(Theme.getColor(Theme.key_dialogBackgroundGray))
-                cornerRadius = dp(12f).toFloat()
+                cornerRadius = dp(12).toFloat()
             }
         }
 
         private fun buildRow(row: InfoRow): LinearLayout = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16f), dp(13f), dp(16f), dp(13f))
+            setPadding(dp(16), dp(13), dp(16), dp(13))
 
             addView(LinearLayout(context).apply {
                 background = GradientDrawable().apply {
                     setColor(row.iconBg)
-                    cornerRadius = dp(9f).toFloat()
+                    cornerRadius = dp(9).toFloat()
                 }
 
                 addView(BackupImageView(context).apply {
@@ -502,7 +502,7 @@ class RebuildBottomSheet(
                     AnimatedEmojiView.apply(this, Emoji.REBUILD_RESULTS_GROUP, 64)
                 }
 
-                setRoundRadius(dp(32f))
+                setRoundRadius(dp(32))
             }, LayoutHelper.createFrame(64, 64f, 0, 0f, 8f, 0f, 8f))
 
             addView(TextView(context).apply {
@@ -637,7 +637,7 @@ class RebuildBottomSheet(
                 text = Strings.sheet_rebuild_result_done()
                 gravity = Gravity.CENTER
 
-                setPadding(0, dp(12f), 0, dp(12f))
+                setPadding(0, dp(12), 0, dp(12))
 
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
@@ -645,7 +645,7 @@ class RebuildBottomSheet(
 
                 background = GradientDrawable().apply {
                     setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueButton))
-                    cornerRadius = dp(12f).toFloat()
+                    cornerRadius = dp(12).toFloat()
                 }
             }, LayoutHelper.createFrame(MATCH_PARENT, WRAP_CONTENT.toFloat(), 0, 0f, 4f, 0f, 0f))
         }
@@ -657,10 +657,10 @@ class RebuildBottomSheet(
     private val containerLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(
-            dp(16f),
-            dp(0f),
-            dp(16f),
-            dp(16f)
+            dp(16),
+            dp(0),
+            dp(16),
+            dp(16)
         )
     }
 

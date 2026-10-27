@@ -17,7 +17,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.launchIn
 import org.telegram.messenger.AndroidUtilities
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.ActionBar.ActionBarMenuItem
@@ -36,6 +35,7 @@ import ru.n08i40k.streaks.extension.onEachWithOnMainThread
 import ru.n08i40k.streaks.extension.setSectionsCompat
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.BulletinHelper
+import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.SortedMap
 
@@ -239,7 +239,7 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
             setHintColor(Theme.getColor(Theme.key_actionBarDefaultSubtitle, resourceProvider))
             setHintText(Strings.menu_streak_emoji_pack_edit_name_hint())
             setCursorColor(Theme.getColor(Theme.key_actionBarDefaultTitle, resourceProvider))
-            setCursorSize(dp(20f))
+            setCursorSize(dp(20))
             setCursorWidth(1.5f)
 
             background = null

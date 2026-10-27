@@ -5,8 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.ui.ActionBar.Theme
+import ru.n08i40k.streaks.util.dp
 import kotlin.math.min
 
 class ColorSwatchView(context: Context) : View(context) {
@@ -25,7 +25,7 @@ class ColorSwatchView(context: Context) : View(context) {
         background = Theme.createSelectorDrawable(
             Theme.getColor(Theme.key_dialogButtonSelector),
             1,
-            dp(20f)
+            dp(20)
         )
     }
 
@@ -39,7 +39,7 @@ class ColorSwatchView(context: Context) : View(context) {
 
         val centerX = width / 2f
         val centerY = height / 2f
-        val radius = min(width, height) / 2f - dp(4f)
+        val radius = min(width, height) / 2f - dp(4)
 
         val color = this.color
 

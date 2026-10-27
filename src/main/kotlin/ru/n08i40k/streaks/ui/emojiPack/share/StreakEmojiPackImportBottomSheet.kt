@@ -6,7 +6,6 @@ import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.telegram.messenger.AndroidUtilities
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.ui.ActionBar.BottomSheet
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.LayoutHelper
@@ -14,6 +13,7 @@ import ru.n08i40k.streaks.data.StreakEmojiPack
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.ui.emojiPack.select.StreakEmojiPackCell
+import ru.n08i40k.streaks.util.dp
 
 class StreakEmojiPackImportBottomSheet(
     context: Context,
@@ -36,7 +36,7 @@ class StreakEmojiPackImportBottomSheet(
             orientation = LinearLayout.VERTICAL
 
             setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray))
-            setPadding(0, dp(16f), 0, 0)
+            setPadding(0, dp(16), 0, 0)
 
             addView(TextView(context).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20f)

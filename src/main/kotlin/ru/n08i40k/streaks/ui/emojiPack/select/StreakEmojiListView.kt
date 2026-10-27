@@ -6,11 +6,11 @@ import android.widget.FrameLayout
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.LayoutHelper
 import ru.n08i40k.streaks.data.StreakEmojiInfo
 import ru.n08i40k.streaks.util.AnimatedEmojiView
+import ru.n08i40k.streaks.util.dp
 
 class StreakEmojiListView(
     context: Context,
@@ -24,7 +24,7 @@ class StreakEmojiListView(
         private class ViewHolder(parent: ViewGroup) :
             RecyclerView.ViewHolder(FrameLayout(parent.context)) {
             companion object {
-                const val SIZE = 32f
+                const val SIZE = 32
             }
 
             private val backupImageView = BackupImageView(itemView.context).apply {
@@ -33,11 +33,11 @@ class StreakEmojiListView(
 
             init {
                 with(itemView as FrameLayout) {
-                    setPadding(dp(8f), 0, dp(8f), 0)
+                    setPadding(dp(8), 0, dp(8), 0)
 
                     addView(
                         backupImageView,
-                        LayoutHelper.createFrame(SIZE.toInt(), SIZE)
+                        LayoutHelper.createFrame(SIZE, SIZE.toFloat())
                     )
                 }
             }

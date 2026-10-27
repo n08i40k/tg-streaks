@@ -4,8 +4,8 @@ import android.content.Context
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.widget.ImageView
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.ui.ActionBar.Theme
+import ru.n08i40k.streaks.util.dp
 
 // taken from com.exteragram.messenger.plugins.ui.components.PluginCell
 class DrawableButton(context: Context) : ImageView(context) {
@@ -37,7 +37,7 @@ class DrawableButton(context: Context) : ImageView(context) {
         else
             Theme.getColor(Theme.key_dialogButtonSelector)
 
-        background = Theme.createSelectorDrawable(bgColor, 1, dp(20.0f))
+        background = Theme.createSelectorDrawable(bgColor, 1, dp(20))
     }
 
     fun setButtonEnabled(enabled: Boolean) {

@@ -9,13 +9,13 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.messenger.R.drawable
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.DividerCell
 import org.telegram.ui.Components.RadioButton
 import ru.n08i40k.streaks.data.StreakEmojiPack
 import ru.n08i40k.streaks.ui.components.DrawableButton
+import ru.n08i40k.streaks.util.dp
 import java.util.UUID
 
 class StreakEmojiPackCell(
@@ -83,21 +83,21 @@ class StreakEmojiPackCell(
         layoutParams = LayoutParams(
             LayoutParams.MATCH_PARENT,
             LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(dp(12f), dp(6f), dp(12f), dp(6f)) }
+        ).apply { setMargins(dp(12), dp(6), dp(12), dp(6)) }
 
         orientation = VERTICAL
 
         background = Theme.createSimpleSelectorRoundRectDrawable(
-            dp(12f),
+            dp(12),
             Theme.getColor(Theme.key_windowBackgroundWhite),
             Theme.getColor(Theme.key_listSelector)
         )
 
         setPadding(
             dp(10.5f),
-            dp(8f),
+            dp(8),
             dp(10.5f),
-            dp(8f)
+            dp(8)
         )
 
         addView(LinearLayout(context).apply {
@@ -124,7 +124,7 @@ class StreakEmojiPackCell(
                         LayoutParams.WRAP_CONTENT
                     )
 
-                    setPadding(dp(8f), 0, 0, dp(8f))
+                    setPadding(dp(8), 0, 0, dp(8))
 
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                     setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
@@ -144,13 +144,13 @@ class StreakEmojiPackCell(
 
             addView(selectedRadioButton.apply {
                 layoutParams = LayoutParams(
-                    dp(24f),
-                    dp(24f)
+                    dp(24),
+                    dp(24)
                 ).apply { gravity = Gravity.CENTER_VERTICAL }
 
                 visibility = if (withActions) VISIBLE else GONE
 
-                setSize(dp(24f))
+                setSize(dp(24))
                 setColor(
                     Theme.getColor(Theme.key_radioBackground),
                     Theme.getColor(Theme.key_radioBackgroundChecked)
@@ -159,7 +159,7 @@ class StreakEmojiPackCell(
         })
 
         if (withActions) {
-            addView(DividerCell(context).apply { setPadding(dp(8f), dp(8f), dp(8f), dp(8f)) })
+            addView(DividerCell(context).apply { setPadding(dp(8), dp(8), dp(8), dp(8)) })
 
             addView(LinearLayout(context).apply {
                 layoutParams = LayoutParams(
@@ -170,11 +170,11 @@ class StreakEmojiPackCell(
                 gravity = Gravity.CENTER_VERTICAL
                 orientation = HORIZONTAL
 
-                addView(shareButton, LayoutParams(dp(40f), dp(40f)))
-                addView(editButton, LayoutParams(dp(40f), dp(40f)))
-                addView(inheritButton, LayoutParams(dp(40f), dp(40f)))
+                addView(shareButton, LayoutParams(dp(40), dp(40)))
+                addView(editButton, LayoutParams(dp(40), dp(40)))
+                addView(inheritButton, LayoutParams(dp(40), dp(40)))
                 addView(View(context), LayoutParams(0, 0, 1f))
-                addView(deleteButton, LayoutParams(dp(40f), dp(40f)))
+                addView(deleteButton, LayoutParams(dp(40), dp(40)))
             })
         }
     }

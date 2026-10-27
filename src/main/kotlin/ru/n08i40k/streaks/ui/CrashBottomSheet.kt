@@ -24,7 +24,8 @@ import com.exteragram.messenger.plugins.PluginsController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.AndroidUtilities.addToClipboard
+import org.telegram.messenger.AndroidUtilities.runOnUIThread
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.ConnectionsManager
 import org.telegram.tgnet.TLRPC
@@ -42,6 +43,7 @@ import ru.n08i40k.streaks.extension.sendRequestBlocking
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AnimatedEmojiView
 import ru.n08i40k.streaks.util.MessageSender
+import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.getClientName
 import ru.n08i40k.streaks.util.getClientVersionFull
 import ru.n08i40k.streaks.util.getClientVersionName
@@ -59,7 +61,7 @@ class CrashBottomSheet(
 
     companion object {
         fun show(message: String, exception: Throwable) {
-            AndroidUtilities.runOnUIThread {
+            runOnUIThread {
                 val fragment = LaunchActivity.getSafeLastFragment() ?: return@runOnUIThread
 
                 CrashBottomSheet(
@@ -175,8 +177,6 @@ class CrashBottomSheet(
         setCustomView(buildContentView())
     }
 
-    private fun dp(value: Float) = AndroidUtilities.dp(value)
-
     private fun buttonBackground() = RippleDrawable(
         ColorStateList.valueOf(
             Color.argb(
@@ -188,13 +188,13 @@ class CrashBottomSheet(
         ),
         null,
         GradientDrawable().apply {
-            cornerRadius = dp(8f).toFloat()
+            cornerRadius = dp(8).toFloat()
             setColor(Color.WHITE)
         },
     )
 
     private fun cardBackground() = GradientDrawable().apply {
-        cornerRadius = dp(8f).toFloat()
+        cornerRadius = dp(8).toFloat()
         setColor(cardColor)
     }
 
@@ -202,10 +202,10 @@ class CrashBottomSheet(
         addView(LinearLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 MATCH_PARENT,
-                dp(1f),
+                dp(1),
             ).also {
-                it.topMargin = dp(8f)
-                it.bottomMargin = dp(8f)
+                it.topMargin = dp(8)
+                it.bottomMargin = dp(8)
             }
             background = ColorDrawable(dividerColor)
         })
@@ -215,11 +215,11 @@ class CrashBottomSheet(
         addView(LinearLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             background = cardBackground()
 
             addView(TextView(context).apply {
-                setPadding(0, 0, 0, dp(4f))
+                setPadding(0, 0, 0, dp(4))
                 text = name
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 setTextColor(secondaryColor)
@@ -241,7 +241,7 @@ class CrashBottomSheet(
                 WRAP_CONTENT,
                 WRAP_CONTENT,
             )
-            setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+            setPadding(dp(8), dp(4), dp(8), dp(4))
             this.text = text
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTextColor(color)
@@ -255,7 +255,7 @@ class CrashBottomSheet(
     private fun buildContentView(): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16f), dp(8f), dp(16f), dp(16f))
+            setPadding(dp(16), dp(8), dp(16), dp(16))
 
             addView(LinearLayout(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
@@ -269,7 +269,7 @@ class CrashBottomSheet(
                     BackupImageView(context).apply {
                         AnimatedEmojiView.apply(this, Emoji.CRASH_BOTTOM_SHEET, 90)
                     },
-                    LinearLayout.LayoutParams(dp(48f), dp(48f)).also { it.marginEnd = dp(12f) },
+                    LinearLayout.LayoutParams(dp(48), dp(48)).also { it.marginEnd = dp(12) },
                 )
 
                 addView(TextView(context).apply {
@@ -294,10 +294,10 @@ class CrashBottomSheet(
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, dp(8f), 0, dp(8f))
+                setPadding(0, dp(8), 0, dp(8))
 
                 addView(TextView(context).apply {
-                    setPadding(0, 0, 0, dp(8f))
+                    setPadding(0, 0, 0, dp(8))
                     text = Strings.sheet_crash_paragraph_reason()
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                     setTextColor(secondaryColor)
@@ -315,10 +315,10 @@ class CrashBottomSheet(
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, dp(8f), 0, dp(8f))
+                setPadding(0, dp(8), 0, dp(8))
 
                 addView(TextView(context).apply {
-                    setPadding(0, 0, 0, dp(8f))
+                    setPadding(0, 0, 0, dp(8))
                     text = Strings.sheet_crash_paragraph_stack_trace()
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                     setTextColor(secondaryColor)
@@ -334,7 +334,7 @@ class CrashBottomSheet(
                     background = cardBackground()
 
                     addView(TextView(context).apply {
-                        setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
+                        setPadding(dp(8), dp(8), dp(8), dp(8))
                         text = exception.format().split("\n").take(10).joinToString("\n")
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                         setTextColor(secondaryColor)
@@ -347,10 +347,10 @@ class CrashBottomSheet(
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, dp(8f), 0, dp(16f))
+                setPadding(0, dp(8), 0, dp(16))
 
                 addView(TextView(context).apply {
-                    setPadding(0, 0, 0, dp(8f))
+                    setPadding(0, 0, 0, dp(8))
                     text = Strings.sheet_crash_paragraph_plugins()
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                     setTextColor(secondaryColor)
@@ -359,7 +359,7 @@ class CrashBottomSheet(
                 })
 
                 addView(object : RecyclerView(context) {
-                    private val maxH = dp(128f)
+                    private val maxH = dp(128)
 
                     override fun onMeasure(widthSpec: Int, heightSpec: Int) {
                         super.onMeasure(
@@ -375,7 +375,7 @@ class CrashBottomSheet(
                     )
                     layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
                     background = cardBackground()
-                    setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
                 })
             })
 
@@ -393,7 +393,7 @@ class CrashBottomSheet(
                 )
 
                 addView(View(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(12f), MATCH_PARENT)
+                    layoutParams = LinearLayout.LayoutParams(dp(12), MATCH_PARENT)
                 })
 
                 addCard(
@@ -408,7 +408,7 @@ class CrashBottomSheet(
                 layoutParams = LinearLayout.LayoutParams(
                     MATCH_PARENT,
                     WRAP_CONTENT,
-                ).also { it.topMargin = dp(4f) }
+                ).also { it.topMargin = dp(4) }
                 orientation = LinearLayout.HORIZONTAL
 
                 addButton(
@@ -421,11 +421,11 @@ class CrashBottomSheet(
                 })
 
                 addButton(Strings.sheet_crash_button_copy(), textColor) {
-                    AndroidUtilities.addToClipboard(buildReportText())
+                    addToClipboard(buildReportText())
                 }
 
                 addView(View(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(12f), MATCH_PARENT)
+                    layoutParams = LinearLayout.LayoutParams(dp(12), MATCH_PARENT)
                 })
 
                 addButton(
@@ -460,7 +460,7 @@ class CrashBottomSheet(
 
             MessageSender.sendText(UserConfig.selectedAccount, -chat.id, buildReportText())
 
-            AndroidUtilities.runOnUIThread {
+            runOnUIThread {
                 LaunchActivity.getSafeLastFragment()?.presentFragment(ChatActivity.of(-chat.id))
                 dismiss()
             }
