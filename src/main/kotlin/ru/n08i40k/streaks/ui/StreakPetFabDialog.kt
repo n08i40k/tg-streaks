@@ -11,12 +11,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
-import android.webkit.WebView
-import org.json.JSONObject
-import org.telegram.messenger.AndroidUtilities
+import android.widget.FrameLayout
 import ru.n08i40k.streaks.controller.StreakPetsController
-import ru.n08i40k.streaks.data.StreakPetLevel
+import ru.n08i40k.streaks.resource.ResourcesProvider
 import kotlin.math.abs
+import ru.n08i40k.streaks.util.dp
 
 @SuppressLint("DiscouragedApi", "InternalInsetResource")
 class StreakPetFabDialog(
@@ -24,19 +23,36 @@ class StreakPetFabDialog(
     val accountId: Int,
     val peerUserId: Long,
     initialState: StreakPetsController.ViewStateSnapshot,
-    private val fabWebView: StreakPetFabWebView,
+    resourcesProvider: ResourcesProvider,
     initialSizeDp: Int,
     private val onOpenRequested: () -> Unit,
 ) : Dialog(context) {
-    private val stages = StreakPetLevel.levels
-
     private var state = initialState
     private var destroyed = false
     private var offsetX = DEFAULT_OFFSET_X
     private var offsetY = DEFAULT_OFFSET_Y
     private var sizeDp = initialSizeDp
 
-    private val webView: WebView = fabWebView.webView
+    private val petView = StreakPetAnimationView(context, resourcesProvider, accountId)
+    private val petContainer = object : FrameLayout(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            val side = (minOf(measuredWidth, measuredHeight) * .60526f).toInt().coerceAtLeast(1)
+            val spec = View.MeasureSpec.makeMeasureSpec(side, View.MeasureSpec.EXACTLY)
+            petView.measure(spec, spec)
+        }
+
+        override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+            val x = (width - petView.measuredWidth) / 2
+            val y = ((height - petView.measuredHeight) / 2f - height * .0363f).toInt()
+            petView.layout(x, y, x + petView.measuredWidth, y + petView.measuredHeight)
+        }
+    }.apply {
+        addView(petView, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+        contentDescription = initialState.pet.name
+        isClickable = true
+        setOnClickListener { open() }
+    }
 
     fun matches(accountId: Int, peerUserId: Long): Boolean =
         this.accountId == accountId && this.peerUserId == peerUserId
@@ -47,13 +63,15 @@ class StreakPetFabDialog(
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setCanceledOnTouchOutside(false)
 
-        window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            decorView.setPadding(0, 0, 0, 0)
+        }
 
-        fabWebView.attach(context)
         pushState()
 
         setContentView(
-            webView,
+            petContainer,
             ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -103,12 +121,12 @@ class StreakPetFabDialog(
 
         super.dismiss()
         destroyed = true
-        fabWebView.detach()
+        petView.release()
     }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun installTouchHandling() {
-        webView.setOnTouchListener(object : View.OnTouchListener {
+        petContainer.setOnTouchListener(object : View.OnTouchListener {
             private var startX = 0f
             private var startY = 0f
             private var initialX = 0
@@ -137,8 +155,8 @@ class StreakPetFabDialog(
                             resolveDragBounds(size = v.width.takeIf { it > 0 } ?: fabSizePx())
 
                         if (
-                            abs(dx) > AndroidUtilities.dp(6f)
-                            || abs(dy) > AndroidUtilities.dp(6f)
+                            abs(dx) > dp(6)
+                            || abs(dy) > dp(6)
                         ) {
                             moved = true
                             attrs.x = (initialX - dx).coerceIn(0, bounds.maxOffsetX)
@@ -151,9 +169,11 @@ class StreakPetFabDialog(
                         return true
                     }
 
+                    MotionEvent.ACTION_CANCEL -> { moved = false; return true }
+
                     MotionEvent.ACTION_UP -> {
                         if (!moved) {
-                            open()
+                            v.performClick()
                         }
                         return true
                     }
@@ -165,42 +185,12 @@ class StreakPetFabDialog(
     }
 
     private fun pushState() {
-        if (destroyed) {
-            return
-        }
-
-        fabWebView.pushState(buildStateJson())
+        if (destroyed) return
+        petContainer.contentDescription = state.pet.name
+        petView.bind(state.pet.level)
     }
 
-    private fun buildStateJson(): String {
-        val stageIndex = resolveUnlockedIndex(state.pet.points)
-        val stage = stages[stageIndex]
-
-        return JSONObject().apply {
-            put("stageIndex", stageIndex)
-            put("mediaSrc", stage.imageResourcePath)
-            put("gradientStart", stage.gradientStart)
-            put("gradientEnd", stage.gradientEnd)
-            put("petStart", stage.petStart)
-            put("petEnd", stage.petEnd)
-            put("accent", stage.accent)
-            put("accentSecondary", stage.accentSecondary)
-        }.toString()
-    }
-
-    private fun resolveUnlockedIndex(points: Int): Int {
-        var unlocked = 0
-
-        stages.forEachIndexed { index, stage ->
-            if (points >= stage.maxPoints && index < (stages.size - 1)) {
-                unlocked = index + 1
-            }
-        }
-
-        return unlocked
-    }
-
-    private fun fabSizePx(): Int = AndroidUtilities.dp(sizeDp.toFloat())
+    private fun fabSizePx(): Int = dp(sizeDp)
 
     private fun resolveDragBounds(size: Int): DragBounds {
         val displayMetrics = context.resources.displayMetrics

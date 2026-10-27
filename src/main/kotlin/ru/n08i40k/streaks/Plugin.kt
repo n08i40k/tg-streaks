@@ -716,8 +716,6 @@ class Plugin {
             ::hookMethods
         )
 
-        petUiManager.prewarmFab()
-
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
 
         backgroundScope.launch {

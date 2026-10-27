@@ -20,6 +20,7 @@ object AnimatedEmojiView {
         size: Int,
         color: Int? = null,
         layerNum: Int = 0,
+        accountId: Int = UserConfig.selectedAccount,
     ) {
         fun applyDocument(document: TLRPC.Document) {
             val thumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, size)
@@ -50,7 +51,7 @@ object AnimatedEmojiView {
                 document
             )
 
-            val animatedEmoji = AnimatedEmojiDrawable.make(UserConfig.selectedAccount, 0, document)
+            val animatedEmoji = AnimatedEmojiDrawable.make(accountId, 0, document)
 
             imageView.setColorFilter(
                 if (animatedEmoji.canOverrideColor())
@@ -66,7 +67,7 @@ object AnimatedEmojiView {
         }
 
         AnimatedEmojiDrawable
-            .getDocumentFetcher(UserConfig.selectedAccount)
+            .getDocumentFetcher(accountId)
             .fetchDocument(documentId) { document ->
                 runOnMainThread { applyDocument(document) }
             }

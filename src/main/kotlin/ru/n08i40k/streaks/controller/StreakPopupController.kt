@@ -1,6 +1,5 @@
 package ru.n08i40k.streaks.controller
 
-import android.annotation.SuppressLint
 import android.app.Dialog
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -11,28 +10,24 @@ import android.os.Build
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONObject
-import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.ChatActivity
+import org.telegram.ui.Components.AnimatedFileDrawable
+import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.ScheduledStreakPopup
 import ru.n08i40k.streaks.data.Streak
-import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.dao.ScheduledStreakPopupDao
 import ru.n08i40k.streaks.resource.ResourcesProvider
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.runOnMainThread
-import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -45,7 +40,7 @@ class StreakPopupController(
         private const val POPUP_KIND_UPGRADED = "upgraded"
         private const val MAX_QUEUE_SIZE_PER_CHAT = 5
         private const val POPUP_AUTO_DISMISS_MS = 6_000L
-        private const val POPUP_MEDIA_SIZE_DP = 440f
+        private const val POPUP_MEDIA_SIZE_DP = 440
     }
 
     private val isShowing = AtomicBoolean(false)
@@ -56,66 +51,49 @@ class StreakPopupController(
         before: Streak?,
         after: Streak?
     ) {
-        if (accountId < 0 || peerUserId <= 0L || after == null || after.ended || after.length < 3) {
+        if (accountId < 0
+            || peerUserId <= 0L
+            || after == null
+            || after.ended
+            || after.length < 3
+        )
             return
-        }
 
-        when {
-            before == null || before.length < 3 -> {
-                enqueue(
-                    accountId = accountId,
-                    peerUserId = peerUserId,
-                    level = after.level,
-                    dedupeKey = "$POPUP_KIND_CREATED:$accountId:$peerUserId:${after.level.length}"
-                )
-            }
+        val key = when {
+            before == null || before.length < 3 ->
+                "$POPUP_KIND_CREATED:$accountId:$peerUserId:${after.level.length}"
 
-            !before.ended && after.level > before.level -> {
-                enqueue(
-                    accountId = accountId,
-                    peerUserId = peerUserId,
-                    level = after.level,
-                    dedupeKey = "$POPUP_KIND_UPGRADED:$accountId:$peerUserId:${after.level.length}"
-                )
-            }
-        }
-    }
+            !before.ended && after.level > before.level ->
+                "$POPUP_KIND_UPGRADED:$accountId:$peerUserId:${after.level.length}"
 
-    suspend fun flushCurrentChat() {
-        val relation = resolveOpenChatRelation() ?: return
-        flushRelation(relation.accountId, relation.peerUserId)
-    }
-
-    private suspend fun enqueue(
-        accountId: Int,
-        peerUserId: Long,
-        level: StreakLevel,
-        dedupeKey: String,
-    ) {
-        if (peerUserId <= 0L) {
-            return
+            else -> return
         }
 
         val insertedId = dao.insert(
             ScheduledStreakPopup(
                 accountId = accountId,
                 peerUserId = peerUserId,
-                popupResourceName = level.popupResourceName,
-                dedupeKey = dedupeKey,
+                popupResourceName = after.level.popupResourceName,
+                dedupeKey = key,
                 scheduledAt = System.currentTimeMillis(),
             )
         )
 
-        if (insertedId == -1L) {
+        if (insertedId == -1L)
             return
-        }
 
         dao.trimRelationQueue(accountId, peerUserId, MAX_QUEUE_SIZE_PER_CHAT)
 
         val relation = resolveOpenChatRelation()
-        if (relation?.accountId == accountId && relation.peerUserId == peerUserId) {
+
+        if (relation?.accountId == accountId && relation.peerUserId == peerUserId)
             flushRelation(accountId, peerUserId)
-        }
+    }
+
+
+    suspend fun flushCurrentChat() {
+        val relation = resolveOpenChatRelation() ?: return
+        flushRelation(relation.accountId, relation.peerUserId)
     }
 
     private suspend fun flushRelation(accountId: Int, peerUserId: Long) {
@@ -147,19 +125,43 @@ class StreakPopupController(
         popup: ScheduledStreakPopup,
         onDismiss: () -> Unit,
     ): Boolean {
-        val relation = resolveOpenChatRelation() ?: return false
-        if (relation.accountId != popup.accountId || relation.peerUserId != popup.peerUserId) {
-            return false
-        }
+        val relation = resolveOpenChatRelation()
+            ?: return false
 
-        val context = resolvePopupContext() ?: return false
+        if (relation.accountId != popup.accountId
+            || relation.peerUserId != popup.peerUserId
+        )
+            return false
+
+        val context = resolvePopupContext()
+            ?: return false
 
         runOnMainThread {
+            var videoView: BackupImageView? = null
+            var videoDrawable: AnimatedFileDrawable? = null
+            var imageView: ImageView? = null
+            var animatedDrawable: AnimatedImageDrawable? = null
+
+            fun releaseMedia() {
+                animatedDrawable?.stop()
+                imageView?.setImageDrawable(null)
+
+                videoDrawable?.apply {
+                    stop()
+                    videoView?.imageReceiver?.let(::removeParent)
+                    setParentView(null)
+                    recycle()
+                }
+                videoView?.setImageDrawable(null)
+                videoDrawable = null
+            }
+
             val result = Logger.tryOrFatal("show streak popup") {
-                val dialog = Dialog(context)
-                dialog.requestWindowFeature(1)
-                dialog.setCancelable(true)
-                dialog.setCanceledOnTouchOutside(true)
+                val dialog = Dialog(context).apply {
+                    requestWindowFeature(1)
+                    setCancelable(true)
+                    setCanceledOnTouchOutside(true)
+                }
 
                 val rootContainer = FrameLayout(context).apply {
                     setBackgroundColor(Color.argb(200, 20, 20, 24))
@@ -171,17 +173,23 @@ class StreakPopupController(
                     gravity = Gravity.CENTER_HORIZONTAL
                     isClickable = true
                     setPadding(
-                        AndroidUtilities.dp(16f),
-                        AndroidUtilities.dp(14f),
-                        AndroidUtilities.dp(16f),
-                        AndroidUtilities.dp(14f),
+                        dp(16),
+                        dp(14),
+                        dp(16),
+                        dp(14),
                     )
                 }
 
-                var mediaWebView: WebView? = null
-                var imageView: ImageView? = null
-                var animatedDrawable: AnimatedImageDrawable? = null
-                val resourceFile = resourcesProvider.resolvePopupResource(popup.popupResourceName)
+                dialog.setOnDismissListener {
+                    try {
+                        releaseMedia()
+                    } finally {
+                        onDismiss()
+                    }
+                }
+
+                val resourceFile =
+                    resourcesProvider.resolvePopupResource(popup.popupResourceName)
                 if (resourceFile != null) {
                     if (resourceFile.extension.equals("webp", ignoreCase = true)) {
                         imageView = ImageView(context).apply {
@@ -210,22 +218,37 @@ class StreakPopupController(
                         container.addView(
                             imageView,
                             LinearLayout.LayoutParams(
-                                AndroidUtilities.dp(POPUP_MEDIA_SIZE_DP),
-                                AndroidUtilities.dp(POPUP_MEDIA_SIZE_DP),
+                                dp(POPUP_MEDIA_SIZE_DP),
+                                dp(POPUP_MEDIA_SIZE_DP),
                             ).apply {
-                                bottomMargin = AndroidUtilities.dp(10f)
+                                bottomMargin = dp(10)
                             }
                         )
                     } else {
-                        mediaWebView = createPopupVideoWebView(context, resourceFile)
+                        videoView = BackupImageView(context).apply {
+                            setAspectFit(true)
+                            imageReceiver.currentAccount = popup.accountId
+                            imageReceiver.animatedFileDrawableRepeatMaxCount = 1
+                        }
+
+                        // Open and decode on Telegram's worker queue; retain the last frame.
+                        videoDrawable = AnimatedFileDrawable(
+                            resourceFile, false, 0L, 0, null, null, null, 0L,
+                            popup.accountId, false, null
+                        ).apply {
+                            setIsWebmSticker(true)
+                            setUseSharedQueue(true)
+                        }
+
+                        videoView.setImageDrawable(videoDrawable)
 
                         container.addView(
-                            mediaWebView,
+                            videoView,
                             LinearLayout.LayoutParams(
-                                AndroidUtilities.dp(POPUP_MEDIA_SIZE_DP),
-                                AndroidUtilities.dp(POPUP_MEDIA_SIZE_DP),
+                                dp(POPUP_MEDIA_SIZE_DP),
+                                dp(POPUP_MEDIA_SIZE_DP),
                             ).apply {
-                                bottomMargin = AndroidUtilities.dp(10f)
+                                bottomMargin = dp(10)
                             }
                         )
                     }
@@ -258,29 +281,6 @@ class StreakPopupController(
                     window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 }
 
-                val releaseEmoji = {
-                    try {
-                        animatedDrawable?.stop()
-                    } catch (_: Throwable) {
-                    }
-                    try {
-                        mediaWebView?.onPause()
-                        mediaWebView?.stopLoading()
-                        mediaWebView?.loadUrl("about:blank")
-                        mediaWebView?.destroy()
-                    } catch (_: Throwable) {
-                    }
-                    try {
-                        imageView?.setImageDrawable(null)
-                    } catch (_: Throwable) {
-                    }
-                }
-
-                dialog.setOnDismissListener {
-                    releaseEmoji()
-                    onDismiss()
-                }
-
                 dialog.show()
 
                 Plugin.getInstance()
@@ -298,135 +298,16 @@ class StreakPopupController(
                     }
             }
 
-            if (result == null) onDismiss()
+            if (result == null) {
+                try {
+                    releaseMedia()
+                } finally {
+                    onDismiss()
+                }
+            }
         }
 
         return true
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun createPopupVideoWebView(
-        context: android.content.Context,
-        resourceFile: File,
-    ): WebView {
-        val baseUrl = resourceFile.parentFile?.toURI()?.toString() ?: "file:///"
-        val html = buildPopupVideoHtml(resourceFile.name)
-
-        return WebView(context).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            isVerticalScrollBarEnabled = false
-            isHorizontalScrollBarEnabled = false
-
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = false
-            settings.cacheMode = WebSettings.LOAD_DEFAULT
-            settings.allowFileAccess = true
-            settings.allowContentAccess = false
-            settings.mediaPlaybackRequiresUserGesture = false
-            settings.builtInZoomControls = false
-            settings.displayZoomControls = false
-            settings.setSupportZoom(false)
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
-
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    view?.evaluateJavascript(
-                        "window.startPlayback && window.startPlayback();",
-                        null
-                    )
-                }
-            }
-
-            loadDataWithBaseURL(
-                baseUrl,
-                html,
-                "text/html",
-                "utf-8",
-                null
-            )
-        }
-    }
-
-    private fun buildPopupVideoHtml(fileName: String): String {
-        val escapedFileName = JSONObject.quote(fileName)
-
-        return """
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                <style>
-                    html, body {
-                        width: 100%;
-                        height: 100%;
-                        margin: 0;
-                        overflow: hidden;
-                        background: transparent;
-                    }
-
-                    body {
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                    }
-
-                    #video {
-                        width: 100%;
-                        height: 100%;
-                        object-fit: contain;
-                        background: transparent;
-                        opacity: 0;
-                        transition: opacity .16s ease;
-                        pointer-events: none;
-                    }
-                </style>
-            </head>
-            <body>
-                <video id="video" muted autoplay playsinline preload="auto"></video>
-                <script>
-                    var video = document.getElementById('video');
-                    var src = $escapedFileName;
-
-                    function freezeLastFrame() {
-                        var duration = Number(video.duration || 0);
-                        video.pause();
-                        if (isFinite(duration) && duration > 0) {
-                            try {
-                                video.currentTime = Math.max(duration - 0.001, 0);
-                            } catch (_) {}
-                        }
-                    }
-
-                    window.startPlayback = function() {
-                        if (!video.src) {
-                            video.src = src;
-                        }
-
-                        video.onloadeddata = function() {
-                            video.style.opacity = '1';
-                        };
-
-                        video.onended = function() {
-                            freezeLastFrame();
-                        };
-
-                        video.onerror = function() {
-                            video.style.opacity = '0';
-                        };
-
-                        var playPromise = video.play();
-                        if (playPromise && typeof playPromise.catch === 'function') {
-                            playPromise.catch(function() {});
-                        }
-                    };
-
-                    window.startPlayback();
-                </script>
-            </body>
-            </html>
-        """.trimIndent()
     }
 
     private fun resolvePopupContext(): android.content.Context? {
@@ -442,12 +323,13 @@ class StreakPopupController(
     }
 
     private fun resolveOpenChatRelation(): OpenChatRelation? {
-        val fragment = LaunchActivity.getSafeLastFragment() as? ChatActivity ?: return null
+        val fragment = LaunchActivity.getSafeLastFragment() as? ChatActivity
+            ?: return null
+
         val dialogId = fragment.dialogId
 
-        if (dialogId <= 0L) {
+        if (dialogId <= 0L)
             return null
-        }
 
         return OpenChatRelation(
             accountId = UserConfig.selectedAccount,
