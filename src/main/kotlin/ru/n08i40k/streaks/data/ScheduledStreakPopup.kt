@@ -22,8 +22,11 @@ data class ScheduledStreakPopup(
     @ColumnInfo(name = "peer_user_id")
     val peerUserId: Long,
 
-    @ColumnInfo(name = "popup_resource_name")
-    val popupResourceName: String,
+    @ColumnInfo(name = "from_level_id")
+    val fromLevelId: String,
+
+    @ColumnInfo(name = "to_level_id")
+    val toLevelId: String,
 
     @ColumnInfo(name = "dedupe_key")
     val dedupeKey: String,

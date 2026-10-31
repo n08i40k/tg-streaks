@@ -20,8 +20,4 @@ class ResourcesProvider(
     fun readTextResource(relativePath: String?): String? {
         return resolveResource(relativePath)?.readText()
     }
-
-    fun resolvePopupResource(resourceName: String?): File? {
-        return resolveResource("upgrade-popups/${resourceName?.trim().orEmpty()}")
-    }
 }

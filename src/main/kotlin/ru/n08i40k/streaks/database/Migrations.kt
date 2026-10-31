@@ -408,3 +408,59 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         db.execSQL("ALTER TABLE `streak_pet` ADD COLUMN `last_checked_mid` INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `scheduled_streak_popup_new` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `account_id` INTEGER NOT NULL,
+                `peer_user_id` INTEGER NOT NULL,
+                `from_level_id` TEXT NOT NULL,
+                `to_level_id` TEXT NOT NULL,
+                `dedupe_key` TEXT NOT NULL,
+                `scheduled_at` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            INSERT INTO `scheduled_streak_popup_new`
+                (`id`, `account_id`, `peer_user_id`, `from_level_id`, `to_level_id`, `dedupe_key`, `scheduled_at`)
+            SELECT `id`, `account_id`, `peer_user_id`,
+                CASE `popup_resource_name`
+                    WHEN '3.webm' THEN 'cold'
+                    WHEN '10.webm' THEN '3d'
+                    WHEN '30.webm' THEN '10d'
+                    WHEN '100.webm' THEN '30d'
+                    WHEN '200.webm' THEN '100d'
+                END,
+                CASE `popup_resource_name`
+                    WHEN '3.webm' THEN '3d'
+                    WHEN '10.webm' THEN '10d'
+                    WHEN '30.webm' THEN '30d'
+                    WHEN '100.webm' THEN '100d'
+                    WHEN '200.webm' THEN '200d'
+                END,
+                `dedupe_key`, `scheduled_at`
+            FROM `scheduled_streak_popup`
+            WHERE `popup_resource_name` IN ('3.webm', '10.webm', '30.webm', '100.webm', '200.webm')
+            """.trimIndent()
+        )
+        db.execSQL("DROP TABLE `scheduled_streak_popup`")
+        db.execSQL("ALTER TABLE `scheduled_streak_popup_new` RENAME TO `scheduled_streak_popup`")
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_scheduled_streak_popup_account_id_peer_user_id_id`
+            ON `scheduled_streak_popup` (`account_id`, `peer_user_id`, `id`)
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS `index_scheduled_streak_popup_dedupe_key`
+            ON `scheduled_streak_popup` (`dedupe_key`)
+            """.trimIndent()
+        )
+    }
+}

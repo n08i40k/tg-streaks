@@ -6,14 +6,13 @@ import ru.n08i40k.streaks.i18n.Strings
 enum class StreakLevel(
     val id: String,
     val length: Int,
-    val popupResourceName: String
 ) {
-    Cold("cold", 0, ""),
-    Days3("3d", 3, "3.webm"),
-    Days10("10d", 10, "10.webm"),
-    Days30("30d", 30, "30.webm"),
-    Days100("100d", 100, "100.webm"),
-    Days200("200d", 200, "200.webm");
+    Cold("cold", 0),
+    Days3("3d", 3),
+    Days10("10d", 10),
+    Days30("30d", 30),
+    Days100("100d", 100),
+    Days200("200d", 200);
 
     companion object {
         val levels = sortedSetOf(
@@ -28,6 +27,12 @@ enum class StreakLevel(
 
         fun findNext(level: StreakLevel): StreakLevel? =
             levels.firstOrNull { it.length > level.length }
+
+        fun findPrevious(level: StreakLevel): StreakLevel? =
+            levels.lastOrNull { it.length < level.length }
+
+        fun findById(id: String): StreakLevel? =
+            levels.firstOrNull { it.id == id }
 
         fun findFirstVisible(): StreakLevel =
             levels.first { it.length >= Streak.MIN_VISIBLE_LENGTH }

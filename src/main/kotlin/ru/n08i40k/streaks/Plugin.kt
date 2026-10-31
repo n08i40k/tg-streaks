@@ -325,10 +325,7 @@ class Plugin {
                     transactor,
                     this.db.streakDao(),
                     this.db.streakRestoreDao(),
-                    StreakPopupController(
-                        this.db.scheduledStreakPopupDao(),
-                        this.resourcesProvider
-                    ),
+                    StreakPopupController(this.db.scheduledStreakPopupDao()),
                     this.timeZonesController,
                 )
 
