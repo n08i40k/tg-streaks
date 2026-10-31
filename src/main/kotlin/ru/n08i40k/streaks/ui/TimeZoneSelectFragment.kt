@@ -31,6 +31,7 @@ import ru.n08i40k.streaks.extension.toLocalStartString
 import ru.n08i40k.streaks.extension.toOffsetString
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.dp
+import ru.n08i40k.streaks.util.smoothScrollToTop
 
 class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
     interface Adapter {
@@ -55,7 +56,18 @@ class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
 
         private const val DONE_BUTTON_ID = 1
 
-        private val TIME_ZONES = listOf(
+        fun createChangeDialog(context: Context, hasPet: Boolean, onConfirm: () -> Unit): AlertDialog =
+            AlertDialog.Builder(context)
+                .setTitle(Strings.dialog_control_time_zone_change_title())
+                .setMessage(
+                    if (hasPet) Strings.dialog_control_time_zone_change_message_with_pet()
+                    else Strings.dialog_control_time_zone_change_message()
+                )
+                .setPositiveButton(Strings.dialog_control_time_zone_change_button()) { _, _ -> onConfirm() }
+                .setNegativeButton(Strings.dialog_control_cancel(), null)
+                .create()
+
+        val TIME_ZONES = listOf(
             "GMT-08:00",
             "GMT-07:30", "GMT-07:00",
             "GMT-06:30", "GMT-06:00",
@@ -293,25 +305,26 @@ class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
     private fun showTimeZoneChangeConfirmDialog() {
         val activity = parentActivity ?: return
 
-        val message = if (adapter.hasPet())
-            Strings.dialog_control_time_zone_change_message_with_pet()
-        else
-            Strings.dialog_control_time_zone_change_message()
-
         showDialog(
-            AlertDialog.Builder(activity)
-                .setTitle(Strings.dialog_control_time_zone_change_title())
-                .setMessage(message)
-                .setPositiveButton(
-                    Strings.dialog_control_time_zone_change_button()
-                ) { _, _ ->
-                    adapter.setCurrentTimeZone(timeZone)
-                    finishFragment()
-                }
-                .setNegativeButton(Strings.dialog_control_cancel(), null)
-                .create()
+            createChangeDialog(activity, adapter.hasPet()) {
+                adapter.setCurrentTimeZone(timeZone)
+                finishFragment()
+            }
         )
     }
+
+    val doneButton: View
+        get() = doneItem
+
+    fun positionOf(timeZone: TimeZone): Int =
+        TIME_ZONES.indexOfFirst { it.rawOffset == timeZone.rawOffset }
+            .let { if (it >= 0) it + Row.COUNT.ordinal else Row.LOCAL_TIME_ZONE.ordinal }
+
+    fun viewFor(timeZone: TimeZone): View? =
+        listView.findViewHolderForAdapterPosition(positionOf(timeZone))?.itemView
+
+    suspend fun smoothScrollTo(timeZone: TimeZone) =
+        listView.smoothScrollToTop(positionOf(timeZone))
 
     fun getTimeZoneByPosition(position: Int): TimeZone =
         when (position) {
@@ -323,29 +336,27 @@ class TimeZoneSelectFragment(private val adapter: Adapter) : BaseFragment() {
     private fun onRowClicked(newPosition: Int) {
         when (newPosition) {
             Row.DESC.ordinal, Row.DIVIDER.ordinal -> return
-            else -> {
-                val newTimeZone = getTimeZoneByPosition(newPosition)
-
-                if (timeZone.rawOffset == newTimeZone.rawOffset)
-                    return
-
-                val oldLocalPosition = Row.LOCAL_TIME_ZONE.ordinal
-                val oldGmtPosition = TIME_ZONES.indexOfFirst { it.rawOffset == timeZone.rawOffset }
-                    .let { if (it >= 0) it + Row.COUNT.ordinal else -1 }
-
-                timeZone = newTimeZone
-                doneItem.visibility = if (timeZone.rawOffset == originalTimeZone.rawOffset)
-                    View.GONE
-                else
-                    View.VISIBLE
-
-                val listAdapter = listAdapter
-
-                listAdapter.notifyItemChanged(oldLocalPosition)
-                listAdapter.notifyItemChanged(oldGmtPosition)
-                listAdapter.notifyItemChanged(newPosition)
-            }
+            else -> select(getTimeZoneByPosition(newPosition))
         }
+    }
+
+    fun select(newTimeZone: TimeZone) {
+        if (timeZone.rawOffset == newTimeZone.rawOffset)
+            return
+
+        val oldLocalPosition = Row.LOCAL_TIME_ZONE.ordinal
+        val oldGmtPosition = TIME_ZONES.indexOfFirst { it.rawOffset == timeZone.rawOffset }
+            .let { if (it >= 0) it + Row.COUNT.ordinal else -1 }
+
+        timeZone = newTimeZone
+        doneItem.visibility = if (timeZone.rawOffset == originalTimeZone.rawOffset)
+            View.GONE
+        else
+            View.VISIBLE
+
+        listAdapter.notifyItemChanged(oldLocalPosition)
+        listAdapter.notifyItemChanged(oldGmtPosition)
+        listAdapter.notifyItemChanged(positionOf(newTimeZone))
     }
 
 }

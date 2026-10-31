@@ -116,6 +116,10 @@ val `CalendarActivity$messagesByYearMounth` =
     getFieldGetter(CalendarActivity::class.java, "messagesByYearMounth")
 
 @JvmField
+val `CalendarActivity$endReached$$setter` =
+    getFieldSetter(CalendarActivity::class.java, "endReached")
+
+@JvmField
 val `CalendarActivity$messagesByYearMounth$$setter` =
     getFieldSetter(CalendarActivity::class.java, "messagesByYearMounth")
 

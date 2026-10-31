@@ -77,6 +77,14 @@ class StreakEmoji(parentView: View, val size: Int) :
         return cachedStreakViewData != null
     }
 
+    fun setPreviewData(data: StreakViewData?) {
+        peerUserId = 0
+        cachedStreakViewData = data
+        lengthText = data?.length?.toString()
+        lengthTextWidth = lengthText?.let { gap + ceil(textPaint.measureText(it)).toInt() } ?: 0
+        applyStreak(data)
+    }
+
     fun getPeerUserId(): Long = peerUserId
 
     fun hasStreak(): Boolean = cachedStreakViewData != null

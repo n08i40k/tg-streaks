@@ -13,6 +13,7 @@
 
     void setPetFabSizeDp(int);
     void setAutoStreakCreationEnabled(boolean);
+    void setGuideDebugMode(boolean);
 
     android.content.SharedPreferences getSharedPrefs();
 }

@@ -32,6 +32,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Streaks Plugin"
+include(":telegram-guides")
 
 private val localProperties = Properties().apply {
     file("local.properties")

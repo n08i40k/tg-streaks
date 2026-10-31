@@ -37,6 +37,9 @@ import org.telegram.messenger.NotificationCenter
 import org.telegram.messenger.UserConfig
 import ru.n08i40k.badges.BadgesSdkProvider
 import ru.n08i40k.badges.api.BadgesSdk
+import ru.n08i40k.guides.api.GuideLogger
+import ru.n08i40k.guides.catalog.GuideProgress
+import ru.n08i40k.guides.ui.GuideUiManager
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.controller.PluginRelationController
 import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
@@ -64,8 +67,12 @@ import ru.n08i40k.streaks.extension.onEachWithOnMainThread
 import ru.n08i40k.streaks.extension.onEachWithOnMainThreadBlocking
 import ru.n08i40k.streaks.extension.resolveLanguageCode
 import ru.n08i40k.streaks.extension.toLocalDate
+import ru.n08i40k.streaks.guide.StreakGuideLinks
+import ru.n08i40k.streaks.guide.lessons.StreakBasicsGuides
+import ru.n08i40k.streaks.guide.presentation.StreakGuidePresentation
 import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
 import ru.n08i40k.streaks.hook.impl.ForegroundHookBundle
+import ru.n08i40k.streaks.hook.impl.GuideLinksHookBundle
 import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
 import ru.n08i40k.streaks.hook.impl.ServiceMessagesHookBundle
 import ru.n08i40k.streaks.hook.impl.UpdatesHookBundle
@@ -206,6 +213,12 @@ class Plugin {
 
         @Keep
         @JvmStatic
+        fun setGuideDebugMode(enabled: Boolean) {
+            INSTANCE!!.guideDebugMode = enabled
+        }
+
+        @Keep
+        @JvmStatic
         fun setPetFabSizeDp(sizeDp: Int) = with(INSTANCE!!) {
             petUiManager.setFabSizeDp(sizeDp)
         }
@@ -295,6 +308,22 @@ class Plugin {
     val pluginRelationController: PluginRelationController
     val serviceMessageCategoriesController: ServiceMessageCategoriesController
     val petUiManager: StreakPetUiManager
+    private var guideDebugMode = false
+    internal val guideUiManager = GuideUiManager(
+        logger = object : GuideLogger {
+            override fun info(message: String) =
+                Logger.info(message)
+
+            override fun error(message: String, error: Throwable) =
+                Logger.info("$message\n${error.stackTraceToString()}")
+        },
+        catalogFactory = { StreakBasicsGuides.catalog() },
+        presentation = StreakGuidePresentation(),
+        labels = StreakBasicsGuides::labels,
+        debug = { guideDebugMode },
+        progressFactory = { GuideProgress(getSharedPrefs(), "guides.basics.completed.v1") },
+        link = { StreakGuideLinks.of(it.id) },
+    )
 
     // P-in-P
     var badgesSdk: BadgesSdk? = null
@@ -358,6 +387,10 @@ class Plugin {
     @UiThread
     private fun refreshStreakViews() {
         streaksController.refreshViewCache()
+        rebindStreakBadges()
+    }
+
+    internal fun rebindStreakBadges() {
         badgesSdk?.rebindViews(
             BadgesSdk.RebindViewsParams
                 .builder(streakEmojiViewFactory)
@@ -685,6 +718,8 @@ class Plugin {
         runOnMainThread {
             NotificationCenter.getGlobalInstance()
                 .addObserver(themeObserver, NotificationCenter.didSetNewTheme)
+
+            guideUiManager.start()
         }
 
         taskQueue.startWorker(backgroundScope)
@@ -725,6 +760,7 @@ class Plugin {
             }
         }
 
+        runOnMainThread { guideUiManager.refresh() }
         Logger.info("Inject finalized!")
     }
 
@@ -758,6 +794,7 @@ class Plugin {
                 .removeObserver(themeObserver, NotificationCenter.didSetNewTheme)
 
             petUiManager.destroy()
+            guideUiManager.destroy()
 
             BadgesSdkProvider.destroy()
         }
@@ -840,6 +877,7 @@ class Plugin {
         val bundles = arrayOf(
             AccountSwitchHookBundle(),
             ForegroundHookBundle(),
+            GuideLinksHookBundle(),
             PetFabHookBundle(),
             ServiceMessagesHookBundle(),
             UpdatesHookBundle(),

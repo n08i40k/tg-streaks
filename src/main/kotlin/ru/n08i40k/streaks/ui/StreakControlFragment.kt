@@ -32,7 +32,7 @@ import ru.n08i40k.streaks.extension.setTextAndValueAndCheckCompat
 import ru.n08i40k.streaks.extension.toOffsetString
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.postSafe
-
+import ru.n08i40k.streaks.util.smoothScrollToTop
 
 class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
     data class ViewState(
@@ -103,6 +103,26 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         private const val TYPE_DESCRIPTION = 4
 
         private val ROW_UPDATE_PAYLOAD = Any()
+
+        fun createConfirmDialog(
+            context: Context,
+            title: String,
+            message: String,
+            positiveButtonText: String,
+            makeRed: Boolean = false,
+            onConfirm: () -> Unit = {},
+        ): AlertDialog {
+            val builder = AlertDialog.Builder(context)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(positiveButtonText) { _, _ -> onConfirm() }
+                .setNegativeButton(Strings.dialog_control_cancel(), null)
+
+            if (makeRed)
+                builder.makeRed(DialogInterface.BUTTON_POSITIVE)
+
+            return builder.create()
+        }
     }
 
     override fun createView(context: Context): View {
@@ -136,6 +156,25 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
         observeState()
 
         return fragmentView
+    }
+
+    suspend fun smoothScrollToRow(row: Row) =
+        listView.smoothScrollToTop(row.ordinal)
+
+    fun viewForRow(row: Row): View? =
+        listView.findViewHolderForAdapterPosition(row.ordinal)?.itemView
+
+    fun refreshEmbeddedTheme() {
+        val manager = listView.layoutManager as LinearLayoutManager
+        val position = manager.findFirstVisibleItemPosition()
+        val top = manager.findViewByPosition(position)?.top ?: 0
+
+        fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray))
+        listView.adapter = null
+        listView.recycledViewPool.clear()
+        listView.adapter = listAdapter
+        if (position >= 0)
+            manager.scrollToPositionWithOffset(position, top)
     }
 
     private fun <T> Flow<T>.observe(action: (T) -> Unit) =
@@ -281,14 +320,7 @@ class StreakControlFragment(private val viewModel: ViewModel) : BaseFragment() {
     ) {
         val activity = parentActivity ?: return
 
-        val builder = AlertDialog.Builder(activity).setTitle(title)
-            .setMessage(message)
-            .setPositiveButton(positiveButtonText) { _, _ -> onConfirm() }
-            .setNegativeButton(Strings.dialog_control_cancel(), null)
-
-        if (makeRed) builder.makeRed(DialogInterface.BUTTON_POSITIVE)
-
-        builder.show()
+        createConfirmDialog(activity, title, message, positiveButtonText, makeRed, onConfirm).show()
     }
 
     inner class ListAdapter(private val context: Context) : RecyclerListView.SelectionAdapter() {

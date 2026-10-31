@@ -126,6 +126,7 @@ I18N_SETTINGS: dict[str, dict[str, str]] = {
         "ru": "Открыть руководство пользователя в браузере.",
     },
     "settings.help.docs.title": {"en": "Documentation", "ru": "Документация"},
+    "settings.help.guides.title": {"en": "Tutorials", "ru": "Гайды"},
     "settings.help.title": {"en": "Help", "ru": "Справка"},
     "settings.pet_button.size.description": {
         "en": "Floating chat button size.",
@@ -795,6 +796,7 @@ class SettingsActions:
     REBUILD_ALL = "rebuildAllPrivateChats"
     EXPORT_BACKUP_NOW = "exportBackupNow"
     DELETE_DB_AND_RELOAD = "deleteDbAndReload"
+    OPEN_GUIDES = "openGuides"
     OPEN_EMOJI_PACKS = "openEmojiPacks"
 
     def __init__(self, plugin: "TgStreaksPlugin"):
@@ -1092,6 +1094,12 @@ class TgStreaksPlugin(BasePlugin):
             ),
             *self.settings_actions.build_settings(),
             Header(text=self._t("settings.help.title")),
+            Text(
+                text=self._t("settings.help.guides.title"),
+                icon="msg_help",
+                on_click=lambda _: self.settings_actions._on_click(SettingsActions.OPEN_GUIDES),
+                link_alias="guides",
+            ),
             Text(
                 text=self._t("settings.help.docs.title"),
                 icon="msg_info",
@@ -1606,6 +1614,9 @@ class TgStreaksPlugin(BasePlugin):
 
     def _finalize_jvm_plugin_inject(self) -> bool:
         try:
+            self.jvm_plugin.klass.getDeclaredMethod(
+                String("setGuideDebugMode"), Boolean.TYPE
+            ).invoke(None, Boolean(DEBUG_MODE))
             self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("finalizeInject")
             ).invoke(None)

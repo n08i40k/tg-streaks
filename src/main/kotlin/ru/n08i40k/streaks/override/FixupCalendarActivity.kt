@@ -2,6 +2,7 @@ package ru.n08i40k.streaks.override
 
 import android.content.Context
 import android.graphics.Paint
+import android.graphics.PointF
 import android.os.Bundle
 import android.util.SparseArray
 import android.util.SparseBooleanArray
@@ -12,7 +13,6 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.number
-import org.telegram.messenger.UserConfig
 import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.CalendarActivity
 import org.telegram.ui.ChatActivity
@@ -32,6 +32,7 @@ import ru.n08i40k.streaks.util.`CalendarActivity$PeriodDay$hasImage$$setter`
 import ru.n08i40k.streaks.util.`CalendarActivity$bottomBar`
 import ru.n08i40k.streaks.util.`CalendarActivity$dateSelectedEnd$$setter`
 import ru.n08i40k.streaks.util.`CalendarActivity$dateSelectedStart$$setter`
+import ru.n08i40k.streaks.util.`CalendarActivity$endReached$$setter`
 import ru.n08i40k.streaks.util.`CalendarActivity$inSelectionMode$$setter`
 import ru.n08i40k.streaks.util.`CalendarActivity$listView`
 import ru.n08i40k.streaks.util.`CalendarActivity$messagesByYearMounth`
@@ -45,21 +46,50 @@ import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.concurrent.atomic.AtomicReference
 
 class FixupCalendarActivity : CalendarActivity {
+    interface Adapter {
+        val loadsMediaPreviews: Boolean
+            get() = true
+
+        suspend fun getSnapshot(): StreaksController.CalendarInteractionSnapshot
+
+        suspend fun analyzeTap(day: LocalDate): StreaksController.CalendarTapDecision
+
+        suspend fun addManualRestore(day: LocalDate): StreaksController.AddManualCalendarRestoreResult
+
+        fun rebuild(onComplete: () -> Unit)
+    }
+
     companion object {
         private const val BOTH_ACTIVITY_COLOR = 0xFF34C759.toInt()
         private const val PRE_RESTORE_ACTIVITY_COLOR = 0xFFFFCC00.toInt()
         private const val RESTORE_ACTIVITY_COLOR = 0xFF5AC8FA.toInt()
         private const val ACTIVITY_COLOR_ALPHA = 170
 
-        fun create(peerUserId: Long, chatActivity: ChatActivity): FixupCalendarActivity {
+        fun create(peerUserId: Long, adapter: Adapter, chatActivity: ChatActivity? = null): FixupCalendarActivity {
             val bundle = Bundle()
             bundle.putLong("dialog_id", peerUserId)
             bundle.putLong("topic_id", 0)
             bundle.putInt("type", 0)
 
-            return FixupCalendarActivity(bundle, 0, 0)
-                .apply { setChatActivity(chatActivity) }
+            return FixupCalendarActivity(bundle, adapter)
+                .apply { chatActivity?.let(::setChatActivity) }
         }
+
+        fun createManualRestoreDialog(context: Context, onConfirm: () -> Unit = {}): AlertDialog =
+            AlertDialog.Builder(context)
+                .setTitle(Strings.dialog_calendar_fix_manual_restore_title())
+                .setMessage(Strings.dialog_calendar_fix_manual_restore_message())
+                .setPositiveButton(Strings.dialog_calendar_fix_confirm()) { _, _ -> onConfirm() }
+                .setNegativeButton(Strings.dialog_calendar_fix_cancel(), null)
+                .create()
+
+        fun createRebuildOfferDialog(context: Context, onConfirm: () -> Unit = {}): AlertDialog =
+            AlertDialog.Builder(context)
+                .setTitle(Strings.dialog_calendar_fix_rebuild_title())
+                .setMessage(Strings.dialog_calendar_fix_rebuild_message())
+                .setPositiveButton(Strings.dialog_calendar_fix_rebuild_now()) { _, _ -> onConfirm() }
+                .setNegativeButton(Strings.dialog_calendar_fix_later(), null)
+                .create()
     }
 
     private val peerUserId: Long
@@ -128,13 +158,20 @@ class FixupCalendarActivity : CalendarActivity {
             }
         }
 
-    constructor(bundle: Bundle, p1: Int, p2: Int) : super(bundle, p1, p2) {
+    private val adapter: Adapter
+
+    constructor(bundle: Bundle, adapter: Adapter) : super(bundle, 0, 0) {
         peerUserId = bundle.getLong("dialog_id")
+        this.adapter = adapter
     }
 
     override fun onFragmentCreate(): Boolean {
         if (super.onFragmentCreate()) {
             installMessagesByYearMonthProxy()
+
+            if (!adapter.loadsMediaPreviews)
+                `CalendarActivity$endReached$$setter`.invokeExact(this as CalendarActivity, true)
+
             return true
         }
 
@@ -250,12 +287,8 @@ class FixupCalendarActivity : CalendarActivity {
             return
         }
 
-        val accountId = UserConfig.selectedAccount
         Plugin.getInstance().backgroundScope.launch {
-            val decision =
-                Plugin.getInstance()
-                    .streaksController
-                    .analyzeCalendarTap(accountId, peerUserId, day)
+            val decision = adapter.analyzeTap(day)
 
             runOnMainThread {
                 when (decision) {
@@ -276,26 +309,12 @@ class FixupCalendarActivity : CalendarActivity {
     private fun showManualRestoreOfferDialog(day: LocalDate) {
         val context = context ?: parentActivity ?: return
 
-        showDialog(
-            AlertDialog.Builder(context)
-                .setTitle(Strings.dialog_calendar_fix_manual_restore_title())
-                .setMessage(Strings.dialog_calendar_fix_manual_restore_message())
-                .setPositiveButton(Strings.dialog_calendar_fix_confirm()) { _, _ ->
-                    persistManualRestore(day)
-                }
-                .setNegativeButton(Strings.dialog_calendar_fix_cancel(), null)
-                .create()
-        )
+        showDialog(createManualRestoreDialog(context) { persistManualRestore(day) })
     }
 
     private fun persistManualRestore(day: LocalDate) {
-        val accountId = UserConfig.selectedAccount
-
         Plugin.getInstance().backgroundScope.launch {
-            val result =
-                Plugin.getInstance()
-                    .streaksController
-                    .addManualCalendarRestore(accountId, peerUserId, day)
+            val result = adapter.addManualRestore(day)
 
             runOnMainThread {
                 when (result) {
@@ -318,21 +337,7 @@ class FixupCalendarActivity : CalendarActivity {
     private fun showRebuildOfferDialog() {
         val context = context ?: parentActivity ?: return
 
-        showDialog(
-            AlertDialog.Builder(context)
-                .setTitle(Strings.dialog_calendar_fix_rebuild_title())
-                .setMessage(Strings.dialog_calendar_fix_rebuild_message())
-                .setPositiveButton(Strings.dialog_calendar_fix_rebuild_now()) { _, _ ->
-                    Plugin.getInstance().enqueueRebuildForPeer(
-                        UserConfig.selectedAccount,
-                        peerUserId,
-                    ) {
-                        reloadSnapshot()
-                    }
-                }
-                .setNegativeButton(Strings.dialog_calendar_fix_later(), null)
-                .create()
-        )
+        showDialog(createRebuildOfferDialog(context) { adapter.rebuild(::reloadSnapshot) })
     }
 
     private fun showInfoOnlyDialog(
@@ -350,7 +355,7 @@ class FixupCalendarActivity : CalendarActivity {
         )
     }
 
-    private fun reloadSnapshot() {
+    fun reloadSnapshot() {
         val listView = decoratedListViewRef.get() ?: return
         loadCachedSnapshot(listView, force = true)
     }
@@ -364,13 +369,9 @@ class FixupCalendarActivity : CalendarActivity {
         }
 
         cachedSnapshotLoaded = true
-        val accountId = UserConfig.selectedAccount
 
         Plugin.getInstance().backgroundScope.launch {
-            val snapshot =
-                Plugin.getInstance()
-                    .streaksController
-                    .getCalendarInteractionSnapshot(accountId, peerUserId)
+            val snapshot = adapter.getSnapshot()
 
             val newActiveByMonthKey = SparseArray<SparseBooleanArray>()
             val newRestoresByMonthKey = SparseArray<SparseBooleanArray>()
@@ -425,6 +426,34 @@ class FixupCalendarActivity : CalendarActivity {
                 listView.invalidateItemDecorations()
             }
         }
+    }
+
+    fun findDayView(day: LocalDate): Pair<View, PointF>? {
+        val listView = decoratedListViewRef.get() ?: return null
+
+        for (index in 0 until listView.childCount) {
+            val monthView = listView.getChildAt(index)
+
+            if (!`CalendarActivity$MonthView`.isInstance(monthView))
+                continue
+
+            val year = `CalendarActivity$MonthView$currentYear`.invokeExact(monthView) as Int
+            val monthIndex = `CalendarActivity$MonthView$currentMonthInYear`.invokeExact(monthView) as Int
+
+            if (year != day.year || monthIndex != day.month.number - 1)
+                continue
+
+            val cell = `CalendarActivity$MonthView$startDayOfWeek`.invokeExact(monthView) as Int + day.day - 1
+            val cellWidth = monthView.measuredWidth / 7f
+            val rowHeight = dp(52).toFloat()
+
+            return monthView to PointF(
+                cell % 7 * cellWidth + cellWidth / 2f,
+                dp(44) + cell / 7 * rowHeight + rowHeight / 2f,
+            )
+        }
+
+        return null
     }
 
     private fun findDayAtCoord(

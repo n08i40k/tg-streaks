@@ -15,9 +15,11 @@ class ForegroundHookBundle : HookBundle() {
     ) {
         after(LaunchActivity::class.java.getDeclaredMethod("onPause")) {
             isBackground = true
+            Plugin.getInstance().guideUiManager.pause()
         }
 
         after(LaunchActivity::class.java.getDeclaredMethod("onResume")) {
+            Plugin.getInstance().guideUiManager.refresh()
             if (!isBackground)
                 return@after
 

@@ -16,6 +16,7 @@ stubs/
 *.iml
 .gradle
 /build
+/telegram-guides/build/
 /classes.dex
 /.idea/
 /.kotlin/

@@ -11,6 +11,7 @@ import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.presentFragment
+import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.UUID
 
 class SettingsMenuActions(private val plugin: Plugin) {
@@ -21,6 +22,10 @@ class SettingsMenuActions(private val plugin: Plugin) {
             }
         }
 
+
+        add(SettingsActionButton.OPEN_GUIDES) {
+            runOnMainThread { guideUiManager.show() }
+        }
 
         add(SettingsActionButton.REBUILD_ALL) {
             val accountId = UserConfig.selectedAccount

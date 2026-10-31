@@ -87,6 +87,8 @@ val compileUnsafeStub = tasks.register<JavaCompile>("compileUnsafeStub") {
 }
 
 dependencies {
+    implementation(project(":telegram-guides"))
+
     compileOnly(files(compileUnsafeStub))
     implementation(project(":badges-sdk:api"))
     implementation(project(":badges-sdk"))

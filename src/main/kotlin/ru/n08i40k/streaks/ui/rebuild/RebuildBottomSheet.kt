@@ -74,10 +74,19 @@ class RebuildBottomSheet(
             }
     }
 
-    private val unsubscribeFromEject = EjectNotifier.subscribe(this)
+    private var unsubscribeFromEject: (() -> Unit)? = null
+
+    override fun onStart() {
+        super.onStart()
+
+        if (unsubscribeFromEject == null)
+            unsubscribeFromEject = EjectNotifier.subscribe(this)
+    }
 
     override fun onStop() {
-        unsubscribeFromEject()
+        unsubscribeFromEject?.invoke()
+        unsubscribeFromEject = null
+
         super.onStop()
     }
 

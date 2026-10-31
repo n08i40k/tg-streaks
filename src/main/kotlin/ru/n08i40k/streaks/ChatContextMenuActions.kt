@@ -5,6 +5,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
@@ -360,13 +361,24 @@ class ChatContextMenuActions(private val plugin: Plugin) {
                     return@add
                 }
 
+            val accountId = UserConfig.selectedAccount
+            val peerUserId = chatActivity.dialogId
+            val adapter = object : FixupCalendarActivity.Adapter {
+                override suspend fun getSnapshot() =
+                    streaksController.getCalendarInteractionSnapshot(accountId, peerUserId)
+
+                override suspend fun analyzeTap(day: LocalDate) =
+                    streaksController.analyzeCalendarTap(accountId, peerUserId, day)
+
+                override suspend fun addManualRestore(day: LocalDate) =
+                    streaksController.addManualCalendarRestore(accountId, peerUserId, day)
+
+                override fun rebuild(onComplete: () -> Unit) =
+                    enqueueRebuildForPeer(accountId, peerUserId, onComplete)
+            }
+
             runOnMainThread {
-                chatActivity.presentFragment(
-                    FixupCalendarActivity.create(
-                        chatActivity.dialogId,
-                        chatActivity
-                    )
-                )
+                chatActivity.presentFragment(FixupCalendarActivity.create(peerUserId, adapter, chatActivity))
             }
         }
 

@@ -9,13 +9,14 @@ import org.telegram.messenger.UserConfig
 import org.telegram.ui.LaunchActivity
 import ru.n08i40k.badges.api.ViewFactory
 import ru.n08i40k.streaks.Plugin
+import ru.n08i40k.streaks.guide.badge.StreakGuideBadges
 import ru.n08i40k.streaks.override.StreakInfoBottomSheet
 import ru.n08i40k.streaks.util.Logger
 
 class StreakEmojiViewFactory : ViewFactory {
     @SuppressLint("ViewConstructor")
-    private class BadgeView(parent: View, heightPx: Int) : View(parent.context) {
-        private val streakEmoji = StreakEmoji(parent, heightPx)
+    private class BadgeView(private val parentView: View, heightPx: Int) : View(parentView.context) {
+        private val streakEmoji = StreakEmoji(parentView, heightPx)
 
         init {
             // view вне иерархии, onAttachedToWindow не придёт никогда
@@ -98,7 +99,7 @@ class StreakEmojiViewFactory : ViewFactory {
         }
 
         fun bind(userId: Long): Boolean {
-            val visible = streakEmoji.setPeerUserId(userId)
+            val visible = streakEmoji.setPeerUserId(userId, clearStreak = StreakGuideBadges.contains(parentView))
 
             // ширина зависит от длины стрика, а SDK меряет view после bind
             requestLayout()
