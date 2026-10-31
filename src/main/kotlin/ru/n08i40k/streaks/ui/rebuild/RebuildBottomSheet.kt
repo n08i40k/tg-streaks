@@ -35,6 +35,7 @@ import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakPet
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.name
+import ru.n08i40k.streaks.extension.withoutBidiControls
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.AnimatedEmojiView
 import ru.n08i40k.streaks.util.LinearProgressView
@@ -244,7 +245,7 @@ class RebuildBottomSheet(
 
             fun setUser(index: Int, name: String) {
                 captionTextView.text = buildString {
-                    append(name)
+                    append(name.withoutBidiControls())
 
                     if (userRebuildStates.size > 1) {
                         append(" · ")
@@ -319,7 +320,7 @@ class RebuildBottomSheet(
             fun setUser(user: TLRPC.User) {
                 avatarDrawable.setInfo(UserConfig.selectedAccount, user)
                 avatarImageView.imageReceiver.setForUserOrChat(user, avatarDrawable)
-                nameTextView.text = user.name
+                nameTextView.text = user.name.withoutBidiControls()
             }
 
             fun setDaysIndexed(count: Int) {
@@ -507,7 +508,7 @@ class RebuildBottomSheet(
 
             addView(TextView(context).apply {
                 text = if (userRebuildStates.size == 1) {
-                    userRebuildStates.elementAt(0).user.name
+                    userRebuildStates.elementAt(0).user.name.withoutBidiControls()
                 } else {
                     when (type) {
                         TYPE_STREAK -> Strings.sheet_rebuild_result_group_streak(succeededCount)
