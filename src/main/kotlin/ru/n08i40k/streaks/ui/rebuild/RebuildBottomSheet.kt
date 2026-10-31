@@ -641,13 +641,14 @@ class RebuildBottomSheet(
                 setPadding(0, dp(12), 0, dp(12))
 
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
+                setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText))
                 typeface = Typeface.DEFAULT_BOLD
 
-                background = GradientDrawable().apply {
-                    setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueButton))
-                    cornerRadius = dp(12).toFloat()
-                }
+                background = Theme.createSimpleSelectorRoundRectDrawable(
+                    dp(12),
+                    Theme.getColor(Theme.key_featuredStickers_addButton),
+                    Theme.getColor(Theme.key_featuredStickers_addButtonPressed),
+                )
             }, LayoutHelper.createFrame(MATCH_PARENT, WRAP_CONTENT.toFloat(), 0, 0f, 4f, 0f, 0f))
         }
 
