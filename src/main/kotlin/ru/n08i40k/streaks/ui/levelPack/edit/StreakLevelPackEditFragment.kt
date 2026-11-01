@@ -1,4 +1,4 @@
-package ru.n08i40k.streaks.ui.emojiPack.edit
+package ru.n08i40k.streaks.ui.levelPack.edit
 
 import android.content.Context
 import android.text.InputFilter
@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -20,6 +21,7 @@ import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.ActionBar.ActionBarMenuItem
+import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.ActionBar.BaseFragment
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.TextInfoPrivacyCell
@@ -28,8 +30,7 @@ import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.StreakEmojiInfo
-import ru.n08i40k.streaks.data.StreakEmojiPack
-import ru.n08i40k.streaks.data.StreakLevel
+import ru.n08i40k.streaks.data.StreakLevelPack
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.onEachWithOnMainThread
 import ru.n08i40k.streaks.extension.setSectionsCompat
@@ -39,17 +40,17 @@ import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.SortedMap
 
-class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragment(),
+class StreakLevelPackEditFragment(private val viewModel: ViewModel) : BaseFragment(),
     EjectNotifier.Delegate {
 
     data class ViewState(
-        val emojiPack: StreakEmojiPack,
+        val levelPack: StreakLevelPack,
     )
 
     interface ViewModel {
         fun state(): Flow<ViewState>
 
-        fun update(emojiPack: StreakEmojiPack)
+        fun update(levelPack: StreakLevelPack)
 
         fun destroy()
     }
@@ -57,6 +58,7 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
     companion object {
         private const val TYPE_DESCRIPTION = 0
         private const val TYPE_EMOJI = 1
+        private const val TYPE_ADD = 2
 
         private const val DONE_BUTTON_ID = 1
 
@@ -65,16 +67,16 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
 
     private data class Item(
         val key: String,
-        val oldValue: StreakEmojiInfo,
+        val oldValue: StreakEmojiInfo?,
         val newValue: StreakEmojiInfo
     ) {
         companion object {
             fun fromSortedMap(
-                parentEmojiPack: StreakEmojiPack,
+                parentLevelPack: StreakLevelPack,
                 map: SortedMap<String, StreakEmojiInfo>
             ): List<Item> =
                 map.entries
-                    .map { Item(it.key, parentEmojiPack.emojis[it.key]!!, it.value) }
+                    .map { Item(it.key, parentLevelPack.emojis[it.key], it.value) }
                     .toList()
         }
     }
@@ -105,20 +107,29 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
 
         private var items: List<Item> = listOf()
 
-        override fun getItemCount() = items.size + 1
+        override fun getItemCount() = items.size + 2
 
         override fun isEnabled(holder: RecyclerView.ViewHolder) = when (holder.itemViewType) {
-            TYPE_EMOJI -> true
+            TYPE_EMOJI, TYPE_ADD -> true
             else -> false
         }
 
         override fun getItemViewType(position: Int) = when (position) {
             in items.indices -> TYPE_EMOJI
+            items.size -> TYPE_ADD
             else -> TYPE_DESCRIPTION
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val view: View = when (viewType) {
+                TYPE_ADD -> TextView(context).apply {
+                    text = Strings.menu_streak_level_pack_edit_level_add()
+                    setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText))
+                    setTextSize(16f)
+                    setPadding(dp(24), dp(16), dp(24), dp(16))
+                    setOnClickListener { editThreshold(null) }
+                }
+
                 TYPE_DESCRIPTION -> TextInfoPrivacyCell(context)
 
                 TYPE_EMOJI -> EditableStreakEmojiCell(context)
@@ -135,15 +146,27 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
                     .apply {
                         val emoji = items[position]
 
-                        setName(StreakLevel.nameById(emoji.key))
+                        setName(
+                            levelPack!!.findById(emoji.key)?.name
+                                ?: Strings.streak_level_days_name(
+                                    StreakLevelPack.extractLength(
+                                        emoji.key
+                                    )
+                                )
+                        )
+                        setOnNameClickListener(
+                            if (emoji.key in listOf("cold", "3d")) null
+                            else ({ editThreshold(emoji.key) })
+                        )
                         setEmojiInfo(emoji.newValue)
-                        setChanged(emoji.oldValue != emoji.newValue)
-                        setOnResetListener { updateEmoji(emoji.key, emoji.oldValue) }
+                        setChanged(emoji.oldValue != null && emoji.oldValue != emoji.newValue)
+                        setOnResetListener { emoji.oldValue?.let { updateEmoji(emoji.key, it) } }
                         setOnUpdateListener { updateEmoji(emoji.key, it) }
                     }
 
+                items.size -> Unit
                 else -> (holder.itemView as TextInfoPrivacyCell)
-                    .text = Strings.menu_streak_emoji_pack_edit_desc()
+                    .text = Strings.menu_streak_level_pack_edit_desc()
             }
         }
 
@@ -160,7 +183,7 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
     // eject
     private val unsubscribe = EjectNotifier.subscribe(this)
 
-    private var emojiPack: StreakEmojiPack? = null
+    private var levelPack: StreakLevelPack? = null
     private var items: List<Item>? = null
 
     // views
@@ -168,14 +191,15 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
     private lateinit var doneItem: ActionBarMenuItem
     private lateinit var nameField: EditTextBoldCursor
 
-    private fun setEmojiPack(emojiPack: StreakEmojiPack) {
-        val parentEmojiPack = StreakEmojiPack.builtin.find { it.id == emojiPack.basedOn }!!
+    private fun setLevelPack(levelPack: StreakLevelPack) {
+        if (this.levelPack != null) return
+        val parentLevelPack = StreakLevelPack.builtin.find { it.id == levelPack.basedOn }!!
 
-        this.emojiPack = emojiPack
-        this.items = Item.fromSortedMap(parentEmojiPack, emojiPack.sortedEmojis)
+        this.levelPack = levelPack
+        this.items = Item.fromSortedMap(parentLevelPack, levelPack.sortedEmojis)
 
-        if (nameField.text.toString() != emojiPack.name) {
-            nameField.setText(emojiPack.name)
+        if (nameField.text.toString() != levelPack.name) {
+            nameField.setText(levelPack.name)
             nameField.setSelection(nameField.text.length)
         }
 
@@ -198,7 +222,7 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
 
                             if (name.isEmpty()) {
                                 AndroidUtilities.shakeViewSpring(nameField)
-                                BulletinHelper.show(Strings.status_info_streak_emoji_pack_name_empty())
+                                BulletinHelper.show(Strings.status_info_streak_level_pack_name_empty())
                                 return
                             }
 
@@ -207,7 +231,7 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
                             AndroidUtilities.hideKeyboard(nameField)
 
                             viewModel.update(
-                                emojiPack!!.copy(name = name, emojis = newEmojis)
+                                levelPack!!.copy(name = name, emojis = newEmojis, version = 2)
                             )
                             finishFragment()
                         }
@@ -237,7 +261,7 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
             typeface = AndroidUtilities.bold()
             setTextColor(Theme.getColor(Theme.key_actionBarDefaultTitle, resourceProvider))
             setHintColor(Theme.getColor(Theme.key_actionBarDefaultSubtitle, resourceProvider))
-            setHintText(Strings.menu_streak_emoji_pack_edit_name_hint())
+            setHintText(Strings.menu_streak_level_pack_edit_name_hint())
             setCursorColor(Theme.getColor(Theme.key_actionBarDefaultTitle, resourceProvider))
             setCursorSize(dp(20))
             setCursorWidth(1.5f)
@@ -290,10 +314,79 @@ class StreakEmojiPackEditFragment(private val viewModel: ViewModel) : BaseFragme
         }
 
         viewModel.state()
-            .onEachWithOnMainThread { setEmojiPack(emojiPack) }
+            .onEachWithOnMainThread { setLevelPack(levelPack) }
             .launchIn(backgroundScope)
 
         return fragmentView
+    }
+
+    private fun editThreshold(key: String?) {
+        val context = context
+            ?: return
+
+        val input = EditTextBoldCursor(context).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            isSingleLine = true
+            hint = Strings.menu_streak_level_pack_edit_level_days_hint()
+            setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
+            setPadding(dp(24), dp(12), dp(24), dp(12))
+            key?.let { setText(StreakLevelPack.extractLength(it).toString()) }
+        }
+
+        val builder = AlertDialog.Builder(context, resourceProvider)
+            .setTitle(if (key == null) Strings.menu_streak_level_pack_edit_level_add() else Strings.menu_streak_level_pack_edit_level_edit())
+            .setView(input)
+            .setPositiveButton(Strings.menu_streak_level_pack_edit_level_apply()) { _, _ -> }
+            .setNegativeButton(Strings.menu_streak_level_pack_edit_level_cancel()) { _, _ -> }
+
+        if (key != null) {
+            builder.setNeutralButton(Strings.menu_streak_level_pack_edit_level_delete()) { _, _ ->
+                items = items!!.filterNot { it.key == key }
+                postItemsUpdate()
+            }
+        }
+
+        builder.create()
+            .apply {
+                this.show()
+
+                getButton(AlertDialog.BUTTON_POSITIVE)
+                    .setOnClickListener {
+                        val days = input.text
+                            .toString()
+                            .toIntOrNull()
+
+                        val newKey = "${days}d"
+
+                        if (days == null || days < 4 || items!!.any { it.key == newKey && it.key != key }) {
+                            input.error = Strings.menu_streak_level_pack_edit_level_invalid_days()
+                            return@setOnClickListener
+                        }
+
+                        val old = items!!.find { it.key == key }
+
+                        val value = old?.newValue
+                            ?: items!!
+                                .last { StreakLevelPack.extractLength(it.key) <= days }
+                                .newValue
+
+                        val parent = StreakLevelPack.builtin
+                            .first { it.id == levelPack!!.basedOn }
+
+                        items =
+                            (items!!.filterNot { it.key == key }
+                                    + Item(newKey, parent.emojis[newKey], value))
+                                .sortedBy { StreakLevelPack.extractLength(it.key) }
+
+                        postItemsUpdate()
+                        AndroidUtilities.hideKeyboard(input)
+
+                        dismiss()
+                    }
+            }
+
+        input.requestFocus()
+        AndroidUtilities.showKeyboard(input)
     }
 
     private fun updateEmoji(key: String, emojiInfo: StreakEmojiInfo) {

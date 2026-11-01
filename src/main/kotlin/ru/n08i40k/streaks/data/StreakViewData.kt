@@ -2,7 +2,6 @@ package ru.n08i40k.streaks.data
 
 import android.graphics.Color
 import org.telegram.ui.ActionBar.Theme
-import ru.n08i40k.streaks.Plugin
 
 data class StreakViewData(
     val length: Int,
@@ -11,12 +10,7 @@ data class StreakViewData(
     val isJubilee: Boolean
 ) {
     companion object {
-        fun from(streak: Streak) = with(
-            Plugin.getInstance()
-                .streakEmojiPacksController
-                .getCurrent()
-                .getEmoji(streak.viewLevel)
-        ) {
+        fun from(streak: Streak) = with(streak.viewLevel) {
             StreakViewData(
                 streak.length,
                 documentId,

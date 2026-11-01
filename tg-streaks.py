@@ -142,9 +142,9 @@ I18N_SETTINGS: dict[str, dict[str, str]] = {
         "en": "Automatic streak creation",
         "ru": "Автосоздание стриков",
     },
-    "settings.streak_tools.emoji_packs.title": {
-        "en": "Emoji packs",
-        "ru": "Эмодзи-паки",
+    "settings.streak_tools.level_packs.title": {
+        "en": "Streak level packs",
+        "ru": "Наборы уровней стрика",
     },
     "settings.streak_tools.rebuild_all_chats.description": {
         "en": "Only user DMs are checked. Bots and groups are skipped.",
@@ -797,7 +797,7 @@ class SettingsActions:
     EXPORT_BACKUP_NOW = "exportBackupNow"
     DELETE_DB_AND_RELOAD = "deleteDbAndReload"
     OPEN_GUIDES = "openGuides"
-    OPEN_EMOJI_PACKS = "openEmojiPacks"
+    OPEN_LEVEL_PACKS = "openEmojiPacks"
 
     def __init__(self, plugin: "TgStreaksPlugin"):
         self.plugin = plugin
@@ -828,9 +828,9 @@ class SettingsActions:
                 link_alias="auto-create",
             ),
             Text(
-                text=self.plugin._t("settings.streak_tools.emoji_packs.title"),
+                text=self.plugin._t("settings.streak_tools.level_packs.title"),
                 icon="msg_emoji_smiles",
-                on_click=lambda _: self._on_click(self.OPEN_EMOJI_PACKS),
+                on_click=lambda _: self._on_click(self.OPEN_LEVEL_PACKS),
                 link_alias="emoji-packs",
             ),
             Text(

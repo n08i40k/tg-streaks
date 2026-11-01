@@ -6,26 +6,26 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
-import ru.n08i40k.streaks.data.StreakEmojiPack
+import ru.n08i40k.streaks.data.StreakLevelPack
 import java.util.UUID
 
 @Dao
-interface StreakEmojiPackDao {
+interface StreakLevelPackDao {
     @Query("SELECT * FROM streak_emoji_packs")
-    suspend fun getAll(): List<StreakEmojiPack>
+    suspend fun getAll(): List<StreakLevelPack>
 
     @Query("SELECT * FROM streak_emoji_packs WHERE id = :id LIMIT 1")
-    suspend fun findById(id: UUID): StreakEmojiPack?
+    suspend fun findById(id: UUID): StreakLevelPack?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrReplace(pack: StreakEmojiPack)
+    suspend fun insertOrReplace(pack: StreakLevelPack)
 
     @Update
-    suspend fun update(pack: StreakEmojiPack)
+    suspend fun update(pack: StreakLevelPack)
 
     @Update
-    suspend fun updateAll(packs: Collection<StreakEmojiPack>)
+    suspend fun updateAll(packs: Collection<StreakLevelPack>)
 
     @Delete
-    suspend fun delete(pack: StreakEmojiPack)
+    suspend fun delete(pack: StreakLevelPack)
 }

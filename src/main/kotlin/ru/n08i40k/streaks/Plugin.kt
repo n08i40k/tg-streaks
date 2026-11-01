@@ -44,12 +44,11 @@ import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.controller.PluginRelationController
 import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
 import ru.n08i40k.streaks.controller.ServiceMessagesController
-import ru.n08i40k.streaks.controller.StreakEmojiPacksController
+import ru.n08i40k.streaks.controller.StreakLevelPacksController
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.controller.StreakPopupController
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.controller.TimeZonesController
-import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.DatabaseBackupManager
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.emoji.StreakEmojiViewFactory
@@ -301,7 +300,7 @@ class Plugin {
 
     // controllers
     val serviceMessagesController = ServiceMessagesController()
-    val streakEmojiPacksController: StreakEmojiPacksController
+    val streakLevelPacksController: StreakLevelPacksController
     val streaksController: StreaksController
     val streakPetsController: StreakPetsController
     val timeZonesController: TimeZonesController
@@ -346,8 +345,8 @@ class Plugin {
             this.timeZonesController =
                 TimeZonesController(this.db.peerTimeZoneDao())
 
-            this.streakEmojiPacksController =
-                StreakEmojiPacksController(this.db.streakEmojiPackDao())
+            this.streakLevelPacksController =
+                StreakLevelPacksController(this.db.streakLevelPackDao())
 
             this.streaksController =
                 StreaksController(
@@ -402,7 +401,7 @@ class Plugin {
     private fun subscribeToEvents() {
         // streak ui patches/transitions
         EventBus.stream
-            .filterIsInstance<PluginEvent.ActiveStreakEmojiPackChanged>()
+            .filterIsInstance<PluginEvent.ActiveStreakLevelPackChanged>()
             .onEachOnMainThread { refreshStreakViews() }
             .launchIn(backgroundScope)
 
@@ -545,13 +544,19 @@ class Plugin {
                         if (!allowSend)
                             return@onEachWith
 
-                        val targetLevelLength = targetRecord.level.length
+                        val targetLevelLength = targetRecord
+                            .level
+                            .length
 
-                        if (targetLevelLength == targetRecord.length
-                            && targetLevelLength == StreakLevel.findFirstVisible().length
-                        ) {
+                        val firstVisibleLevelLength = streakLevelPacksController
+                            .getCurrent()
+                            .findFirstVisible()
+                            .length
+
+                        if (targetLevelLength == targetRecord.length && targetLevelLength == firstVisibleLevelLength) {
                             serviceMessagesController
                                 .sendCreation(accountId, peerUserId)
+
                             return@onEachWith
                         }
 
@@ -732,7 +737,7 @@ class Plugin {
 
     private fun onFinalizeInject() {
         runBlocking {
-            streakEmojiPacksController.init()
+            streakLevelPacksController.init()
             streaksController.loadCaches()
         }
 

@@ -9,12 +9,12 @@ import org.telegram.messenger.DialogObject
 import org.telegram.messenger.MessagesController
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
+import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.chat_history_fetcher.CachedChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.ChatHistoryFetcher
 import ru.n08i40k.streaks.chat_history_fetcher.RemoteChatHistoryFetcher
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.data.Streak
-import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakRestore
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.database.dao.StreakDao
@@ -1171,7 +1171,9 @@ class StreaksController(
 
         val streak = dao.findByRelation(ownerUserId, peerUserId) ?: return null
 
-        val nextLevelLength = StreakLevel
+        val nextLevelLength = Plugin.getInstance()
+            .streakLevelPacksController
+            .getCurrent()
             .findNext(streak.level)
             ?.length
             ?: return streak.level.length

@@ -2,9 +2,9 @@ package ru.n08i40k.streaks.controller
 
 import android.net.Uri
 import ru.n08i40k.streaks.constants.ServiceMessage
-import ru.n08i40k.streaks.data.StreakEmojiPack
+import ru.n08i40k.streaks.data.StreakLevelPack
 import ru.n08i40k.streaks.util.MessageSender
-import ru.n08i40k.streaks.util.StreakEmojiPackCodec
+import ru.n08i40k.streaks.util.StreakLevelPackCodec
 
 class ServiceMessagesController {
     fun sendCreation(accountId: Int, peerUserId: Long) {
@@ -39,8 +39,8 @@ class ServiceMessagesController {
         MessageSender.sendText(accountId, peerUserId, ServiceMessage.RESTORE_TEXT)
     }
 
-    fun sendEmojiPackImport(accountId: Int, peerUserId: Long, pack: StreakEmojiPack) {
-        MessageSender.sendText(accountId, peerUserId, StreakEmojiPackCodec.encode(pack))
+    fun sendLevelPackImport(accountId: Int, peerUserId: Long, pack: StreakLevelPack) {
+        MessageSender.sendText(accountId, peerUserId, StreakLevelPackCodec.encode(pack))
     }
 
     fun sendSyncOffer(accountId: Int, peerUserId: Long, db: Uri) {

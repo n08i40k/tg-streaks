@@ -1,4 +1,4 @@
-package ru.n08i40k.streaks.ui.emojiPack.share
+package ru.n08i40k.streaks.ui.levelPack.share
 
 import android.content.Context
 import android.util.TypedValue
@@ -9,15 +9,15 @@ import org.telegram.messenger.AndroidUtilities
 import org.telegram.ui.ActionBar.BottomSheet
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.LayoutHelper
-import ru.n08i40k.streaks.data.StreakEmojiPack
+import ru.n08i40k.streaks.data.StreakLevelPack
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.i18n.Strings
-import ru.n08i40k.streaks.ui.emojiPack.select.StreakEmojiPackCell
+import ru.n08i40k.streaks.ui.levelPack.select.StreakLevelPackCell
 import ru.n08i40k.streaks.util.dp
 
-class StreakEmojiPackImportBottomSheet(
+class StreakLevelPackImportBottomSheet(
     context: Context,
-    pack: StreakEmojiPack,
+    pack: StreakLevelPack,
     replace: Boolean,
     private val onImport: () -> Unit
 ) : BottomSheet(context, false), EjectNotifier.Delegate {
@@ -44,12 +44,12 @@ class StreakEmojiPackImportBottomSheet(
                 gravity = Gravity.CENTER
 
                 setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText))
-                text = Strings.sheet_emoji_pack_import_title()
+                text = Strings.sheet_level_pack_import_title()
             }, LayoutHelper.createLinear(-1, -2, 16f, 0f, 16f, 0f))
 
             addView(
-                StreakEmojiPackCell(context)
-                    .apply { setEmojiPack(pack, false) },
+                StreakLevelPackCell(context)
+                    .apply { setLevelPack(pack, false) },
                 LayoutHelper.createLinear(-1, -2, 4f, 12f, 4f, 0f)
             )
 
@@ -59,9 +59,9 @@ class StreakEmojiPackImportBottomSheet(
 
                 setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText))
                 text = if (replace)
-                    Strings.sheet_emoji_pack_import_desc_replace()
+                    Strings.sheet_level_pack_import_desc_replace()
                 else
-                    Strings.sheet_emoji_pack_import_desc_add()
+                    Strings.sheet_level_pack_import_desc_add()
             }, LayoutHelper.createLinear(-1, -2, 24f, 4f, 24f, 0f))
 
             addView(TextView(context).apply {
@@ -76,9 +76,9 @@ class StreakEmojiPackImportBottomSheet(
                 )
 
                 text = if (replace)
-                    Strings.sheet_emoji_pack_import_replace()
+                    Strings.sheet_level_pack_import_replace()
                 else
-                    Strings.sheet_emoji_pack_import_add()
+                    Strings.sheet_level_pack_import_add()
 
                 setOnClickListener {
                     onImport()

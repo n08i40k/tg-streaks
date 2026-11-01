@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.ui
 
+import android.annotation.SuppressLint
 import android.app.Dialog
 import android.graphics.Color
 import android.graphics.Typeface
@@ -10,10 +11,10 @@ import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextUtils
-import android.view.MotionEvent
-import android.view.ViewConfiguration
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.Window
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -39,7 +40,6 @@ import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Url
 import ru.n08i40k.streaks.controller.StreakPetsController
 import ru.n08i40k.streaks.data.StreakPetLevel.Companion.levels
-import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakPetTaskPayload
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.resource.ResourcesProvider
@@ -302,46 +302,58 @@ class StreakPetDialog(
         badges.addView(text(Strings.sheet_pet_badges_title(), 16), row(-1, -2, bottom = 12))
 
         val badgeRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-        badges.addView(badgeRow, row(-1, -2))
+        badges.addView(android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = true
+            addView(badgeRow)
+        }, row(-1, -2))
 
-        val pack = Plugin.getInstance().streakEmojiPacksController.getCurrent()
-        StreakLevel.levels.filter { it.length > 0 }.forEachIndexed { index, level ->
-            if (index > 0) badgeRow.addView(
-                text(
-                    "–",
-                    18,
-                    Theme.key_windowBackgroundWhiteBlueText
-                ).apply {
+        val streakLevelPack = Plugin.getInstance()
+            .streakLevelPacksController
+            .getCurrent()
+
+        streakLevelPack.levels
+            .filter { it.length > 0 }
+            .forEachIndexed { index, level ->
+                if (index > 0) {
+                    badgeRow.addView(
+                        text(
+                            "–",
+                            18,
+                            Theme.key_windowBackgroundWhiteBlueText
+                        ).apply {
+                            gravity = Gravity.CENTER
+                        }, LinearLayout.LayoutParams(dp(16), -2)
+                    )
+                }
+
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
-                }, LinearLayout.LayoutParams(0, -2, .5f)
-            )
 
-            val column = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
+                    val image = BackupImageView(context)
+                    image.imageReceiver.currentAccount = accountId
+
+                    AnimatedEmojiView.apply(
+                        image,
+                        level.documentId,
+                        28,
+                        level.accentColor?.toArgb(),
+                        accountId = accountId
+                    )
+
+                    addView(image, row(28, 28))
+
+                    addView(
+                        text(
+                            Strings.sheet_pet_badge_days(level.length), 11,
+                            Theme.key_windowBackgroundWhiteGrayText
+                        ).apply { gravity = Gravity.CENTER }, row(-1, -2, top = 5)
+                    )
+
+                    badgeRow.addView(this, LinearLayout.LayoutParams(dp(52), -2))
+                    badgeViews += this to level.length
+                }
             }
-            badgeRow.addView(column, LinearLayout.LayoutParams(0, -2, 1f))
-
-            val emoji = pack.getEmoji(level)
-            val image = BackupImageView(context)
-            image.imageReceiver.currentAccount = accountId
-            AnimatedEmojiView.apply(
-                image,
-                emoji.documentId,
-                28,
-                emoji.accentColor?.toArgb(),
-                accountId = accountId
-            )
-            column.addView(image, row(28, 28))
-            column.addView(
-                text(
-                    Strings.sheet_pet_badge_days(level.length), 11,
-                    Theme.key_windowBackgroundWhiteGrayText
-                ).apply { gravity = Gravity.CENTER }, row(-1, -2, top = 5)
-            )
-
-            badgeViews += column to level.length
-        }
     }
 
     private fun avatar() = BackupImageView(context).apply {
@@ -355,6 +367,7 @@ class StreakPetDialog(
         view.imageReceiver.setForUserOrChat(user, placeholder)
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private inner class PetSection(content: LinearLayout) {
         private val petView: StreakPetAnimationView
         private val previousButton: ImageView
@@ -369,6 +382,7 @@ class StreakPetDialog(
             var startY = 0f
 
             val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
             stage.setOnTouchListener { view, event ->
                 val dx = event.x - startX
                 val dy = event.y - startY
@@ -378,9 +392,11 @@ class StreakPetDialog(
                         startY = event.y
                         view.parent.requestDisallowInterceptTouchEvent(true)
                     }
+
                     MotionEvent.ACTION_MOVE -> if (abs(dy) > touchSlop && abs(dy) >= abs(dx)) {
                         view.parent.requestDisallowInterceptTouchEvent(false)
                     }
+
                     MotionEvent.ACTION_UP -> {
                         view.parent.requestDisallowInterceptTouchEvent(false)
                         if (abs(dx) >= dp(40) && abs(dx) > abs(dy)) {
@@ -389,7 +405,10 @@ class StreakPetDialog(
                             view.performClick()
                         }
                     }
-                    MotionEvent.ACTION_CANCEL -> view.parent.requestDisallowInterceptTouchEvent(false)
+
+                    MotionEvent.ACTION_CANCEL -> view.parent.requestDisallowInterceptTouchEvent(
+                        false
+                    )
                 }
                 true
             }
@@ -684,7 +703,7 @@ class StreakPetDialog(
         }
 
         dialog.show()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        dialog.getButton(BUTTON_POSITIVE).setOnClickListener {
             val value = input.text?.toString()?.trim()?.take(20).orEmpty()
             if (value.isNotEmpty()) {
                 onRenameRequested(value)

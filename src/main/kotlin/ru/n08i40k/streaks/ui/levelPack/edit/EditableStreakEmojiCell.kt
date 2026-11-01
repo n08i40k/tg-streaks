@@ -1,4 +1,4 @@
-package ru.n08i40k.streaks.ui.emojiPack.edit
+package ru.n08i40k.streaks.ui.levelPack.edit
 
 import android.content.Context
 import android.graphics.Typeface
@@ -54,6 +54,11 @@ class EditableStreakEmojiCell(
 
     private val colorSwatchView = ColorSwatchView(context)
         .apply { setOnClickListener { openColorPicker() } }
+
+    fun setOnNameClickListener(listener: (() -> Unit)?) {
+        nameTextView.setOnClickListener(if (listener == null) null else OnClickListener { listener() })
+        nameTextView.isClickable = listener != null
+    }
 
     fun setName(name: String) {
         nameTextView.text = name

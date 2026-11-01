@@ -79,7 +79,7 @@ class AccentColorBottomSheet(
                 orientation = LinearLayout.HORIZONTAL
 
                 addView(
-                    button(Strings.menu_streak_emoji_pack_edit_color_none(), false) {
+                    button(Strings.menu_streak_level_pack_edit_color_none(), false) {
                         onSelected(null)
                         dismiss()
                     },
@@ -89,7 +89,7 @@ class AccentColorBottomSheet(
                 addView(View(context), LayoutHelper.createLinear(8, 1))
 
                 addView(
-                    button(Strings.menu_streak_emoji_pack_edit_color_apply(), true) {
+                    button(Strings.menu_streak_level_pack_edit_color_apply(), true) {
                         onSelected(Color.valueOf(colorPicker.color))
                         dismiss()
                     },

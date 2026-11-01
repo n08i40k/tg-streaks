@@ -1,4 +1,4 @@
-package ru.n08i40k.streaks.ui.emojiPack.select
+package ru.n08i40k.streaks.ui.levelPack.select
 
 import android.content.Context
 import android.view.View
@@ -21,34 +21,34 @@ import org.telegram.ui.Cells.TextInfoPrivacyCell
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.Components.RecyclerListView
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.data.StreakEmojiPack
+import ru.n08i40k.streaks.data.StreakLevelPack
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.extension.onEachWith
 import ru.n08i40k.streaks.extension.onEachWithOnMainThread
 import ru.n08i40k.streaks.i18n.Strings
-import ru.n08i40k.streaks.ui.emojiPack.edit.StreakEmojiPackEditFragment
+import ru.n08i40k.streaks.ui.levelPack.edit.StreakLevelPackEditFragment
 import ru.n08i40k.streaks.util.createDialogPicker
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.util.UUID
 
-class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFragment(),
+class StreakLevelPackSelectFragment(private val viewModel: ViewModel) : BaseFragment(),
     EjectNotifier.Delegate {
 
     data class ViewState(
-        val emojiPacks: List<StreakEmojiPack>,
-        val activeEmojiPack: StreakEmojiPack,
+        val levelPacks: List<StreakLevelPack>,
+        val activeLevelPack: StreakLevelPack,
     )
 
     interface ViewModel {
         fun state(): Flow<ViewState>
 
-        fun setActiveEmojiPack(id: UUID)
+        fun setActiveLevelPack(id: UUID)
 
         fun create(basedOn: UUID)
 
         fun share(id: UUID, peerId: Long)
 
-        fun update(emojiPack: StreakEmojiPack)
+        fun update(levelPack: StreakLevelPack)
 
         fun delete(id: UUID)
     }
@@ -64,8 +64,8 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
         RecyclerListView.SelectionAdapter() {
 
         private inner class ItemsCallback(
-            private val old: List<StreakEmojiPack>,
-            private val new: List<StreakEmojiPack>,
+            private val old: List<StreakLevelPack>,
+            private val new: List<StreakLevelPack>,
             private val oldCheckedId: UUID?,
             private val newCheckedId: UUID?
         ) : DiffUtil.Callback() {
@@ -94,7 +94,7 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
 
         }
 
-        private var items: List<StreakEmojiPack> = listOf()
+        private var items: List<StreakLevelPack> = listOf()
         private var checkedId: UUID? = null
 
         override fun getItemCount() = items.size + 1
@@ -113,19 +113,20 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
             val view: View = when (viewType) {
                 TYPE_DESCRIPTION -> TextInfoPrivacyCell(context)
 
-                TYPE_PACK -> StreakEmojiPackCell(context, true)
+                TYPE_PACK -> StreakLevelPackCell(context, true)
                     .apply {
-                        setRecycledViewPool(this@StreakEmojiPackSelectFragment.listView.recycledViewPool)
+                        setRecycledViewPool(this@StreakLevelPackSelectFragment.listView.recycledViewPool)
 
                         setActionListener { action, id ->
                             when (action) {
-                                StreakEmojiPackCell.Action.SHARE ->
+                                StreakLevelPackCell.Action.SHARE ->
                                     presentFragment(createDialogPicker { peerId ->
                                         viewModel.share(id, peerId)
                                     })
-                                StreakEmojiPackCell.Action.EDIT -> openEditFragment(id)
-                                StreakEmojiPackCell.Action.INHERIT -> viewModel.create(id)
-                                StreakEmojiPackCell.Action.DELETE -> viewModel.delete(id)
+
+                                StreakLevelPackCell.Action.EDIT -> openEditFragment(id)
+                                StreakLevelPackCell.Action.INHERIT -> viewModel.create(id)
+                                StreakLevelPackCell.Action.DELETE -> viewModel.delete(id)
                             }
                         }
                     }
@@ -138,20 +139,20 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             when (position) {
-                in items.indices -> (holder.itemView as StreakEmojiPackCell)
+                in items.indices -> (holder.itemView as StreakLevelPackCell)
                     .apply {
-                        val emojiPack = items[position]
+                        val levelPack = items[position]
 
-                        setEmojiPack(emojiPack, StreakEmojiPack.builtin.contains(emojiPack))
-                        setChecked(emojiPack.id == checkedId)
+                        setLevelPack(levelPack, StreakLevelPack.builtin.contains(levelPack))
+                        setChecked(levelPack.id == checkedId)
                     }
 
                 else -> (holder.itemView as TextInfoPrivacyCell)
-                    .text = Strings.menu_streak_emoji_pack_select_desc()
+                    .text = Strings.menu_streak_level_pack_select_desc()
             }
         }
 
-        fun setItems(items: List<StreakEmojiPack>, checkedId: UUID?) {
+        fun setItems(items: List<StreakLevelPack>, checkedId: UUID?) {
             val diff = DiffUtil.calculateDiff(
                 ItemsCallback(this.items, items, this.checkedId, checkedId)
             )
@@ -179,37 +180,37 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
     }
 
     private fun openEditFragment(id: UUID) {
-        val viewModel = object : StreakEmojiPackEditFragment.ViewModel {
+        val viewModel = object : StreakLevelPackEditFragment.ViewModel {
             private val coroutineScope = Plugin.childCoroutineScope()
 
             private val stateFlow =
-                MutableStateFlow(StreakEmojiPackEditFragment.ViewState(emojiPacks.find { it.id == id }!!))
+                MutableStateFlow(StreakLevelPackEditFragment.ViewState(levelPacks.find { it.id == id }!!))
 
             init {
                 viewModel.state()
                     .onEachWith {
-                        val currentEmojiPack = emojiPacks.find { it.id == id }
+                        val currentLevelPack = levelPacks.find { it.id == id }
                             ?: return@onEachWith
 
-                        stateFlow.emit(StreakEmojiPackEditFragment.ViewState(currentEmojiPack))
+                        stateFlow.emit(StreakLevelPackEditFragment.ViewState(currentLevelPack))
                     }
                     .launchIn(coroutineScope)
             }
 
-            override fun state(): Flow<StreakEmojiPackEditFragment.ViewState> = stateFlow
+            override fun state(): Flow<StreakLevelPackEditFragment.ViewState> = stateFlow
 
-            override fun update(emojiPack: StreakEmojiPack) {
-                viewModel.update(emojiPack)
+            override fun update(levelPack: StreakLevelPack) {
+                viewModel.update(levelPack)
 
                 coroutineScope.launch {
-                    stateFlow.emit(StreakEmojiPackEditFragment.ViewState(emojiPack))
+                    stateFlow.emit(StreakLevelPackEditFragment.ViewState(levelPack))
                 }
             }
 
             override fun destroy() = coroutineScope.cancel()
         }
 
-        presentFragment(StreakEmojiPackEditFragment(viewModel))
+        presentFragment(StreakLevelPackEditFragment(viewModel))
     }
 
     private val backgroundScope = Plugin.childCoroutineScope()
@@ -217,13 +218,13 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
     // eject
     private val unsubscribe = EjectNotifier.subscribe(this)
 
-    private var emojiPacks: List<StreakEmojiPack> = listOf()
+    private var levelPacks: List<StreakLevelPack> = listOf()
 
     // won't change until apply button is pressed
-    private var activeEmojiPackId: UUID? = null
+    private var activeLevelPackId: UUID? = null
 
     // can be changed before apply button press
-    private var selectedEmojiPackId: UUID? = null
+    private var selectedLevelPackId: UUID? = null
 
     // views
     private lateinit var listView: RecyclerListView
@@ -242,7 +243,7 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
             }
 
             pendingItemsUpdate = false
-            (listView.adapter as? ListAdapter)?.setItems(emojiPacks, selectedEmojiPackId)
+            (listView.adapter as? ListAdapter)?.setItems(levelPacks, selectedLevelPackId)
         }
     }
 
@@ -256,8 +257,8 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
         super.onFragmentClosed()
     }
 
-    private fun setEmojiPacks(emojiPacks: List<StreakEmojiPack>) {
-        this.emojiPacks = emojiPacks
+    private fun setLevelPacks(levelPacks: List<StreakLevelPack>) {
+        this.levelPacks = levelPacks
 
         if (pendingItemsUpdate)
             return
@@ -269,14 +270,14 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
     override fun createView(context: Context): View {
         actionBar.apply {
             setBackButtonImage(R.drawable.ic_ab_back)
-            setTitle(Strings.menu_streak_emoji_pack_select_title())
+            setTitle(Strings.menu_streak_level_pack_select_title())
 
             actionBarMenuOnItemClick = object : ActionBar.ActionBarMenuOnItemClick() {
                 override fun onItemClick(id: Int) {
                     when (id) {
                         -1 -> finishFragment()
                         DONE_BUTTON_ID -> {
-                            viewModel.setActiveEmojiPack(selectedEmojiPackId!!)
+                            viewModel.setActiveLevelPack(selectedLevelPackId!!)
                             finishFragment()
                         }
                     }
@@ -312,12 +313,12 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
 
         viewModel.state()
             .onEachWithOnMainThread {
-                activeEmojiPackId = activeEmojiPack.id
-                selectedEmojiPackId = selectedEmojiPackId
-                    ?.takeIf { id -> emojiPacks.any { it.id == id } }
-                    ?: activeEmojiPackId
+                activeLevelPackId = activeLevelPack.id
+                selectedLevelPackId = selectedLevelPackId
+                    ?.takeIf { id -> levelPacks.any { it.id == id } }
+                    ?: activeLevelPackId
 
-                setEmojiPacks(emojiPacks)
+                setLevelPacks(levelPacks)
                 updateDoneVisibility()
             }
             .launchIn(backgroundScope)
@@ -326,7 +327,7 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
     }
 
     private fun updateDoneVisibility() {
-        doneItem.visibility = if (selectedEmojiPackId == activeEmojiPackId)
+        doneItem.visibility = if (selectedLevelPackId == activeLevelPackId)
             View.GONE
         else
             View.VISIBLE
@@ -334,13 +335,13 @@ class StreakEmojiPackSelectFragment(private val viewModel: ViewModel) : BaseFrag
 
     private fun onRowClicked(newPosition: Int) {
         when (newPosition) {
-            in emojiPacks.indices -> {
-                val newPackId = emojiPacks[newPosition].id
+            in levelPacks.indices -> {
+                val newPackId = levelPacks[newPosition].id
 
-                if (selectedEmojiPackId == newPackId)
+                if (selectedLevelPackId == newPackId)
                     return
 
-                selectedEmojiPackId = newPackId
+                selectedLevelPackId = newPackId
 
                 updateDoneVisibility()
                 (listView.adapter as? ListAdapter)?.setCheckedId(newPackId)

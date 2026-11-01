@@ -4,9 +4,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.telegram.messenger.UserConfig
 import ru.n08i40k.streaks.constants.SettingsActionButton
-import ru.n08i40k.streaks.data.StreakEmojiPack
+import ru.n08i40k.streaks.data.StreakLevelPack
 import ru.n08i40k.streaks.i18n.Strings
-import ru.n08i40k.streaks.ui.emojiPack.select.StreakEmojiPackSelectFragment
+import ru.n08i40k.streaks.ui.levelPack.select.StreakLevelPackSelectFragment
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.Logger
@@ -51,83 +51,83 @@ class SettingsMenuActions(private val plugin: Plugin) {
             }
         }
 
-        add(SettingsActionButton.OPEN_EMOJI_PACKS) {
-            val viewModel = object : StreakEmojiPackSelectFragment.ViewModel {
+        add(SettingsActionButton.OPEN_LEVEL_PACKS) {
+            val viewModel = object : StreakLevelPackSelectFragment.ViewModel {
                 private val stateFlow = MutableStateFlow(
-                    StreakEmojiPackSelectFragment.ViewState(
-                        emojiPacks = listOf(streakEmojiPacksController.getCurrent()),
-                        activeEmojiPack = streakEmojiPacksController.getCurrent()
+                    StreakLevelPackSelectFragment.ViewState(
+                        levelPacks = listOf(streakLevelPacksController.getCurrent()),
+                        activeLevelPack = streakLevelPacksController.getCurrent()
                     )
                 )
 
                 init {
-                    enqueueTask("refresh view state for emoji pack select view model") {
+                    enqueueTask("refresh view state for streak level pack select view model") {
                         refreshState()
                     }
                 }
 
                 private suspend fun refreshState() {
-                    val emojiPacks = streakEmojiPacksController.getAll()
-                    val activeEmojiPack = streakEmojiPacksController.getCurrent()
+                    val levelPacks = streakLevelPacksController.getAll()
+                    val activeLevelPack = streakLevelPacksController.getCurrent()
 
                     stateFlow.emit(
-                        StreakEmojiPackSelectFragment.ViewState(
-                            emojiPacks,
-                            activeEmojiPack
+                        StreakLevelPackSelectFragment.ViewState(
+                            levelPacks,
+                            activeLevelPack
                         )
                     )
                 }
 
-                override fun state(): Flow<StreakEmojiPackSelectFragment.ViewState> = stateFlow
+                override fun state(): Flow<StreakLevelPackSelectFragment.ViewState> = stateFlow
 
-                override fun setActiveEmojiPack(id: UUID) {
-                    enqueueTask("set active emoji pack $id") {
-                        streakEmojiPacksController.setCurrent(id)
+                override fun setActiveLevelPack(id: UUID) {
+                    enqueueTask("set active streak level pack $id") {
+                        streakLevelPacksController.setCurrent(id)
                         refreshState()
                     }
                 }
 
                 override fun create(basedOn: UUID) {
-                    enqueueTask("create new emoji pack based on $basedOn") {
-                        streakEmojiPacksController.create(basedOn)
+                    enqueueTask("create new streak level pack based on $basedOn") {
+                        streakLevelPacksController.create(basedOn)
                         refreshState()
                     }
                 }
 
                 override fun share(id: UUID, peerId: Long) {
-                    enqueueTask("share emoji pack $id with $peerId") {
-                        val emojiPack = streakEmojiPacksController.getAll().find { it.id == id }
+                    enqueueTask("share streak level pack $id with $peerId") {
+                        val levelPack = streakLevelPacksController.getAll().find { it.id == id }
                             ?: return@enqueueTask
 
-                        serviceMessagesController.sendEmojiPackImport(
+                        serviceMessagesController.sendLevelPackImport(
                             UserConfig.selectedAccount,
                             peerId,
-                            emojiPack
+                            levelPack
                         )
 
                         BulletinHelper.show(
-                            Strings.status_success_emoji_pack_shared(),
+                            Strings.status_success_level_pack_shared(),
                             "msg_share"
                         )
                     }
                 }
 
-                override fun update(emojiPack: StreakEmojiPack) {
-                    enqueueTask("update emoji pack ${emojiPack.id}") {
-                        streakEmojiPacksController.update(emojiPack)
+                override fun update(levelPack: StreakLevelPack) {
+                    enqueueTask("update streak level pack ${levelPack.id}") {
+                        streakLevelPacksController.update(levelPack)
                         refreshState()
                     }
                 }
 
                 override fun delete(id: UUID) {
-                    enqueueTask("delete emoji pack $id") {
-                        streakEmojiPacksController.delete(id)
+                    enqueueTask("delete streak level pack $id") {
+                        streakLevelPacksController.delete(id)
                         refreshState()
                     }
                 }
             }
 
-            presentFragment(StreakEmojiPackSelectFragment(viewModel))
+            presentFragment(StreakLevelPackSelectFragment(viewModel))
         }
 
         settingsActionCallbackRegistry.freeze()

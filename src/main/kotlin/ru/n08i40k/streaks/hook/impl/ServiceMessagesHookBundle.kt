@@ -22,14 +22,14 @@ import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.hook.HookBundle
 import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.i18n.Strings
-import ru.n08i40k.streaks.ui.emojiPack.share.StreakEmojiPackImportBottomSheet
+import ru.n08i40k.streaks.ui.levelPack.share.StreakLevelPackImportBottomSheet
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.`ChatActionCell$currentMessageObject`
 import ru.n08i40k.streaks.util.`ChatActionCell$imageReceiver`
 import ru.n08i40k.streaks.util.`ChatActionCell$setStarsPaused`
 import ru.n08i40k.streaks.util.Logger
-import ru.n08i40k.streaks.util.StreakEmojiPackCodec
+import ru.n08i40k.streaks.util.StreakLevelPackCodec
 import ru.n08i40k.streaks.util.`TLRPC$Message$$fields`
 import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.isClientVersionBelow
@@ -301,13 +301,13 @@ class ServiceMessagesHookBundle : HookBundle() {
                     .apply { this.message = messageText }
             }
 
-            val tryEmojiPackImport = emojiPackImport@{
-                val pack = StreakEmojiPackCodec.decode(message.message)
-                    ?: return@emojiPackImport null
+            val tryLevelPackImport = levelPackImport@{
+                val pack = StreakLevelPackCodec.decode(message.message)
+                    ?: return@levelPackImport null
 
                 if (message.out) {
                     TLRPC.TL_messageActionCustomAction()
-                        .apply { this.message = Strings.service_emoji_pack_import_self(pack.name) }
+                        .apply { this.message = Strings.service_level_pack_import_self(pack.name) }
                 } else {
                     TLRPC.TL_messageActionPrizeStars()
                         .apply {
@@ -331,7 +331,7 @@ class ServiceMessagesHookBundle : HookBundle() {
                 ?: tryPetDeleted()
                 ?: trySyncOffer()
                 ?: trySyncApplied()
-                ?: tryEmojiPackImport()
+                ?: tryLevelPackImport()
                 ?: return@before
 
             param.args[1] = TLRPC.TL_messageService()
@@ -358,8 +358,8 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = thisObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@after
 
-            if (ServiceMessage.isEmojiPackImport(prizeStars.transaction_id)) {
-                thisObject.messageText = Strings.service_emoji_pack_import_title()
+            if (ServiceMessage.isLevelPackImport(prizeStars.transaction_id)) {
+                thisObject.messageText = Strings.service_level_pack_import_title()
                 return@after
             }
 
@@ -393,33 +393,33 @@ class ServiceMessagesHookBundle : HookBundle() {
             val serviceMessagesController = plugin.serviceMessagesController
             val streakPetsController = plugin.streakPetsController
             val pluginRelationController = plugin.pluginRelationController
-            val streakEmojiPacksController = plugin.streakEmojiPacksController
+            val streakLevelPacksController = plugin.streakLevelPacksController
 
-            if (ServiceMessage.isEmojiPackImport(prizeStars.transaction_id)) {
+            if (ServiceMessage.isLevelPackImport(prizeStars.transaction_id)) {
                 val context = (param.thisObject as ChatActionCell).context
 
-                val pack = StreakEmojiPackCodec.decode(prizeStars.transaction_id)
+                val pack = StreakLevelPackCodec.decode(prizeStars.transaction_id)
 
                 if (pack == null) {
-                    BulletinHelper.show(Strings.status_error_emoji_pack_invalid())
+                    BulletinHelper.show(Strings.status_error_level_pack_invalid())
 
                     param.result = null
                     return@before
                 }
 
-                plugin.enqueueTask("open emoji pack import sheet for ${pack.id}") {
-                    val replace = streakEmojiPacksController.exists(pack.id)
+                plugin.enqueueTask("open streak level pack import sheet for ${pack.id}") {
+                    val replace = streakLevelPacksController.exists(pack.id)
 
                     runOnMainThread {
-                        StreakEmojiPackImportBottomSheet(context, pack, replace) {
-                            plugin.enqueueTask("import emoji pack ${pack.id}") {
-                                streakEmojiPacksController.import(pack)
+                        StreakLevelPackImportBottomSheet(context, pack, replace) {
+                            plugin.enqueueTask("import streak level pack ${pack.id}") {
+                                streakLevelPacksController.import(pack)
 
                                 BulletinHelper.show(
                                     if (replace)
-                                        Strings.status_success_emoji_pack_replaced()
+                                        Strings.status_success_level_pack_replaced()
                                     else
-                                        Strings.status_success_emoji_pack_imported(),
+                                        Strings.status_success_level_pack_imported(),
                                     "msg_reactions"
                                 )
                             }
@@ -614,16 +614,16 @@ class ServiceMessagesHookBundle : HookBundle() {
             val prizeStars = messageObject.messageOwner?.action as? TLRPC.TL_messageActionPrizeStars
                 ?: return@before
 
-            if (ServiceMessage.isEmojiPackImport(prizeStars.transaction_id)) {
-                val pack = StreakEmojiPackCodec.decode(prizeStars.transaction_id)
+            if (ServiceMessage.isLevelPackImport(prizeStars.transaction_id)) {
+                val pack = StreakLevelPackCodec.decode(prizeStars.transaction_id)
                     ?: return@before
 
                 applyGiftLayout(
                     param,
-                    Strings.service_emoji_pack_import_title(),
+                    Strings.service_level_pack_import_title(),
                     pack.name,
-                    Strings.service_emoji_pack_import_hint(),
-                    Strings.service_emoji_pack_import_action(),
+                    Strings.service_level_pack_import_hint(),
+                    Strings.service_level_pack_import_action(),
                 )
                 return@before
             }

@@ -14,7 +14,6 @@ import ru.n08i40k.guides.scene.profile.GuideProfileActivity
 import ru.n08i40k.guides.scene.profile.ProfileActivityGuideScene
 import ru.n08i40k.guides.util.takeEmbeddedContent
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.guide.badge.StreakGuideBadges
 import ru.n08i40k.streaks.i18n.Strings
@@ -31,8 +30,23 @@ private const val INFO_LENGTH = 30
 
 internal fun creationPopupPanel(context: Context, user: TLRPC.User): GuideScene {
     val palette = StreakUpgradePalette.fromTheme()
-    val scene = StreakUpgradeSceneView(context, StreakUpgrade.of(StreakLevel.Cold, StreakLevel.Days3, user), palette)
+
+    val streakLevelPack = Plugin.getInstance()
+        .streakLevelPacksController
+        .getCurrent()
+
+    val scene = StreakUpgradeSceneView(
+        context,
+        StreakUpgrade.of(
+            streakLevelPack.getCold(),
+            streakLevelPack.findFirstVisible(),
+            user
+        ),
+        palette
+    )
+
     val hint = createUpgradeHint(context, palette, Strings.upgrade_scene_dismiss_hint())
+
     val root = FrameLayout(context).apply {
         setBackgroundColor(palette.scrim)
         addView(scene, FrameLayout.LayoutParams(-1, -1))
@@ -70,12 +84,17 @@ internal fun profilePanel(context: Context, user: TLRPC.User, account: Int): Gui
 
 internal fun streakInfoPanel(context: Context, user: TLRPC.User, account: Int): GuideScene {
     val fragment = sheetHost(context, account)
-    val config = Plugin.getInstance().streakEmojiPacksController.getCurrent()
-        .getEmoji(StreakLevel.findByLengthApproximate(INFO_LENGTH))
+
+    val config = Plugin.getInstance()
+        .streakLevelPacksController
+        .getCurrent()
+        .findByLengthApproximate(INFO_LENGTH)
+
     val data = StreakViewData(
         INFO_LENGTH,
         config.documentId,
-        config.accentColor ?: Color.valueOf(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon)),
+        config.accentColor
+            ?: Color.valueOf(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon)),
         false
     )
     lateinit var sheet: StreakInfoBottomSheet

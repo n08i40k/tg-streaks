@@ -1,4 +1,4 @@
-package ru.n08i40k.streaks.ui.emojiPack.select
+package ru.n08i40k.streaks.ui.levelPack.select
 
 import android.content.Context
 import android.view.ViewGroup

@@ -2,6 +2,7 @@ package ru.n08i40k.streaks.ui.upgrade
 
 import android.animation.TimeAnimator
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,12 +21,11 @@ import org.telegram.messenger.ImageLocation
 import org.telegram.messenger.ImageReceiver
 import org.telegram.ui.Components.AnimatedEmojiDrawable
 import org.telegram.ui.Components.BackupImageView
-import ru.n08i40k.streaks.data.StreakEmojiInfo
+import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.ui.upgrade.Easing.hump
 import ru.n08i40k.streaks.ui.upgrade.Easing.outQuad
 import ru.n08i40k.streaks.ui.upgrade.Easing.smooth
-import ru.n08i40k.streaks.ui.upgrade.UpgradeTimeline as T
 import ru.n08i40k.streaks.util.colorBlend
 import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.runOnMainThread
@@ -33,7 +33,9 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import ru.n08i40k.streaks.ui.upgrade.UpgradeTimeline as T
 
+@SuppressLint("ViewConstructor")
 internal class StreakUpgradeSceneView(
     context: Context,
     private val upgrade: StreakUpgrade,
@@ -66,12 +68,20 @@ internal class StreakUpgradeSceneView(
     var onFailed: (() -> Unit)? = null
 
     private val accountId = upgrade.accountId
-    private val fromColor = upgrade.fromEmoji.accentColor?.toArgb() ?: DEFAULT_ACCENT
-    private val toColor = upgrade.toEmoji.accentColor?.toArgb() ?: DEFAULT_ACCENT
+
+    private val fromColor = upgrade.from.accentColor?.toArgb() ?: DEFAULT_ACCENT
+    private val toColor = upgrade.to.accentColor?.toArgb() ?: DEFAULT_ACCENT
+
     private val text = StreakUpgradeTextRenderer(
-        upgrade.from.length, upgrade.to.length, fromColor, toColor, palette, StreakUpgradeFont.get(),
+        upgrade.from.length,
+        upgrade.to.length,
+        fromColor,
+        toColor,
+        palette,
+        StreakUpgradeFont.get(),
     )
-    private val avatars = StreakUpgradeAvatarsRenderer(this, accountId, upgrade.peer, fromColor, toColor)
+    private val avatars =
+        StreakUpgradeAvatarsRenderer(this, accountId, upgrade.peer, fromColor, toColor)
 
     private val oldEmoji = createEmojiView()
     private val newEmoji = createEmojiView()
@@ -130,7 +140,12 @@ internal class StreakUpgradeSceneView(
 
     private fun softFalloff(radius: Float) = RadialGradient(
         0f, 0f, radius,
-        intArrayOf(Color.WHITE, Color.argb(150, 255, 255, 255), Color.argb(45, 255, 255, 255), Color.TRANSPARENT),
+        intArrayOf(
+            Color.WHITE,
+            Color.argb(150, 255, 255, 255),
+            Color.argb(45, 255, 255, 255),
+            Color.TRANSPARENT
+        ),
         floatArrayOf(0f, .3f, .65f, 1f), Shader.TileMode.CLAMP,
     )
 
@@ -168,18 +183,24 @@ internal class StreakUpgradeSceneView(
             return
 
         postDelayed(loadTimeout, LOAD_TIMEOUT_MS)
-        loadEmoji(oldEmoji, upgrade.fromEmoji, fromColor)
-        loadEmoji(newEmoji, upgrade.toEmoji, toColor)
+        loadEmoji(oldEmoji, upgrade.from, fromColor)
+        loadEmoji(newEmoji, upgrade.to, toColor)
     }
 
-    private fun loadEmoji(view: BackupImageView, info: StreakEmojiInfo, color: Int) {
+    private fun loadEmoji(view: BackupImageView, info: StreakLevel, color: Int) {
         var ready = false
+
         view.imageReceiver.setDelegate(object : ImageReceiver.ImageReceiverDelegate {
             override fun didSetImageBitmap(type: Int, key: String?, drawable: Drawable?) = Unit
 
             override fun onAnimationReady(receiver: ImageReceiver?) = Unit
 
-            override fun didSetImage(receiver: ImageReceiver, set: Boolean, thumb: Boolean, memCache: Boolean) {
+            override fun didSetImage(
+                receiver: ImageReceiver,
+                set: Boolean,
+                thumb: Boolean,
+                memCache: Boolean
+            ) {
                 if (released || ready || !set || thumb || !receiver.hasNotThumb())
                     return
                 ready = true
@@ -187,21 +208,23 @@ internal class StreakUpgradeSceneView(
                 post { tryPlay() }
             }
         })
-        AnimatedEmojiDrawable.getDocumentFetcher(accountId).fetchDocument(info.documentId) { document ->
-            runOnMainThread {
-                if (released)
-                    return@runOnMainThread
-                if (document == null) {
-                    fail()
-                    return@runOnMainThread
+        AnimatedEmojiDrawable.getDocumentFetcher(accountId)
+            .fetchDocument(info.documentId) { document ->
+                runOnMainThread {
+                    if (released)
+                        return@runOnMainThread
+                    if (document == null) {
+                        fail()
+                        return@runOnMainThread
+                    }
+                    if (AnimatedEmojiDrawable.make(accountId, 0, document).canOverrideColor())
+                        view.setColorFilter(PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN))
+                    val size = EMOJI_SIZE_DP
+                    val filter =
+                        if (document.mime_type == "video/webm") "${size}_${size}_${ImageLoader.AUTOPLAY_FILTER}" else "${size}_${size}"
+                    view.setImage(ImageLocation.getForDocument(document), filter, null, document)
                 }
-                if (AnimatedEmojiDrawable.make(accountId, 0, document).canOverrideColor())
-                    view.setColorFilter(PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN))
-                val size = EMOJI_SIZE_DP
-                val filter = if (document.mime_type == "video/webm") "${size}_${size}_${ImageLoader.AUTOPLAY_FILTER}" else "${size}_${size}"
-                view.setImage(ImageLocation.getForDocument(document), filter, null, document)
             }
-        }
     }
 
     private fun fail() {
@@ -286,12 +309,17 @@ internal class StreakUpgradeSceneView(
         val cx = width / 2f
         val cy = height / 2f
         if (state == State.Loading || state == State.Failed) {
-            val status = if (state == State.Failed) Strings.upgrade_scene_load_failed() else Strings.upgrade_scene_loading()
+            val status =
+                if (state == State.Failed) Strings.upgrade_scene_load_failed() else Strings.upgrade_scene_loading()
             canvas.drawText(status, cx, cy, statusPaint)
             return
         }
 
-        val scale = minOf(1f, width / dp(DESIGN_WIDTH_DP).toFloat(), height / dp(DESIGN_HEIGHT_DP).toFloat())
+        val scale = minOf(
+            1f,
+            width / dp(DESIGN_WIDTH_DP).toFloat(),
+            height / dp(DESIGN_HEIGHT_DP).toFloat()
+        )
         val anchorY = cy - dp(ANCHOR_SHIFT_DP)
         val charge = smooth(T.OLD_CHARGE.at(time))
         val rumble = if (T.isUpgraded(time)) 0f else dp(2.5f) * charge * charge
@@ -300,7 +328,10 @@ internal class StreakUpgradeSceneView(
 
         canvas.save()
         canvas.scale(scale, scale, cx, cy)
-        canvas.translate(shake * Easing.noise(time * 55f), shake * .7f * Easing.noise(time * 48f + 3f))
+        canvas.translate(
+            shake * Easing.noise(time * 55f),
+            shake * .7f * Easing.noise(time * 48f + 3f)
+        )
         canvas.rotate(1.8f * hit * Easing.noise(time * 40f + 7f), cx, anchorY)
 
         val colorShift = smooth(T.COLOR_SHIFT.at(time))
@@ -323,7 +354,8 @@ internal class StreakUpgradeSceneView(
             tint = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
         }
         val burst = T.BURST.at(time)
-        val envelope = (40 + 45 * smooth(T.OLD_CHARGE.at(time)) + 120 * hump(burst)) * palette.glowStrength
+        val envelope =
+            (40 + 45 * smooth(T.OLD_CHARGE.at(time)) + 120 * hump(burst)) * palette.glowStrength
         val kick = 35f * outQuad(burst)
 
         canvas.save()

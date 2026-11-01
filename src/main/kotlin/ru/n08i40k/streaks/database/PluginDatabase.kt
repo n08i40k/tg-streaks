@@ -8,7 +8,7 @@ import ru.n08i40k.streaks.data.PluginRelation
 import ru.n08i40k.streaks.data.ScheduledStreakPopup
 import ru.n08i40k.streaks.data.ServiceMessageCategories
 import ru.n08i40k.streaks.data.Streak
-import ru.n08i40k.streaks.data.StreakEmojiPack
+import ru.n08i40k.streaks.data.StreakLevelPack
 import ru.n08i40k.streaks.data.StreakPet
 import ru.n08i40k.streaks.data.StreakPetTask
 import ru.n08i40k.streaks.data.StreakRestore
@@ -24,7 +24,7 @@ import ru.n08i40k.streaks.database.dao.PluginRelationDao
 import ru.n08i40k.streaks.database.dao.ScheduledStreakPopupDao
 import ru.n08i40k.streaks.database.dao.ServiceMessageCategoriesDao
 import ru.n08i40k.streaks.database.dao.StreakDao
-import ru.n08i40k.streaks.database.dao.StreakEmojiPackDao
+import ru.n08i40k.streaks.database.dao.StreakLevelPackDao
 import ru.n08i40k.streaks.database.dao.StreakPetDao
 import ru.n08i40k.streaks.database.dao.StreakPetTaskDao
 import ru.n08i40k.streaks.database.dao.StreakRestoreDao
@@ -39,7 +39,7 @@ import ru.n08i40k.streaks.database.dao.StreakRestoreDao
         PeerTimeZone::class,
         PluginRelation::class,
         ServiceMessageCategories::class,
-        StreakEmojiPack::class,
+        StreakLevelPack::class,
     ],
     version = 15,
     exportSchema = false
@@ -62,5 +62,5 @@ abstract class PluginDatabase : RoomDatabase() {
     abstract fun peerTimeZoneDao(): PeerTimeZoneDao
     abstract fun pluginRelationDao(): PluginRelationDao
     abstract fun serviceMessageCategoriesDao(): ServiceMessageCategoriesDao
-    abstract fun streakEmojiPackDao(): StreakEmojiPackDao
+    abstract fun streakLevelPackDao(): StreakLevelPackDao
 }

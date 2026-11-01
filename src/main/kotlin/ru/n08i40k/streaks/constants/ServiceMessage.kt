@@ -25,11 +25,12 @@ object ServiceMessage {
 
     fun PET_SET_NAME_TEXT(name: String) = "tg-streaks:pet:set-name:$name"
 
-    // streak emoji packs
-    const val EMOJI_PACK_IMPORT_PREFIX = "tg-streaks:emoji-packs:import:"
+    // streak level packs
+    // Keep the original wire prefix so existing shared packs remain readable.
+    const val LEVEL_PACK_IMPORT_PREFIX = "tg-streaks:emoji-packs:import:"
 
-    fun isEmojiPackImport(text: String?): Boolean =
-        text?.startsWith(EMOJI_PACK_IMPORT_PREFIX) ?: false
+    fun isLevelPackImport(text: String?): Boolean =
+        text?.startsWith(LEVEL_PACK_IMPORT_PREFIX) ?: false
 
     fun isServiceText(text: String?): Boolean = text?.startsWith("tg-streaks:") ?: false
 
@@ -38,5 +39,5 @@ object ServiceMessage {
         transactionId == DEATH_TEXT
                 || transactionId == PET_INVITE_TEXT
                 || transactionId == SYNC_OFFER
-                || isEmojiPackImport(transactionId)
+                || isLevelPackImport(transactionId)
 }

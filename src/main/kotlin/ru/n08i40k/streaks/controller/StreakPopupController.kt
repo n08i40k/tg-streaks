@@ -7,7 +7,6 @@ import org.telegram.ui.LaunchActivity
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.data.ScheduledStreakPopup
 import ru.n08i40k.streaks.data.Streak
-import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.database.dao.ScheduledStreakPopupDao
 import ru.n08i40k.streaks.ui.upgrade.StreakUpgrade
 import ru.n08i40k.streaks.ui.upgrade.StreakUpgradeDialog
@@ -41,9 +40,16 @@ class StreakPopupController(
             return
 
         val (key, fromLevel) = when {
-            before == null || before.length < 3 ->
-                "$POPUP_KIND_CREATED:$accountId:$peerUserId:${after.level.length}" to
-                    (StreakLevel.findPrevious(after.level) ?: StreakLevel.Cold)
+            before == null || before.length < 3 -> {
+                val streakLevelPack = Plugin.getInstance()
+                    .streakLevelPacksController
+                    .getCurrent()
+
+                val key = "$POPUP_KIND_CREATED:$accountId:$peerUserId:${after.level.length}"
+                val value = (streakLevelPack.findPrevious(after.level) ?: streakLevelPack.getCold())
+
+                key to value
+            }
 
             !before.ended && after.level > before.level ->
                 "$POPUP_KIND_UPGRADED:$accountId:$peerUserId:${after.level.length}" to before.level
@@ -119,8 +125,13 @@ class StreakPopupController(
         val context = resolvePopupContext()
             ?: return false
 
-        val from = StreakLevel.findById(popup.fromLevelId)
-        val to = StreakLevel.findById(popup.toLevelId)
+        val streakLevelPack = Plugin.getInstance()
+            .streakLevelPacksController
+            .getCurrent()
+
+        val from = streakLevelPack.findById(popup.fromLevelId)
+        val to = streakLevelPack.findById(popup.toLevelId)
+
         if (from == null || to == null) {
             onDismiss()
             return true
@@ -129,10 +140,12 @@ class StreakPopupController(
         runOnMainThread {
             val result = Logger.tryOrFatal("show streak popup") {
                 val peer = MessagesController.getInstance(popup.accountId).getUser(popup.peerUserId)
-                StreakUpgradeDialog(context, StreakUpgrade.of(from, to, peer, popup.accountId)).apply {
-                    setOnDismissListener { onDismiss() }
-                    show()
-                }
+
+                StreakUpgradeDialog(context, StreakUpgrade.of(from, to, peer, popup.accountId))
+                    .apply {
+                        setOnDismissListener { onDismiss() }
+                        show()
+                    }
             }
 
             if (result == null)

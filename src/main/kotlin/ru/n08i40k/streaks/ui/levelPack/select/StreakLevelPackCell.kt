@@ -1,4 +1,4 @@
-package ru.n08i40k.streaks.ui.emojiPack.select
+package ru.n08i40k.streaks.ui.levelPack.select
 
 import android.content.Context
 import android.graphics.Typeface
@@ -13,12 +13,12 @@ import org.telegram.messenger.R.drawable
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.DividerCell
 import org.telegram.ui.Components.RadioButton
-import ru.n08i40k.streaks.data.StreakEmojiPack
+import ru.n08i40k.streaks.data.StreakLevelPack
 import ru.n08i40k.streaks.ui.components.DrawableButton
 import ru.n08i40k.streaks.util.dp
 import java.util.UUID
 
-class StreakEmojiPackCell(
+class StreakLevelPackCell(
     context: Context,
     private val withActions: Boolean,
 ) : LinearLayout(context) {
@@ -32,26 +32,26 @@ class StreakEmojiPackCell(
 
     constructor(context: Context) : this(context, false)
 
-    private var emojiPack: StreakEmojiPack? = null
+    private var levelPack: StreakLevelPack? = null
 
     private val nameTextView = TextView(context)
     private val streakEmojiListView = StreakEmojiListView(context)
     private val selectedRadioButton = RadioButton(context)
 
     private val shareButton = DrawableButton(context, drawable.msg_share, false) {
-        actionListener?.invoke(Action.SHARE, emojiPack?.id ?: return@DrawableButton)
+        actionListener?.invoke(Action.SHARE, levelPack?.id ?: return@DrawableButton)
     }
 
     private val editButton = DrawableButton(context, drawable.msg_edit, false) {
-        actionListener?.invoke(Action.EDIT, emojiPack?.id ?: return@DrawableButton)
+        actionListener?.invoke(Action.EDIT, levelPack?.id ?: return@DrawableButton)
     }
 
     private val inheritButton = DrawableButton(context, drawable.msg_add, false) {
-        actionListener?.invoke(Action.INHERIT, emojiPack?.id ?: return@DrawableButton)
+        actionListener?.invoke(Action.INHERIT, levelPack?.id ?: return@DrawableButton)
     }
 
     private val deleteButton = DrawableButton(context, drawable.msg_delete, true) {
-        actionListener?.invoke(Action.DELETE, emojiPack?.id ?: return@DrawableButton)
+        actionListener?.invoke(Action.DELETE, levelPack?.id ?: return@DrawableButton)
     }
 
     private var actionListener: ((Action, UUID) -> Unit)? = null
@@ -64,11 +64,11 @@ class StreakEmojiPackCell(
         streakEmojiListView.recycledViewPool = pool
     }
 
-    fun setEmojiPack(emojiPack: StreakEmojiPack, builtin: Boolean) {
-        this.emojiPack = emojiPack
+    fun setLevelPack(levelPack: StreakLevelPack, builtin: Boolean) {
+        this.levelPack = levelPack
 
-        nameTextView.text = emojiPack.name
-        streakEmojiListView.setItems(emojiPack.sortedEmojis.values.toList())
+        nameTextView.text = levelPack.name
+        streakEmojiListView.setItems(levelPack.sortedEmojis.values.toList())
 
         shareButton.setButtonEnabled(!builtin)
         editButton.setButtonEnabled(!builtin)

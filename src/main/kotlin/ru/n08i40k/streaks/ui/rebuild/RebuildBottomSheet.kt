@@ -29,7 +29,6 @@ import org.telegram.ui.Components.AvatarDrawable
 import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.LayoutHelper
 import org.telegram.ui.LaunchActivity
-import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.data.Streak
 import ru.n08i40k.streaks.data.StreakPet
@@ -554,10 +553,7 @@ class RebuildBottomSheet(
                 val record = (userRebuildStates.first() as? UserRebuildState.Done<*>)?.record
 
                 val rows = when (record) {
-                    is Streak -> with(
-                        Plugin.getInstance().streakEmojiPacksController.getCurrent()
-                            .getEmoji(record.level)
-                    ) {
+                    is Streak -> with(record.level) {
                         val accentColor = accentColor?.toArgb()
                             ?: Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon)
 

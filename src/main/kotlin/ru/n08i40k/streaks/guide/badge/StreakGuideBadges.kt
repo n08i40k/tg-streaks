@@ -10,16 +10,16 @@ import org.telegram.messenger.UserConfig
 import org.telegram.ui.ActionBar.Theme
 import ru.n08i40k.badges.api.BadgesSdk
 import ru.n08i40k.badges.api.ViewFactory
-import ru.n08i40k.guides.api.GuideBadgeSession
 import ru.n08i40k.guides.api.GuideBadge
+import ru.n08i40k.guides.api.GuideBadgeSession
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.data.StreakLevel
 import ru.n08i40k.streaks.data.StreakViewData
 import ru.n08i40k.streaks.emoji.StreakEmoji
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
-internal class StreakGuideBadges(private val root: View, private val account: Int) : GuideBadgeSession {
+internal class StreakGuideBadges(private val root: View, private val account: Int) :
+    GuideBadgeSession {
     companion object {
         private val sessions = mutableSetOf<StreakGuideBadges>()
 
@@ -27,14 +27,23 @@ internal class StreakGuideBadges(private val root: View, private val account: In
             sessions.any { it.owns(view) }
 
         fun point(view: View): PointF {
-            val session = checkNotNull(sessions.firstOrNull { it.owns(view) }) { "The view is outside guide previews" }
-            val bounds = checkNotNull(session.sdk.getBadgeBounds(session.factory, view)) { "Guide badge is not drawn on this view" }
+            val session =
+                checkNotNull(sessions.firstOrNull { it.owns(view) }) { "The view is outside guide previews" }
+
+            val bounds = checkNotNull(
+                session.badgesSdk.getBadgeBounds(
+                    session.factory,
+                    view
+                )
+            ) { "Guide badge is not drawn on this view" }
 
             return PointF(bounds.left + bounds.height() / 2f, bounds.centerY())
         }
     }
 
-    private val sdk = checkNotNull(Plugin.getInstance().badgesSdk) { "Badge SDK is unavailable" }
+    private val badgesSdk =
+        checkNotNull(Plugin.getInstance().badgesSdk) { "Badge SDK is unavailable" }
+
     private var state = emptyMap<Long, GuideBadge?>()
     private var closed = false
     private val views = WeakHashMap<BadgeView, Boolean>()
@@ -56,24 +65,28 @@ internal class StreakGuideBadges(private val root: View, private val account: In
 
     private val beforeDraw = ViewTreeObserver.OnPreDrawListener {
         var changed = false
+
         for (view in views.keys.toList()) {
             val inside = view.owner.get()?.let(::owns) == true
 
             if (views.put(view, inside) != inside)
                 changed = true
         }
+
         if (changed && !closed) {
             Plugin.getInstance().rebindStreakBadges()
             refresh()
         }
+
         true
     }
 
     init {
         sessions.add(this)
         root.viewTreeObserver.addOnPreDrawListener(beforeDraw)
+
         try {
-            sdk.installViewFactory(factory)
+            badgesSdk.installViewFactory(factory)
         } catch (error: Throwable) {
             try {
                 close()
@@ -96,7 +109,7 @@ internal class StreakGuideBadges(private val root: View, private val account: In
     }
 
     private fun refresh() =
-        sdk.rebindViews(BadgesSdk.RebindViewsParams.builder(factory).build())
+        badgesSdk.rebindViews(BadgesSdk.RebindViewsParams.builder(factory).build())
 
     override fun close() {
         if (closed)
@@ -111,7 +124,7 @@ internal class StreakGuideBadges(private val root: View, private val account: In
         state = emptyMap()
 
         try {
-            sdk.uninstallViewFactory(factory)
+            badgesSdk.uninstallViewFactory(factory)
         } finally {
             views.clear()
         }
@@ -125,9 +138,10 @@ internal class StreakGuideBadges(private val root: View, private val account: In
 
         fun bind(userId: Long): Boolean {
             val parent = owner.get() ?: return false
-            val badge = (state[userId] as StreakGuideBadge?)?.takeIf {
-                owns(parent) && account == UserConfig.selectedAccount
-            }
+
+            val badge = (state[userId] as StreakGuideBadge?)
+                ?.takeIf { owns(parent) && account == UserConfig.selectedAccount }
+
             if (badge == null) {
                 if (boundData != null)
                     emoji?.setPreviewData(null)
@@ -136,18 +150,24 @@ internal class StreakGuideBadges(private val root: View, private val account: In
 
                 return false
             }
+
+            val streakLevelPack = Plugin.getInstance()
+                .streakLevelPacksController
+                .getCurrent()
+
             val level =
-                if (badge.cold) StreakLevel.Cold
-                else StreakLevel.findByLengthApproximate(badge.length)
-            val config = Plugin.getInstance().streakEmojiPacksController.getCurrent().getEmoji(level)
-            val drawable = emoji ?: StreakEmoji(parent, size).also {
-                emoji = it
-                it.attach()
-            }
+                if (badge.cold) streakLevelPack.getCold()
+                else streakLevelPack.findByLengthApproximate(badge.length)
+
+            val drawable = emoji
+                ?: StreakEmoji(parent, size)
+                    .also { emoji = it; it.attach() }
+
             val data = StreakViewData(
                 badge.length,
-                config.documentId,
-                config.accentColor ?: Color.valueOf(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon)),
+                level.documentId,
+                level.accentColor
+                    ?: Color.valueOf(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon)),
                 false
             )
 

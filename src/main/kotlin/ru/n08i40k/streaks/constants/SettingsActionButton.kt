@@ -4,5 +4,5 @@ object SettingsActionButton {
     const val REBUILD_ALL = "rebuildAllPrivateChats"
     const val EXPORT_BACKUP_NOW = "exportBackupNow"
     const val OPEN_GUIDES = "openGuides"
-    const val OPEN_EMOJI_PACKS = "openEmojiPacks"
+    const val OPEN_LEVEL_PACKS = "openEmojiPacks"
 }

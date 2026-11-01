@@ -3,59 +3,57 @@ package ru.n08i40k.streaks.controller
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.toPersistentList
 import ru.n08i40k.streaks.Plugin
-import ru.n08i40k.streaks.data.StreakEmojiPack
-import ru.n08i40k.streaks.database.dao.StreakEmojiPackDao
+import ru.n08i40k.streaks.data.StreakLevelPack
+import ru.n08i40k.streaks.database.dao.StreakLevelPackDao
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
-import ru.n08i40k.streaks.exception.InvalidStreakEmojiPackIdException
+import ru.n08i40k.streaks.exception.InvalidStreakLevelPackIdException
 import java.util.UUID
 import kotlin.time.Clock
 
-class StreakEmojiPacksController(private val dao: StreakEmojiPackDao) {
+class StreakLevelPacksController(private val dao: StreakLevelPackDao) {
     companion object {
         const val SHARED_PREFS_KEY = "active_streak_emoji_pack"
     }
 
     @Volatile
-    private var currentPack = StreakEmojiPack.builtin[0]
+    private var currentPack = StreakLevelPack.builtin[0]
 
-    private suspend fun findById(id: UUID): StreakEmojiPack? {
-        StreakEmojiPack.builtin
+    private suspend fun findById(id: UUID): StreakLevelPack? {
+        StreakLevelPack.builtin
             .find { it.id == id }
             ?.let { return it }
 
         return dao.findById(id)
     }
 
-    private suspend fun findByIdOrThrow(id: UUID): StreakEmojiPack =
+    private suspend fun findByIdOrThrow(id: UUID): StreakLevelPack =
         findById(id)
-            ?: throw InvalidStreakEmojiPackIdException("Unable to find streak emoji pack with id $id")
+            ?: throw InvalidStreakLevelPackIdException("Unable to find streak level pack with id $id")
 
     suspend fun init() {
         // fix broken packs
         val updatedPacks = dao.getAll()
             .mapNotNull { pack ->
-                var newPack: StreakEmojiPack? = null
+                var newPack: StreakLevelPack? = null
 
-                val parent = StreakEmojiPack.builtin.find { it.id == pack.basedOn }
+                val parent = StreakLevelPack.builtin.find { it.id == pack.basedOn }
                     ?: run {
-                        val parentPack = StreakEmojiPack.builtin[0]
+                        val parentPack = StreakLevelPack.builtin[0]
                         newPack = pack.copy(basedOn = parentPack.id)
 
                         parentPack
                     }
 
-                if (parent.emojis.keys != pack.emojis.keys) {
-                    val emojis = parent.emojis.toMutableMap()
+                val emojis = pack.emojis
+                    .filterKeys { StreakLevelPack.extractLength(it) >= 0 }
+                    .toMutableMap()
 
-                    for ((key, value) in pack.emojis) {
-                        // keep only valid entries
-                        if (emojis.contains(key))
-                            emojis[key] = value
-                    }
+                for (key in listOf("cold", "3d"))
+                    emojis.putIfAbsent(key, parent.emojis.getValue(key))
 
+                if (emojis != pack.emojis)
                     newPack = (newPack ?: pack).copy(emojis = emojis)
-                }
 
                 return@mapNotNull newPack
             }
@@ -77,12 +75,12 @@ class StreakEmojiPacksController(private val dao: StreakEmojiPackDao) {
         }
     }
 
-    fun getCurrent(): StreakEmojiPack = currentPack
+    fun getCurrent(): StreakLevelPack = currentPack
 
-    suspend fun getAll(): PersistentList<StreakEmojiPack> =
-        (StreakEmojiPack.builtin + dao.getAll()).toPersistentList()
+    suspend fun getAll(): PersistentList<StreakLevelPack> =
+        (StreakLevelPack.builtin + dao.getAll()).toPersistentList()
 
-    suspend fun setCurrent(id: UUID): StreakEmojiPack {
+    suspend fun setCurrent(id: UUID): StreakLevelPack {
         val pack = findByIdOrThrow(id)
 
         synchronized(this) {
@@ -94,19 +92,20 @@ class StreakEmojiPacksController(private val dao: StreakEmojiPackDao) {
             }
         }
 
-        EventBus.emit(PluginEvent.ActiveStreakEmojiPackChanged(Clock.System.now()))
+        EventBus.emit(PluginEvent.ActiveStreakLevelPackChanged(Clock.System.now()))
 
         return pack
     }
 
-    suspend fun create(basedOn: UUID): StreakEmojiPack {
+    suspend fun create(basedOn: UUID): StreakLevelPack {
         val basePack = findByIdOrThrow(basedOn)
 
         if (!basePack.isBuiltin)
-            throw IllegalArgumentException("Unable to create emoji pack based on non-builtin pack")
+            throw IllegalArgumentException("Unable to create streak level pack based on non-builtin pack")
 
         val newId = UUID.randomUUID()
-        val newPack = basePack.copy(id = newId, basedOn = basePack.id, name = newId.toString())
+        val newPack =
+            basePack.copy(id = newId, basedOn = basePack.id, name = newId.toString(), version = 2)
 
         dao.insertOrReplace(newPack)
 
@@ -116,12 +115,14 @@ class StreakEmojiPacksController(private val dao: StreakEmojiPackDao) {
     suspend fun exists(id: UUID): Boolean = findById(id) != null
 
     // returns true if an already existing pack was replaced
-    suspend fun import(pack: StreakEmojiPack): Boolean {
-        if (pack.isBuiltin)
-            throw IllegalArgumentException("Unable to import emoji pack with builtin id ${pack.id}")
+    suspend fun import(pack: StreakLevelPack): Boolean {
+        require(StreakLevelPack.isValid(pack)) { "Invalid streak levels" }
 
-        if (StreakEmojiPack.builtin.none { it.id == pack.basedOn })
-            throw IllegalArgumentException("Unable to import emoji pack based on non-builtin pack ${pack.basedOn}")
+        if (pack.isBuiltin)
+            throw IllegalArgumentException("Unable to import streak level pack with builtin id ${pack.id}")
+
+        if (StreakLevelPack.builtin.none { it.id == pack.basedOn })
+            throw IllegalArgumentException("Unable to import streak level pack based on non-builtin pack ${pack.basedOn}")
 
         val replaced = dao.findById(pack.id) != null
 
@@ -132,7 +133,9 @@ class StreakEmojiPacksController(private val dao: StreakEmojiPackDao) {
         return replaced
     }
 
-    suspend fun update(pack: StreakEmojiPack) {
+    suspend fun update(pack: StreakLevelPack) {
+        require(StreakLevelPack.isValid(pack)) { "Invalid streak levels" }
+
         findByIdOrThrow(pack.id)
 
         if (pack.isBuiltin)
@@ -149,7 +152,7 @@ class StreakEmojiPacksController(private val dao: StreakEmojiPackDao) {
         }
 
         if (isCurrent)
-            EventBus.emit(PluginEvent.ActiveStreakEmojiPackChanged(Clock.System.now()))
+            EventBus.emit(PluginEvent.ActiveStreakLevelPackChanged(Clock.System.now()))
     }
 
     suspend fun delete(id: UUID) {
@@ -159,7 +162,7 @@ class StreakEmojiPacksController(private val dao: StreakEmojiPackDao) {
             throw IllegalArgumentException("Unable to delete builtin pack")
 
         if (pack.id == currentPack.id)
-            setCurrent(StreakEmojiPack.builtin[0].id)
+            setCurrent(StreakLevelPack.builtin[0].id)
 
         dao.delete(pack)
     }

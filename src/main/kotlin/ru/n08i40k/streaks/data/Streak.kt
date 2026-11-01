@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Ignore
 import kotlinx.datetime.TimeZone
+import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.extension.toEpochDays
 import kotlin.math.min
 import kotlin.time.Clock
@@ -46,13 +47,22 @@ data class Streak(
     @Ignore
     val canRestore: Boolean
 
-    @delegate:Ignore
-    val level: StreakLevel by lazy {
-        StreakLevel.findByLengthApproximate(length)
-    }
+    @get:Ignore
+    val level: StreakLevel
+        get() = Plugin.getInstance()
+            .streakLevelPacksController
+            .getCurrent()
+            .findByLengthApproximate(length)
 
     @get:Ignore
-    val viewLevel: StreakLevel get() = if (frozen) StreakLevel.Cold else level
+    val viewLevel: StreakLevel
+        get() = if (frozen)
+            Plugin.getInstance()
+                .streakLevelPacksController
+                .getCurrent()
+                .getCold()
+        else
+            level
 
     @get:Ignore
     val isVisible get() = length >= MIN_VISIBLE_LENGTH
