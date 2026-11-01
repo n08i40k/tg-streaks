@@ -197,3 +197,24 @@ GuideOverlayScene(
 (`StreakControlFragment`, `RebuildBottomSheet`, `StreakInfoBottomSheet`, попап
 стрика) с локальным состоянием, `streaks/guide/badge` рисует огоньки сценария.
 Настройка `DEBUG_MODE` передаётся из Python в `Plugin.setGuideDebugMode`.
+
+### Совместимость клиента
+
+Минимальная поддерживаемая версия exteraGram — 12.1.1. В клиентах без
+`MainTabsActivity` сцена списка использует непосредственно `DialogsActivity`.
+Код нижних вкладок и его `@JvmField`-аксессоры находятся отдельно, чтобы
+загрузка старого клиента не требовала отсутствующих классов. R8 должен сохранять
+эту границу (см. правила `GuideMainTabs` и `MainTabsAccessorsKt`).
+
+`hasMainTabs`, аниматор вкладок и панели подсказок используются только при
+наличии соответствующих полей (`getFieldGetterOrNull`/`getFieldSetterOrNull`).
+Методы, которые в части клиентов объявлены `protected` (`ActionBar.onPause`,
+`DialogsActivity.getListView`, `BottomSheet.cancelSheetAnimation`), вызываются
+через `MethodHandle`. Фабрика навигации ищет `newLayout` и в самом
+`INavigationLayout`, и в D8 companion `INavigationLayout$-CC`.
+
+При проверке совместимости достаточно читать таблицы определений DEX:
+декомпиляция всего APK не требуется. Сигнатуры проверены по локальным APK
+12.1.1, 12.2.3, 12.2.10, 12.5.1, 12.6.3-beta, обеим сборкам 12.6.4-beta
+(66669 и 69999), 12.8.1-beta, 12.9.0 и 12.10.1-beta.
+Такая проверка не заменяет проигрывание гайдов на устройстве.

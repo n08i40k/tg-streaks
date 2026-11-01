@@ -29,3 +29,17 @@ internal fun getMethodHandle(klass: Class<*>, name: String, vararg parameterType
 
     return MethodHandles.lookup().unreflect(method)
 }
+
+internal fun getFieldGetterOrNull(klass: Class<*>, name: String): MethodHandle? =
+    try {
+        getFieldGetter(klass, name)
+    } catch (_: NoSuchFieldException) {
+        null
+    }
+
+internal fun getFieldSetterOrNull(klass: Class<*>, name: String): MethodHandle? =
+    try {
+        getFieldSetter(klass, name)
+    } catch (_: NoSuchFieldException) {
+        null
+    }

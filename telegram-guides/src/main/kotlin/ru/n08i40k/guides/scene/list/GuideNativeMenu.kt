@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -17,13 +16,8 @@ import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
 import org.telegram.ui.Adapters.DialogsAdapter
 import org.telegram.ui.Cells.DialogCell
-import org.telegram.ui.Components.AvatarDrawable
-import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.Components.RecyclerListView
 import org.telegram.ui.DialogsActivity
-import org.telegram.ui.MainTabsActivity
-import org.telegram.ui.MainTabsActivityController
-import org.telegram.ui.ViewPagerActivity
 import ru.n08i40k.guides.model.GuideChat
 import ru.n08i40k.guides.profile.GuidePeer
 import ru.n08i40k.guides.profile.GuideProfiles
@@ -39,19 +33,22 @@ import ru.n08i40k.guides.util.`DialogsActivity$ViewPage$progressView`
 import ru.n08i40k.guides.util.`DialogsActivity$accountPanels`
 import ru.n08i40k.guides.util.`DialogsActivity$animatorFilterTabsVisible`
 import ru.n08i40k.guides.util.`DialogsActivity$canShowFilterTabsView$$setter`
+import ru.n08i40k.guides.util.`DialogsActivity$hasMainTabs$$setter`
 import ru.n08i40k.guides.util.`DialogsActivity$viewPages`
-import ru.n08i40k.guides.util.`MainTabsActivity$dialogsActivity$$setter`
-import ru.n08i40k.guides.util.`MainTabsActivity$updateLayoutWrapper`
-import ru.n08i40k.guides.util.`ViewPagerActivity$checkFragmentsVisibility`
-import ru.n08i40k.guides.util.`ViewPagerActivity$isFullyVisible$$setter`
-import ru.n08i40k.guides.util.`ViewPagerActivity$isResumed$$setter`
-import ru.n08i40k.guides.util.`ViewPagerActivity$visibilityByParent$$setter`
+import ru.n08i40k.guides.util.dialogsListView
+import ru.n08i40k.guides.util.invokeOnPause
+import ru.n08i40k.guides.util.removeAllScrollListeners
 
 internal class GuideNativeMenu(
     private val context: Context,
     private val profiles: GuideProfiles,
 ) {
-    private val tabAvatars = mutableMapOf<BackupImageView, AvatarDrawable>()
+    private val supportsMainTabs = try {
+        Class.forName("org.telegram.ui.MainTabsActivity", false, DialogsActivity::class.java.classLoader)
+        true
+    } catch (_: ClassNotFoundException) {
+        false
+    }
     private var chats: List<GuideChat> = emptyList()
     private val previewDate = (System.currentTimeMillis() / 1000).toInt()
     private var title = "Telegram"
@@ -78,7 +75,7 @@ internal class GuideNativeMenu(
 
         override fun onPause() {
             isPaused = true
-            actionBar?.onPause()
+            actionBar?.invokeOnPause()
         }
 
         override fun setNavigationBarColor(color: Int) = Unit
@@ -92,59 +89,16 @@ internal class GuideNativeMenu(
             }
     }.apply {
         setCurrentAccount(profiles.account)
-        hasMainTabs = true
+        `DialogsActivity$hasMainTabs$$setter`?.invokeExact(this as DialogsActivity, supportsMainTabs)
         storiesEnabled = false
     }
 
-    val main: MainTabsActivity = object : MainTabsActivity() {
-        override fun onFragmentCreate() =
-            true
-
-        override fun getDialogsActivity() =
-            dialogs
-
-        override fun createBaseFragmentAt(position: Int): BaseFragment =
-            if (position == startPosition) dialogs else object : BaseFragment() {
-                override fun createView(context: Context): View =
-                    FrameLayout(context).also { fragmentView = it }
-            }
-
-        override fun didReceivedNotification(id: Int, account: Int, vararg args: Any?) = Unit
-
-        override fun onBecomeFullyVisible() = Unit
-
-        override fun onTransitionAnimationStart(isOpen: Boolean, backward: Boolean) = Unit
-
-        override fun onTransitionAnimationEnd(isOpen: Boolean, backward: Boolean) = Unit
-
-        override fun onResume() {
-            isPaused = false
-            resumePages(true)
-        }
-
-        override fun onPause() {
-            isPaused = true
-            resumePages(false)
-        }
-
-        override fun setNavigationBarColor(color: Int) = Unit
-
-        override fun createView(context: Context): View =
-            super.createView(context).also { sanitizeTabs() }
-    }.apply { setCurrentAccount(profiles.account) }
-
-    init {
-        `MainTabsActivity$dialogsActivity$$setter`.invokeExact(main as MainTabsActivity, dialogs)
-        dialogs.setMainTabsActivityController(object : MainTabsActivityController {
-            override fun openAccountSelector(anchor: View, view: View) =
-                false
-
-            override fun setTabsVisible(visible: Boolean) = Unit
-        })
-    }
+    private val tabs = if (supportsMainTabs) GuideMainTabs(dialogs, profiles.account) else null
+    val main: BaseFragment
+        get() = tabs?.fragment ?: dialogs
 
     val list
-        get() = dialogs.listView
+        get() = dialogs.dialogsListView
 
     val manager
         get() = list.layoutManager as LinearLayoutManager
@@ -174,31 +128,7 @@ internal class GuideNativeMenu(
     }
 
     private fun sanitizeTabs() {
-        main.tabs?.forEachIndexed { index, tab ->
-            if (tab != null) {
-                val unread = if (index == 0) chats.sumOf { it.unreadCount } else 0
-                tab.setCounter(if (unread > 0) unread.toString() else null, false, false)
-                tab.setPremiumBadge(false)
-                tab.backupImageView?.let { image ->
-                    val placeholder = tabAvatars.getOrPut(image) {
-                        AvatarDrawable().apply { setInfo(0L, "Гайд", null) }
-                    }
-
-                    if (image.imageReceiver.staticThumb !== placeholder)
-                        image.setImageDrawable(placeholder)
-                }
-            }
-        }
-        (`MainTabsActivity$updateLayoutWrapper`.invokeExact(main as MainTabsActivity) as View?)?.visibility = View.GONE
-    }
-
-    private fun resumePages(resume: Boolean) {
-        val pager = main as ViewPagerActivity
-
-        `ViewPagerActivity$isResumed$$setter`.invokeExact(pager, resume)
-        `ViewPagerActivity$isFullyVisible$$setter`.invokeExact(pager, resume)
-        `ViewPagerActivity$visibilityByParent$$setter`.invokeExact(pager, if (resume) 1f else 0f)
-        `ViewPagerActivity$checkFragmentsVisibility`.invokeExact(pager)
+        tabs?.sanitize(chats.sumOf { it.unreadCount })
     }
 
     private fun pages(): List<DialogsActivity.ViewPage> =
@@ -210,7 +140,7 @@ internal class GuideNativeMenu(
             val adapter = LocalAdapter().apply { isEmpty = chats.isEmpty() }
 
             (`DialogsActivity$ViewPage$itemTouchhelper`.invokeExact(page) as ItemTouchHelper?)?.attachToRecyclerView(null)
-            list.clearOnScrollListeners()
+            list.removeAllScrollListeners()
             `DialogsActivity$ViewPage$dialogsAdapter$$setter`.invokeExact(page, adapter as DialogsAdapter)
             list.adapter = adapter
             (`DialogsActivity$ViewPage$progressView`.invokeExact(page) as View?)?.visibility = View.GONE
@@ -225,7 +155,9 @@ internal class GuideNativeMenu(
         dialogs.progressToDialogStoriesCell = 0f
         dialogs.dialogStoriesCell?.visibility = View.GONE
         `DialogsActivity$canShowFilterTabsView$$setter`.invokeExact(dialogs, false)
-        (`DialogsActivity$animatorFilterTabsVisible`.invokeExact(dialogs) as BoolAnimator).setValue(false, false)
+        `DialogsActivity$animatorFilterTabsVisible`?.let {
+            (it.invokeExact(dialogs) as BoolAnimator).setValue(false, false)
+        }
         for (getter in `DialogsActivity$accountPanels`)
             (getter.invokeExact(dialogs) as View?)?.visibility = View.GONE
     }

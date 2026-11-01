@@ -39,3 +39,11 @@
 
 # есть в рантайме ART, но отсутствует в android.jar
 -dontwarn sun.misc.Unsafe
+
+-keep,allowobfuscation class ru.n08i40k.guides.scene.list.GuideMainTabs** { *; }
+-keep,allowobfuscation class ru.n08i40k.guides.util.MainTabsAccessorsKt { *; }
+
+-keepclassmembers class ru.n08i40k.guides.scene.chat.GuideComposerDelegate {
+    public void needStartRecordVideo(int, boolean, int, int, long, long);
+    public void onMessageSend(java.lang.CharSequence, boolean, int, long);
+}

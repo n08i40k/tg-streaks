@@ -12,6 +12,7 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.SweepGradient
+import android.graphics.drawable.Drawable
 import android.view.Gravity
 import android.widget.FrameLayout
 import org.telegram.messenger.ImageLoader
@@ -174,6 +175,10 @@ internal class StreakUpgradeSceneView(
     private fun loadEmoji(view: BackupImageView, info: StreakEmojiInfo, color: Int) {
         var ready = false
         view.imageReceiver.setDelegate(object : ImageReceiver.ImageReceiverDelegate {
+            override fun didSetImageBitmap(type: Int, key: String?, drawable: Drawable?) = Unit
+
+            override fun onAnimationReady(receiver: ImageReceiver?) = Unit
+
             override fun didSetImage(receiver: ImageReceiver, set: Boolean, thumb: Boolean, memCache: Boolean) {
                 if (released || ready || !set || thumb || !receiver.hasNotThumb())
                     return

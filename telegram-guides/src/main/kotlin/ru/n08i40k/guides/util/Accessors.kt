@@ -4,14 +4,15 @@ package ru.n08i40k.guides.util
 
 import android.view.View
 import androidx.recyclerview.widget.RecyclerView
+import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.ActionBar.ActionBarMenuItem
+import org.telegram.ui.ActionBar.BottomSheet
 import org.telegram.ui.Cells.ChatActionCell
 import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.ChatActivity
+import org.telegram.ui.Components.RecyclerListView
 import org.telegram.ui.DialogsActivity
-import org.telegram.ui.MainTabsActivity
 import org.telegram.ui.ProfileActivity
-import org.telegram.ui.ViewPagerActivity
 
 @JvmField
 internal val `ChatActivity$paused` =
@@ -127,31 +128,6 @@ internal val `ProfileActivity$nameTextView` =
     getFieldGetter(ProfileActivity::class.java, "nameTextView")
 
 @JvmField
-internal val `MainTabsActivity$dialogsActivity$$setter` =
-    getFieldSetter(MainTabsActivity::class.java, "dialogsActivity")
-
-@JvmField
-internal val `MainTabsActivity$updateLayoutWrapper` =
-    getFieldGetter(MainTabsActivity::class.java, "updateLayoutWrapper")
-        .retype(View::class.java, MainTabsActivity::class.java)
-
-@JvmField
-internal val `ViewPagerActivity$isResumed$$setter` =
-    getFieldSetter(ViewPagerActivity::class.java, "isResumed")
-
-@JvmField
-internal val `ViewPagerActivity$isFullyVisible$$setter` =
-    getFieldSetter(ViewPagerActivity::class.java, "isFullyVisible")
-
-@JvmField
-internal val `ViewPagerActivity$visibilityByParent$$setter` =
-    getFieldSetter(ViewPagerActivity::class.java, "visibilityByParent")
-
-@JvmField
-internal val `ViewPagerActivity$checkFragmentsVisibility` =
-    getMethodHandle(ViewPagerActivity::class.java, "checkFragmentsVisibility")
-
-@JvmField
 internal val `DialogsActivity$viewPages` =
     getFieldGetter(DialogsActivity::class.java, "viewPages")
 
@@ -161,7 +137,11 @@ internal val `DialogsActivity$canShowFilterTabsView$$setter` =
 
 @JvmField
 internal val `DialogsActivity$animatorFilterTabsVisible` =
-    getFieldGetter(DialogsActivity::class.java, "animatorFilterTabsVisible")
+    getFieldGetterOrNull(DialogsActivity::class.java, "animatorFilterTabsVisible")
+
+@JvmField
+internal val `DialogsActivity$hasMainTabs$$setter` =
+    getFieldSetterOrNull(DialogsActivity::class.java, "hasMainTabs")
 
 @JvmField
 internal val `DialogsActivity$accountPanels` = listOf(
@@ -173,9 +153,9 @@ internal val `DialogsActivity$accountPanels` = listOf(
     "animatedStatusView",
     "storyHint",
     "storyPremiumHint",
-).map {
-    getFieldGetter(DialogsActivity::class.java, it)
-        .retype(View::class.java, DialogsActivity::class.java)
+).mapNotNull {
+    getFieldGetterOrNull(DialogsActivity::class.java, it)
+        ?.retype(View::class.java, DialogsActivity::class.java)
 }
 
 @JvmField
@@ -210,3 +190,36 @@ internal val `DialogCell$drawPin$$setter` =
 @JvmField
 internal val `DialogCell$dialogMuted$$setter` =
     getFieldSetter(DialogCell::class.java, "dialogMuted")
+
+@JvmField
+internal val `RecyclerView$mScrollListeners` =
+    getFieldGetter(RecyclerView::class.java, "mScrollListeners")
+
+internal fun RecyclerView.removeAllScrollListeners() {
+    (`RecyclerView$mScrollListeners`.invokeExact(this) as List<*>?)
+        ?.toList()
+        ?.forEach { removeOnScrollListener(it as RecyclerView.OnScrollListener) }
+}
+
+@JvmField
+internal val `ActionBar$onPause` =
+    getMethodHandle(ActionBar::class.java, "onPause")
+
+internal fun ActionBar.invokeOnPause() {
+    `ActionBar$onPause`.invokeExact(this)
+}
+
+@JvmField
+internal val `DialogsActivity$getListView` =
+    getMethodHandle(DialogsActivity::class.java, "getListView")
+
+internal val DialogsActivity.dialogsListView: RecyclerListView
+    get() = `DialogsActivity$getListView`.invokeExact(this) as RecyclerListView
+
+@JvmField
+internal val `BottomSheet$cancelSheetAnimation` =
+    getMethodHandle(BottomSheet::class.java, "cancelSheetAnimation")
+
+internal fun BottomSheet.invokeCancelSheetAnimation() {
+    `BottomSheet$cancelSheetAnimation`.invokeExact(this)
+}

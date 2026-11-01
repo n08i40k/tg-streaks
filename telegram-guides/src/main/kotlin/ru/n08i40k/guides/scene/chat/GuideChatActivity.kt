@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import org.telegram.ui.ChatActivity
+import ru.n08i40k.guides.util.invokeOnPause
 
 open class GuideChatActivity(arguments: Bundle) : ChatActivity(arguments) {
     internal var historyCreated: () -> Unit = {}
@@ -47,7 +48,7 @@ open class GuideChatActivity(arguments: Bundle) : ChatActivity(arguments) {
     override fun onPause() {
         fragmentBeginToShow = false
         isPaused = true
-        actionBar?.onPause()
+        actionBar?.invokeOnPause()
         chatActivityEnterView?.onPause()
         contentView?.onPause()
     }

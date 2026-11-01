@@ -7,7 +7,7 @@ import org.telegram.messenger.MessageObject
 import org.telegram.tgnet.TLObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
-import org.telegram.ui.ActionBar.INavigationLayout
+import ru.n08i40k.guides.util.createGuideNavigationLayout
 import ru.n08i40k.guides.api.GuideBadgeSession
 import ru.n08i40k.guides.api.GuideMessageContent
 import ru.n08i40k.guides.api.GuidePresentation
@@ -78,5 +78,5 @@ internal class StreakGuidePresentation : GuidePresentation {
 internal fun sheetHost(context: Context, account: Int): BaseFragment =
     object : BaseFragment() {}.apply {
         setCurrentAccount(account)
-        setParentLayout(INavigationLayout.newLayout(requireNotNull(AndroidUtilities.findActivity(context)), false))
+        setParentLayout(createGuideNavigationLayout(requireNotNull(AndroidUtilities.findActivity(context))))
     }

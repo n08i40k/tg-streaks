@@ -14,7 +14,7 @@ fun PremiumPreviewBottomSheet.takeEmbeddedContent(): View =
 private fun <T : BottomSheet> T.createDetached(): T = apply {
     create()
 
-    cancelSheetAnimation()
+    invokeCancelSheetAnimation()
     getContainerView().apply {
         visibility = View.VISIBLE
         alpha = 1f

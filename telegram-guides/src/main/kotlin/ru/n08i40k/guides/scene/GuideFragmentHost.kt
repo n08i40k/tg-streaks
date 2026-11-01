@@ -4,10 +4,10 @@ import android.content.Context
 import android.view.View
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.ui.ActionBar.BaseFragment
-import org.telegram.ui.ActionBar.INavigationLayout
+import ru.n08i40k.guides.util.createGuideNavigationLayout
 
 internal class GuideFragmentHost(context: Context) {
-    private val layout = INavigationLayout.newLayout(requireNotNull(AndroidUtilities.findActivity(context)), false).apply {
+    private val layout = createGuideNavigationLayout(requireNotNull(AndroidUtilities.findActivity(context))).apply {
         setRemoveActionBarExtraHeight(true)
         setFragmentStack(arrayListOf())
     }
