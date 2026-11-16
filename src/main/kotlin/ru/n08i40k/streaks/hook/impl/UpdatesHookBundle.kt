@@ -5,16 +5,16 @@ import org.telegram.messenger.MessagesController
 import org.telegram.messenger.SendMessagesHelper
 import org.telegram.messenger.UserConfig
 import org.telegram.tgnet.TLRPC
+import ru.n08i40k.shim.hooks.HooksScope
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
-import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.`BaseController$currentAccount`
 import ru.n08i40k.streaks.util.TLCompat
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-class UpdatesHookBundle : HookBundle() {
+class UpdatesHookBundle : HookBundle {
     private data class PendingIncomingUpdate(
         val peerUserId: Long,
         val at: Instant,
@@ -122,10 +122,7 @@ class UpdatesHookBundle : HookBundle() {
             }
         }
 
-    override fun inject(
-        before: InstallHook,
-        after: InstallHook
-    ) {
+    override fun HooksScope.install() {
         // Обработка входящих сообщений
         before(
             MessagesController::class.java.getDeclaredMethod(

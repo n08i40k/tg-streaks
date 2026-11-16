@@ -14,13 +14,13 @@ import org.telegram.messenger.UserConfig
 import org.telegram.messenger.UserObject
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.Cells.ChatActionCell
+import ru.n08i40k.shim.hooks.HooksScope
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.ServiceMessage
 import ru.n08i40k.streaks.event.EventBus
 import ru.n08i40k.streaks.event.PluginEvent
 import ru.n08i40k.streaks.event.eject.EjectNotifier
 import ru.n08i40k.streaks.hook.HookBundle
-import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.ui.levelPack.share.StreakLevelPackImportBottomSheet
 import ru.n08i40k.streaks.util.AccountTaskExecutor
@@ -31,18 +31,15 @@ import ru.n08i40k.streaks.util.`ChatActionCell$setStarsPaused`
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.StreakLevelPackCodec
 import ru.n08i40k.streaks.util.`TLRPC$Message$$fields`
+import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.isClientVersionBelow
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
 import java.util.AbstractMap
 import kotlin.time.Clock
-import ru.n08i40k.streaks.util.dp
 
-class ServiceMessagesHookBundle : HookBundle() {
-    override fun inject(
-        before: InstallHook,
-        after: InstallHook
-    ) {
+class ServiceMessagesHookBundle : HookBundle {
+    override fun HooksScope.install() {
         // это кстати хук MessageObject для полной замены вида сервисных сообщений
         before(
             MessageObject::class.java.getDeclaredConstructor(

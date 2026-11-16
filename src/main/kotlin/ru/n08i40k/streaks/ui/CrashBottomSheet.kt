@@ -20,7 +20,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.exteragram.messenger.plugins.PluginsController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,8 +33,7 @@ import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.LaunchActivity
-import ru.n08i40k.reflection.getFieldGetter
-import ru.n08i40k.reflection.retype
+import ru.n08i40k.shim.compat.PluginsControllerCompat
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.constants.TrustedSources
@@ -75,27 +73,8 @@ class CrashBottomSheet(
             }
         }
 
-        private val CLASS = PluginsController::class.java
-
-        private val GET_INSTANCE by lazy { CLASS.getDeclaredMethod("getInstance") }
-
-        // в части клиентов геттера нет, тогда поле читается напрямую
-        private val GET_PLUGINS by lazy { CLASS.declaredMethods.find { it.name == "getPlugins" } }
-        private val PLUGINS by lazy {
-            getFieldGetter(CLASS, "plugins").retype(Any::class.java, CLASS)
-        }
-
-        @Suppress("UNCHECKED_CAST")
         val plugins: Collection<com.exteragram.messenger.plugins.Plugin>
-            get() {
-                val controller = GET_INSTANCE.invoke(null) as PluginsController
-
-                val map = GET_PLUGINS?.invoke(controller)
-                    ?: (PLUGINS.invokeExact(controller) as Any)
-
-                return map.javaClass.getDeclaredMethod("values")
-                    .invoke(map) as Collection<com.exteragram.messenger.plugins.Plugin>
-            }
+            get() = PluginsControllerCompat.plugins
     }
 
     class PluginsListAdapter(

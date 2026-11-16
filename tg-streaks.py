@@ -9,27 +9,24 @@ import traceback
 import zipfile
 from typing import Optional, cast
 
-import requests
-from java import dynamic_proxy, jarray, jbyte
+from java import dynamic_proxy
 from android.content import Intent
 from android.content import DialogInterface
 from android.net import Uri
-from android.os import Environment, Process
+from android.os import Process
 from android.util import Log
 from android.webkit import ValueCallback
 from android_utils import copy_to_clipboard, run_on_ui_thread
-from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
+from base_plugin import BasePlugin
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
-from java.lang import Boolean, Class, Integer, Long, String
+from java.lang import Boolean, Class, Runnable, String
 from java.nio import ByteBuffer
 from java.util import Locale
 from org.telegram.messenger import ApplicationLoader, LocaleController
-from org.telegram.messenger import R as R_tg
 from org.telegram.ui.ActionBar import AlertDialog
 from typing_extensions import Any
 from ui.bulletin import BulletinHelper
-from ui.settings import Divider, Header, Selector, Switch, Text
 
 # fmt: off
 
@@ -46,11 +43,6 @@ __min_version__ = "12.1.1"
 DEBUG_MODE = False
 LOGCAT_TAG = __id__
 
-# Helper constants
-
-REPO_OWNER = "n08i40k"
-REPO_NAME = __id__
-
 # Resource hashes
 DEX_BLOCK = ("# === EMDEDDED DEX BEGIN ===", "# === EMDEDDED DEX END ===")
 RESOURCES_BLOCK = ("# === EMDEDDED RESOURCES BEGIN ===", "# === EMDEDDED RESOURCES END ===")
@@ -59,17 +51,10 @@ RESOURCES_BLOCK = ("# === EMDEDDED RESOURCES BEGIN ===", "# === EMDEDDED RESOURC
 
 PLUGIN_UPDATE_TG_URL = "tg://resolve?domain=n08i40k_extera&post=3"
 PLUGIN_CHAT_TG_URL = "tg://resolve?domain=n08i40k_extera_chat"
-PLUGIN_UPDATE_API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
-PLUGIN_DOCS_URL = f"https://{REPO_OWNER}.github.io/{REPO_NAME}/"
 
 # Other constants
 
-UPDATE_CHECK_TIMEOUT_SECONDS = 6
-SETTING_UPDATE_CHECK_ENABLED = "update_check_enabled"
 SETTING_LAST_LOADED_VERSION = "last_loaded_version"
-SETTING_PET_FAB_SIZE_INDEX = "pet_fab_size_index"
-SETTING_AUTO_STREAK_CREATION_ENABLED = "auto_streak_creation_enabled"
-PET_FAB_SIZE_OPTIONS_DP = (64, 80, 96, 112, 128)
 VALID_ISO_LANGUAGES = frozenset(str(code) for code in Locale.getISOLanguages())
 
 
@@ -106,86 +91,10 @@ def _is_version_older(version: str, required: str) -> bool:
     return left + (0,) * (width - len(left)) < right + (0,) * (width - len(right))
 
 
-I18N_SETTINGS: dict[str, dict[str, str]] = {
-    "settings.backups.description": {
-        "en": "Backups are saved to Downloads/tg-streaks. Restore replaces the current database.",
-        "ru": "Бэкапы лежат в Downloads/tg-streaks. Восстановление заменяет текущую базу.",
-    },
-    "settings.backups.export.title": {"en": "Create backup", "ru": "Создать бэкап"},
-    "settings.backups.reset_database.title": {
-        "en": "Reset plugin database",
-        "ru": "Сбросить базу плагина",
-    },
-    "settings.backups.restore.title": {
-        "en": "Restore backup",
-        "ru": "Восстановить бэкап",
-    },
-    "settings.backups.title": {"en": "Backups", "ru": "Бэкапы"},
-    "settings.help.docs.description": {
-        "en": "Open the plugin user guide in your browser.",
-        "ru": "Открыть руководство пользователя в браузере.",
-    },
-    "settings.help.docs.title": {"en": "Documentation", "ru": "Документация"},
-    "settings.help.guides.title": {"en": "Tutorials", "ru": "Гайды"},
-    "settings.help.title": {"en": "Help", "ru": "Справка"},
-    "settings.pet_button.size.description": {
-        "en": "Floating chat button size.",
-        "ru": "Размер плавающей кнопки в чате.",
-    },
-    "settings.pet_button.size.title": {"en": "Button size", "ru": "Размер кнопки"},
-    "settings.pet_button.title": {"en": "Streak pet", "ru": "Серийчик"},
-    "settings.streak_tools.auto_create.description": {
-        "en": "Streaks start on their own while chatting. When off, a streak appears only after a rebuild.",
-        "ru": "Стрики создаются сами во время переписки. Если выключено, стрик появится только после пересчёта.",
-    },
-    "settings.streak_tools.auto_create.title": {
-        "en": "Automatic streak creation",
-        "ru": "Автосоздание стриков",
-    },
-    "settings.streak_tools.level_packs.title": {
-        "en": "Streak level packs",
-        "ru": "Наборы уровней стрика",
-    },
-    "settings.streak_tools.rebuild_all_chats.description": {
-        "en": "Only user DMs are checked. Bots and groups are skipped.",
-        "ru": "Только лички с пользователями. Боты и группы пропускаются.",
-    },
-    "settings.streak_tools.rebuild_all_chats.title": {
-        "en": "Private chats rebuild",
-        "ru": "Пересчёт стриков в личках",
-    },
-    "settings.streak_tools.title": {"en": "Streak", "ru": "Стрик"},
-    "settings.updates.auto_check.description": {
-        "en": "Checks GitHub releases on startup.",
-        "ru": "Проверяет релизы GitHub при запуске.",
-    },
-    "settings.updates.auto_check.title": {
-        "en": "Update checks",
-        "ru": "Проверка обновлений",
-    },
-    "settings.updates.title": {"en": "Updates", "ru": "Обновления"},
-}
-
 I18N_STATUS: dict[str, dict[str, str]] = {
-    "status.error.backup.apply_failed": {
-        "en": "Backup restore failed: {reason}",
-        "ru": "Не удалось восстановить бэкап: {reason}",
-    },
-    "status.error.backup.not_found": {
-        "en": "No backups found",
-        "ru": "Бэкапы не найдены",
-    },
     "status.error.assets.unpack_failed": {
         "en": "Failed to unpack plugin resources",
         "ru": "Не удалось распаковать ресурсы плагина",
-    },
-    "status.error.chat.detect_current_failed": {
-        "en": "Current chat not found",
-        "ru": "Текущий чат не найден",
-    },
-    "status.error.database.delete_failed": {
-        "en": "Database reset failed: {reason}",
-        "ru": "Не удалось сбросить базу: {reason}",
     },
     "status.error.update.open_link_failed": {
         "en": "Couldn't open update link",
@@ -194,83 +103,6 @@ I18N_STATUS: dict[str, dict[str, str]] = {
     "status.error.update.restart_failed": {
         "en": "Couldn't restart client",
         "ru": "Не удалось перезапустить клиент",
-    },
-    "status.success.backup.imported": {
-        "en": "Backup restored: {name}",
-        "ru": "Бэкап восстановлен: {name}",
-    },
-    "status.success.database.reset_started": {
-        "en": "Database reset started",
-        "ru": "Сброс базы запущен",
-    },
-}
-
-I18N_MENU: dict[str, dict[str, str]] = {
-    "menu.chat.control_panel.description": {
-        "en": "Streak, pet, sync and time zone settings",
-        "ru": "Настройки стрика, серийчика, синхронизации и часового пояса",
-    },
-    "menu.chat.control_panel.title": {"en": "Control panel", "ru": "Панель управления"},
-    "menu.chat.restore_streak_exact.description": {
-        "en": "Available anytime, but limited by 2 usages per chat",
-        "ru": "Доступно в любое время, но с ограничением по 2 раза на чат",
-    },
-    "menu.chat.restore_streak_exact.title": {
-        "en": "Streak restore menu",
-        "ru": "Меню восстановление стрика",
-    },
-    "menu.debug.crash_plugin.description": {"en": "Test crash", "ru": "Тестовый краш"},
-    "menu.debug.crash_plugin.title": {
-        "en": "[DEBUG] Plugin crash",
-        "ru": "[DEBUG] Краш плагина",
-    },
-    "menu.debug.create_streak.description": {
-        "en": "Sets a 3-day streak in this chat",
-        "ru": "Ставит стрик на 3 дня в этом чате",
-    },
-    "menu.debug.create_streak.title": {
-        "en": "[DEBUG] 3-day streak",
-        "ru": "[DEBUG] Стрик на 3 дня",
-    },
-    "menu.debug.delete_pet.description": {
-        "en": "Deletes the streak pet from this chat",
-        "ru": "Удаляет серийчика из этого чата",
-    },
-    "menu.debug.delete_pet.title": {
-        "en": "[DEBUG] Streak pet delete",
-        "ru": "[DEBUG] Удаление серийчика",
-    },
-    "menu.debug.delete_streak.description": {
-        "en": "Deletes the streak from this chat",
-        "ru": "Удаляет стрик из этого чата",
-    },
-    "menu.debug.delete_streak.title": {
-        "en": "[DEBUG] Streak delete",
-        "ru": "[DEBUG] Удаление стрика",
-    },
-    "menu.debug.freeze_streak.description": {
-        "en": "Sets a frozen streak in this chat",
-        "ru": "Ставит замороженный стрик в этом чате",
-    },
-    "menu.debug.freeze_streak.title": {
-        "en": "[DEBUG] Streak freeze",
-        "ru": "[DEBUG] Заморозка стрика",
-    },
-    "menu.debug.kill_streak.description": {
-        "en": "Breaks the streak in this chat",
-        "ru": "Прерывает стрик в этом чате",
-    },
-    "menu.debug.kill_streak.title": {
-        "en": "[DEBUG] Streak break",
-        "ru": "[DEBUG] Обрыв стрика",
-    },
-    "menu.debug.upgrade_streak.description": {
-        "en": "Moves the streak to the next level",
-        "ru": "Поднимает стрик до следующего уровня",
-    },
-    "menu.debug.upgrade_streak.title": {
-        "en": "[DEBUG] Streak upgrade",
-        "ru": "[DEBUG] Повышение стрика",
     },
 }
 
@@ -284,11 +116,6 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
         "en": "Plugin file is damaged",
         "ru": "Файл плагина повреждён",
     },
-    "dialog.backup_restore.browse": {
-        "en": "Browse from device...",
-        "ru": "Выбрать с устройства...",
-    },
-    "dialog.backup_restore.title": {"en": "Choose backup", "ru": "Выберите бэкап"},
     "dialog.downgrade.channel": {
         "en": "Updates channel",
         "ru": "Канал с обновлениями",
@@ -322,20 +149,9 @@ I18N_DIALOGS: dict[str, dict[str, str]] = {
     },
 }
 
-I18N_UPDATE: dict[str, dict[str, str]] = {
-    "update.available.action": {"en": "Update", "ru": "Обновить"},
-    "update.available.message": {
-        "en": "Update available: {current} -> {latest}",
-        "ru": "Есть обновление: {current} -> {latest}",
-    },
-}
-
 I18N_STRINGS: dict[str, dict[str, str]] = {
-    **I18N_SETTINGS,
     **I18N_STATUS,
-    **I18N_MENU,
     **I18N_DIALOGS,
-    **I18N_UPDATE,
 }
 
 # fmt: on
@@ -564,484 +380,11 @@ class ZipResourcesBridge:
                 os.remove(self.zip_path)
 
 
-class ChatContextMenu:
-    """Отвечает за регистрацию кнопок в контекстном меню чата"""
-
-    CONTROL_MENU = "controlMenu"
-    RESTORE_EXACT = "restoreExact"
-
-    DEBUG_CREATE = "debug.create"
-    DEBUG_UPGRADE = "debug.upgrade"
-    DEBUG_FREEZE = "debug.freeze"
-    DEBUG_KILL = "debug.kill"
-    DEBUG_DELETE = "debug.delete"
-    DEBUG_DELETE_PET = "debug.deletePet"
-    DEBUG_CRASH = "debug.crash"
-
-    MENU_PAYLOAD_DIALOG_KEYS = (
-        "dialog_id",
-        "dialogId",
-        "peer_id",
-        "peerId",
-        "chat_id",
-        "chatId",
-        "user_id",
-        "userId",
-    )
-    MENU_PAYLOAD_FRAGMENT_KEYS = (
-        "chatActivity",
-        "fragment",
-        "chatFragment",
-        "target",
-        "object",
-    )
-
-    def __init__(self, plugin: "TgStreaksPlugin"):
-        self.plugin = plugin
-        self._item_ids: dict[str, str] = {}
-        self._callbacks: dict[str, Any] = {}
-
-    @classmethod
-    def _menu_items(cls) -> tuple[dict[str, Any], ...]:
-        return (
-            {
-                "key": cls.CONTROL_MENU,
-                "text_key": "menu.chat.control_panel.title",
-                "subtext_key": "menu.chat.control_panel.description",
-                "icon": "msg_settings",
-                "priority": 1001,
-            },
-            {
-                "key": cls.RESTORE_EXACT,
-                "text_key": "menu.chat.restore_streak_exact.title",
-                "subtext_key": "menu.chat.restore_streak_exact.description",
-                "icon": "msg_reactions",
-                "priority": 999,
-            },
-            {
-                "key": cls.DEBUG_CREATE,
-                "text_key": "menu.debug.create_streak.title",
-                "subtext_key": "menu.debug.create_streak.description",
-                "priority": 993,
-                "debug_only": True,
-            },
-            {
-                "key": cls.DEBUG_UPGRADE,
-                "text_key": "menu.debug.upgrade_streak.title",
-                "subtext_key": "menu.debug.upgrade_streak.description",
-                "priority": 992,
-                "debug_only": True,
-            },
-            {
-                "key": cls.DEBUG_FREEZE,
-                "text_key": "menu.debug.freeze_streak.title",
-                "subtext_key": "menu.debug.freeze_streak.description",
-                "priority": 991,
-                "debug_only": True,
-            },
-            {
-                "key": cls.DEBUG_KILL,
-                "text_key": "menu.debug.kill_streak.title",
-                "subtext_key": "menu.debug.kill_streak.description",
-                "priority": 990,
-                "debug_only": True,
-            },
-            {
-                "key": cls.DEBUG_DELETE,
-                "text_key": "menu.debug.delete_streak.title",
-                "subtext_key": "menu.debug.delete_streak.description",
-                "priority": 989,
-                "debug_only": True,
-            },
-            {
-                "key": cls.DEBUG_DELETE_PET,
-                "text_key": "menu.debug.delete_pet.title",
-                "subtext_key": "menu.debug.delete_pet.description",
-                "priority": 988,
-                "debug_only": True,
-            },
-            {
-                "key": cls.DEBUG_CRASH,
-                "text_key": "menu.debug.crash_plugin.title",
-                "subtext_key": "menu.debug.crash_plugin.description",
-                "priority": 987,
-                "debug_only": True,
-            },
-        )
-
-    def register(self):
-        self.unregister()
-
-        for item in self._menu_items():
-            if item.get("debug_only", False) and not DEBUG_MODE:
-                continue
-
-            key = str(item["key"])
-
-            try:
-                menu_item_args = {
-                    "menu_type": MenuItemType.CHAT_ACTION_MENU,
-                    "text": self.plugin._t(str(item["text_key"])),
-                    "subtext": self.plugin._t(str(item["subtext_key"])),
-                    "on_click": lambda payload, button=key: self._on_click(
-                        button, payload
-                    ),
-                    "priority": int(item["priority"]),
-                }
-
-                if "icon" in item:
-                    menu_item_args["icon"] = item["icon"]
-
-                item_id = self.plugin.add_menu_item(
-                    MenuItemData(
-                        **menu_item_args,
-                    )
-                )
-
-                self._item_ids[key] = str(item_id)
-            except Exception as e:
-                self.plugin.log_exception(
-                    f"Failed to register chat context menu item {key}",
-                    e,
-                )
-
-    def unregister(self):
-        for key, item_id in tuple(self._item_ids.items()):
-            try:
-                self.plugin.remove_menu_item(item_id)
-            except Exception as e:
-                self.plugin.log_exception(
-                    f"Failed to remove chat context menu item {key}",
-                    e,
-                )
-
-        self._item_ids.clear()
-        self._callbacks.clear()
-
-    def _on_click(self, key: str, payload: Any):
-        dialog_id = self._extract_dialog_id_from_payload(payload)
-        if dialog_id is None:
-            self.plugin.log(
-                f"Chat context menu click payload missing dialog id for {key}: {payload}"
-            )
-            self.plugin._show_error(
-                self.plugin._t("status.error.chat.detect_current_failed")
-            )
-            return
-
-        try:
-            self._invoke_callback(String(key), Long(dialog_id))
-        except Exception as e:
-            self.plugin.log_exception(
-                f"Failed to execute chat context menu callback {key} for {dialog_id}",
-                e,
-            )
-
-    def _invoke_callback(self, key: String, value: Long):
-        if self.plugin.jvm_plugin.klass is None:
-            self.plugin.log(
-                f"Chat context menu callback {key} is unavailable: JVM plugin is not loaded"
-            )
-            return
-
-        try:
-            self.plugin.jvm_plugin.klass.getDeclaredMethod(
-                String("invokeChatContextMenuCallback"),
-                String.getClass(),
-                Long.TYPE,
-            ).invoke(None, key, value)
-        except Exception as e:
-            self.plugin.log_exception(
-                f"Failed to resolve chat context menu callback {key}",
-                e,
-            )
-
-    def _extract_dialog_id_from_payload(self, payload: Any) -> Optional[int]:
-        if payload is None:
-            return None
-
-        def parse_dialog_id(value: Any) -> Optional[int]:
-            if value is None:
-                return None
-            try:
-                return int(value) or None
-            except Exception:
-                return None
-
-        payload_getter = getattr(payload, "get", None)
-        if payload_getter is not None:
-            for key in self.MENU_PAYLOAD_DIALOG_KEYS:
-                if (dialog_id := parse_dialog_id(payload_getter(key))) is not None:
-                    return dialog_id
-
-            for key in self.MENU_PAYLOAD_FRAGMENT_KEYS:
-                value = payload_getter(key)
-                if value is None:
-                    continue
-                try:
-                    if (dialog_id := parse_dialog_id(value.getDialogId())) is not None:
-                        return dialog_id
-                except Exception:
-                    pass
-
-        try:
-            return parse_dialog_id(payload.getDialogId())
-        except Exception:
-            return None
-
-
-class SettingsActions:
-    """Отвечает за регистрацию элементов в настройках плагина"""
-
-    REBUILD_ALL = "rebuildAllPrivateChats"
-    EXPORT_BACKUP_NOW = "exportBackupNow"
-    DELETE_DB_AND_RELOAD = "deleteDbAndReload"
-    OPEN_GUIDES = "openGuides"
-    OPEN_LEVEL_PACKS = "openEmojiPacks"
-
-    def __init__(self, plugin: "TgStreaksPlugin"):
-        self.plugin = plugin
-
-    def build_settings(self) -> list[Any]:
-        return [
-            Header(text=self.plugin._t("settings.pet_button.title")),
-            Selector(
-                key=SETTING_PET_FAB_SIZE_INDEX,
-                text=self.plugin._t("settings.pet_button.size.title"),
-                default=self.plugin._get_pet_fab_size_index(),
-                items=[f"{size} dp" for size in PET_FAB_SIZE_OPTIONS_DP],
-                icon="msg_customize",
-                on_change=lambda value: self.plugin._on_pet_fab_size_changed(value),
-                link_alias="pet-button-size",
-            ),
-            Divider(text=self.plugin._t("settings.pet_button.size.description")),
-            Header(text=self.plugin._t("settings.streak_tools.title")),
-            Switch(
-                key=SETTING_AUTO_STREAK_CREATION_ENABLED,
-                text=self.plugin._t("settings.streak_tools.auto_create.title"),
-                default=self.plugin._is_auto_streak_creation_enabled(),
-                subtext=self.plugin._t("settings.streak_tools.auto_create.description"),
-                icon="msg_add",
-                on_change=lambda value: self.plugin._on_auto_streak_creation_changed(
-                    value
-                ),
-                link_alias="auto-create",
-            ),
-            Text(
-                text=self.plugin._t("settings.streak_tools.level_packs.title"),
-                icon="msg_emoji_smiles",
-                on_click=lambda _: self._on_click(self.OPEN_LEVEL_PACKS),
-                link_alias="emoji-packs",
-            ),
-            Text(
-                text=self.plugin._t("settings.streak_tools.rebuild_all_chats.title"),
-                icon="msg_retry",
-                on_click=lambda _: self._on_click(self.REBUILD_ALL),
-                link_alias="rebuild-all",
-            ),
-            Divider(
-                text=self.plugin._t(
-                    "settings.streak_tools.rebuild_all_chats.description"
-                )
-            ),
-            Header(text=self.plugin._t("settings.backups.title")),
-            Text(
-                text=self.plugin._t("settings.backups.export.title"),
-                icon="msg_download",
-                on_click=lambda _: self._on_click(self.EXPORT_BACKUP_NOW),
-                link_alias="backup-create",
-            ),
-            Text(
-                text=self.plugin._t("settings.backups.restore.title"),
-                icon="msg_reset",
-                on_click=lambda _: self.plugin._show_restore_backup_file_dialog(),
-                link_alias="backup-restore",
-            ),
-            Text(
-                text=self.plugin._t("settings.backups.reset_database.title"),
-                icon="msg_delete",
-                on_click=lambda _: self.plugin._schedule_database_reset_reinitialize(),
-                link_alias="backup-reset",
-            ),
-            Divider(text=self.plugin._t("settings.backups.description")),
-        ]
-
-    def _on_click(self, key: str):
-        try:
-            self._invoke_callback(String(key))
-        except Exception as e:
-            self.plugin.log_exception(
-                f"Failed to execute settings callback {key}",
-                e,
-            )
-
-    def _invoke_callback(self, key: String):
-        if self.plugin.jvm_plugin.klass is None:
-            self.plugin.log(
-                f"Settings callback {key} is unavailable: JVM plugin is not loaded"
-            )
-            return
-
-        try:
-            self.plugin.jvm_plugin.klass.getDeclaredMethod(
-                String("invokeSettingsActionCallback"),
-                String.getClass(),
-            ).invoke(None, key)
-        except Exception as e:
-            self.plugin.log_exception(
-                f"Failed to resolve settings callback {key}",
-                e,
-            )
-
-
-class PluginUpdateChecker:
-    """
-    Проверяет обновления плагина через GitHub API и показывает
-    уведомлении при наличии новой версии
-    """
-
-    def __init__(self, plugin: "TgStreaksPlugin"):
-        self.plugin = plugin
-        self._stop = threading.Event()
-        self._lock = threading.Lock()
-        self._inflight = False
-
-    def is_enabled(self) -> bool:
-        return self.plugin._is_update_check_enabled()
-
-    def set_enabled(self, enabled: bool):
-        enabled = bool(enabled)
-
-        try:
-            self.plugin.set_setting(SETTING_UPDATE_CHECK_ENABLED, enabled)
-        except Exception as e:
-            self.plugin.log_exception("Failed to persist update check setting", e)
-
-        if enabled:
-            self.start()
-            return
-
-        self.stop()
-
-    def stop(self):
-        self._stop.set()
-
-    def start(self):
-        if not self.is_enabled():
-            self.plugin.log("Update check skipped: disabled in plugin settings")
-            return
-
-        with self._lock:
-            if self._inflight:
-                return
-            self._inflight = True
-
-        self._stop.clear()
-
-        def worker():
-            try:
-                latest_tag = self._fetch_latest_release_tag()
-                if latest_tag is None:
-                    self.plugin.log(
-                        "Update check skipped: latest release tag_name is missing"
-                    )
-                    return
-
-                latest_version = self._normalize_version_tag(latest_tag)
-                current_version = self._normalize_version_tag(__version__)
-
-                if not latest_version:
-                    self.plugin.log(
-                        "Update check skipped: latest release version is empty"
-                    )
-                    return
-
-                if latest_version == current_version:
-                    self.plugin.log(f"Plugin is up to date: {current_version}")
-                    return
-
-                if self._stop.is_set():
-                    return
-
-                self.plugin.log(
-                    f"Plugin update available: current={__version__}, latest={latest_tag}"
-                )
-                self._show_update_bulletin(latest_tag)
-            except Exception as e:
-                self.plugin.log_exception("Plugin update check failed", e)
-            finally:
-                with self._lock:
-                    self._inflight = False
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _normalize_version_tag(self, value: Optional[str]) -> str:
-        if value is None:
-            return ""
-
-        normalized = str(value).strip()
-        if not normalized:
-            return ""
-
-        return normalized.removeprefix("v").removeprefix("V")
-
-    def _fetch_latest_release_tag(self) -> Optional[str]:
-        response = requests.get(
-            PLUGIN_UPDATE_API_URL,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=UPDATE_CHECK_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        payload = cast("dict[str, Any]", response.json())
-        tag_name = payload.get("tag_name")
-
-        if tag_name is None:
-            return None
-
-        normalized = str(tag_name).strip()
-        if not normalized:
-            return None
-
-        return normalized
-
-    def _show_update_bulletin(self, latest_version: str):
-        text = self.plugin._t(
-            "update.available.message",
-            current=__version__,
-            latest=latest_version,
-        )
-        button_text = self.plugin._t("update.available.action")
-
-        def show():
-            if self._stop.is_set():
-                return
-
-            try:
-                BulletinHelper.show_with_button(
-                    text,
-                    R_tg.raw.ic_download,
-                    button_text,
-                    lambda: self.plugin._open_telegram_url(PLUGIN_UPDATE_TG_URL),
-                    duration=int(BulletinHelper.DURATION_PROLONG),
-                )
-            except Exception as e:
-                self.plugin.log_exception("Failed to show update bulletin", e)
-                self.plugin._show_info(text)
-
-        run_on_ui_thread(show)
-
-
 class TgStreaksPlugin(BasePlugin):
     """Основной класс плагина"""
 
-    _reinitialize_lock = threading.Lock()
     _full_load_lock = threading.Lock()
     _eject_lock = threading.Lock()
-
-    settings_actions: SettingsActions
 
     def log(self, message: Any):
         text = str(message)
@@ -1076,38 +419,6 @@ class TgStreaksPlugin(BasePlugin):
                 if line:
                     self.log(line)
                     _log_e(line)
-
-    def create_settings(self) -> list[Any]:
-        if not hasattr(self, "settings_actions"):
-            self.settings_actions = SettingsActions(self)
-
-        return [
-            Header(text=self._t("settings.updates.title")),
-            Switch(
-                key=SETTING_UPDATE_CHECK_ENABLED,
-                text=self._t("settings.updates.auto_check.title"),
-                default=self._is_update_check_enabled(),
-                subtext=self._t("settings.updates.auto_check.description"),
-                icon="msg_retry",
-                on_change=lambda value: self._on_update_check_setting_changed(value),
-                link_alias="update-check",
-            ),
-            *self.settings_actions.build_settings(),
-            Header(text=self._t("settings.help.title")),
-            Text(
-                text=self._t("settings.help.guides.title"),
-                icon="msg_help",
-                on_click=lambda _: self.settings_actions._on_click(SettingsActions.OPEN_GUIDES),
-                link_alias="guides",
-            ),
-            Text(
-                text=self._t("settings.help.docs.title"),
-                icon="msg_info",
-                on_click=lambda _: self._open_browser_url(PLUGIN_DOCS_URL),
-                link_alias="docs",
-            ),
-            Divider(text=self._t("settings.help.docs.description")),
-        ]
 
     def _show_info(self, message: str):
         run_on_ui_thread(lambda: BulletinHelper.show_info(message))
@@ -1409,95 +720,6 @@ class TgStreaksPlugin(BasePlugin):
 
         run_on_ui_thread(restart)
 
-    def _is_update_check_enabled(self) -> bool:
-        try:
-            return bool(self.get_setting(SETTING_UPDATE_CHECK_ENABLED, True))
-        except Exception:
-            return True
-
-    def _is_auto_streak_creation_enabled(self) -> bool:
-        try:
-            return bool(self.get_setting(SETTING_AUTO_STREAK_CREATION_ENABLED, True))
-        except Exception:
-            return True
-
-    def _apply_auto_streak_creation(self, enabled: bool):
-        if self.jvm_plugin.klass is None:
-            self.log("Auto streak creation update skipped: JVM plugin is not loaded")
-            return
-
-        try:
-            self.jvm_plugin.klass.getDeclaredMethod(
-                String("setAutoStreakCreationEnabled"),
-                Boolean.TYPE,
-            ).invoke(
-                None,
-                Boolean(bool(enabled)),
-            )
-        except Exception as e:
-            self.log_exception("Failed to apply auto streak creation setting", e)
-
-    def _on_auto_streak_creation_changed(self, value: bool):
-        enabled = bool(value)
-
-        try:
-            self.set_setting(SETTING_AUTO_STREAK_CREATION_ENABLED, enabled)
-        except Exception as e:
-            self.log_exception("Failed to persist auto streak creation setting", e)
-
-        self._apply_auto_streak_creation(enabled)
-
-    def _get_pet_fab_size_index(self) -> int:
-        default_index = 1
-
-        try:
-            raw_value = int(self.get_setting(SETTING_PET_FAB_SIZE_INDEX, default_index))
-        except Exception:
-            return default_index
-
-        return max(0, min(raw_value, len(PET_FAB_SIZE_OPTIONS_DP) - 1))
-
-    def _get_pet_fab_size_dp(self) -> int:
-        return PET_FAB_SIZE_OPTIONS_DP[self._get_pet_fab_size_index()]
-
-    def _apply_pet_fab_size_dp(self, size_dp: int):
-        if self.jvm_plugin.klass is None:
-            self.log("Pet FAB size update skipped: JVM plugin is not loaded")
-            return
-
-        try:
-            self.jvm_plugin.klass.getDeclaredMethod(
-                String("setPetFabSizeDp"),
-                Integer.TYPE,
-            ).invoke(
-                None,
-                Integer(int(size_dp)),
-            )
-        except Exception as e:
-            self.log_exception("Failed to apply pet FAB size", e)
-
-    def _on_pet_fab_size_changed(self, value: int):
-        size_index = max(0, min(int(value), len(PET_FAB_SIZE_OPTIONS_DP) - 1))
-
-        try:
-            self.set_setting(SETTING_PET_FAB_SIZE_INDEX, size_index)
-        except Exception as e:
-            self.log_exception("Failed to persist pet FAB size setting", e)
-
-        self._apply_pet_fab_size_dp(PET_FAB_SIZE_OPTIONS_DP[size_index])
-
-    def _on_update_check_setting_changed(self, enabled: bool):
-        enabled = bool(enabled)
-
-        if hasattr(self, "update_checker"):
-            self.update_checker.set_enabled(enabled)
-            return
-
-        try:
-            self.set_setting(SETTING_UPDATE_CHECK_ENABLED, enabled)
-        except Exception as e:
-            self.log_exception("Failed to persist update check setting", e)
-
     def _get_app_language_code(self) -> str:
         def safe_call(fn):
             try:
@@ -1576,23 +798,6 @@ class TgStreaksPlugin(BasePlugin):
 
         return context
 
-    def _open_browser_url(self, url: str):
-        def open_url():
-            try:
-                context = self._resolve_popup_context()
-                if context is None:
-                    raise RuntimeError("no context")
-
-                intent = Intent()
-                intent.setAction(String(Intent.ACTION_VIEW))
-                intent.setData(Uri.parse(String(url)))
-                intent.addFlags(int(Intent.FLAG_ACTIVITY_NEW_TASK))
-                context.startActivity(intent)
-            except Exception as e:
-                self.log_exception(f"Failed to open Telegram url {url}", e)
-
-        run_on_ui_thread(open_url)
-
     def _open_telegram_url(self, url: str):
         def open_url():
             try:
@@ -1611,22 +816,6 @@ class TgStreaksPlugin(BasePlugin):
                 self._show_error(self._t("status.error.update.open_link_failed"))
 
         run_on_ui_thread(open_url)
-
-    def _finalize_jvm_plugin_inject(self) -> bool:
-        try:
-            self.jvm_plugin.klass.getDeclaredMethod(
-                String("setGuideDebugMode"), Boolean.TYPE
-            ).invoke(None, Boolean(DEBUG_MODE))
-            self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
-                String("finalizeInject")
-            ).invoke(None)
-            self.log("JVM plugin finalizeInject completed")
-        except Exception as e:
-            self._handle_load_failure("finalizeInject", e)
-            self.on_plugin_eject()
-            return False
-
-        return True
 
     def _prepare_jvm_plugin(self) -> bool:
         self.jvm_plugin = JvmPluginBridge(self)
@@ -1654,345 +843,33 @@ class TgStreaksPlugin(BasePlugin):
                 def onReceiveValue(self, arg0):
                     ref.log(str(arg0))
 
+            class ReloadRequest(dynamic_proxy(Runnable)):
+                def run(self):
+                    ref._reload_plugin()
+
             self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("inject"),
                 String.getClass(),
                 ValueCallback.getClass(),
                 String.getClass(),
+                Boolean.TYPE,
+                Runnable.getClass(),
             ).invoke(
                 None,
                 String(__version__),
                 Logger(),
                 String(self.resources_root),
+                Boolean(DEBUG_MODE),
+                ReloadRequest(),
             )
 
             self.log("JVM plugin injected successfully")
-            self._apply_pet_fab_size_dp(self._get_pet_fab_size_dp())
-            self._apply_auto_streak_creation(self._is_auto_streak_creation_enabled())
         except Exception as e:
             self._handle_load_failure("inject", e)
             self.on_plugin_eject()
             return False
 
         return True
-
-    def _database_file_paths(self) -> list[str]:
-        base_path = ApplicationLoader.applicationContext.getDatabasePath(
-            String("tg-streaks")
-        ).getAbsolutePath()
-        return [
-            str(base_path),
-            f"{base_path}-wal",
-            f"{base_path}-shm",
-            f"{base_path}-journal",
-        ]
-
-    def _backups_dir(self) -> str:
-        downloads_dir = Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_DOWNLOADS
-        ).getAbsolutePath()
-        backups_dir = os.path.join(str(downloads_dir), "tg-streaks")
-        os.makedirs(backups_dir, exist_ok=True)
-        return backups_dir
-
-    def _list_backup_files(self) -> list[str]:
-        backups_dir = self._backups_dir()
-        files = []
-
-        try:
-            for name in os.listdir(backups_dir):
-                path = os.path.join(backups_dir, name)
-                if os.path.isfile(path) and name.endswith(".sqlite3"):
-                    files.append(path)
-        except Exception as e:
-            self.log_exception("Failed to list backup files", e)
-            return []
-
-        files.sort(key=os.path.getmtime, reverse=True)
-        return files
-
-    def _show_restore_backup_file_dialog(self):
-        backup_files = self._list_backup_files()
-
-        def show():
-            try:
-                fragment = get_last_fragment()
-            except Exception:
-                fragment = None
-
-            if fragment is None:
-                self._show_error(
-                    self._t("status.error.backup.apply_failed", reason="No UI context")
-                )
-                return
-
-            names = [os.path.basename(path) for path in backup_files]
-            names.append(self._t("dialog.backup_restore.browse"))
-
-            try:
-                self_outer = self
-
-                class BackupClickListener(
-                    dynamic_proxy(DialogInterface.OnClickListener)
-                ):
-                    def onClick(self, _dialog, which):  # ty:ignore[invalid-method-override]
-                        idx = int(which)
-                        if idx < len(backup_files):
-                            self_outer._schedule_restore_backup_reinitialize(
-                                backup_files[idx]
-                            )
-                        else:
-                            self_outer._open_backup_file_picker(fragment)
-
-                fragment.showDialog(
-                    AlertDialog.Builder(fragment.getContext())
-                    .setTitle(cast("String", self._t("dialog.backup_restore.title")))
-                    .setItems(
-                        jarray(String)([String(name) for name in names]),
-                        BackupClickListener(),
-                    )
-                    .create()
-                )
-            except Exception as e:
-                self.log_exception("Failed to show restore backup dialog", e)
-                self._show_error(
-                    self._t("status.error.backup.apply_failed", reason=str(e))
-                )
-
-        run_on_ui_thread(show)
-
-    _BACKUP_FILE_PICKER_REQUEST_CODE = 0x5A7B
-    _file_picker_hook_unhooks: "list[Any] | None" = None
-
-    def _cleanup_file_picker_hooks(self):
-        unhooks, self._file_picker_hook_unhooks = self._file_picker_hook_unhooks, None
-        for u in unhooks or []:
-            try:
-                u.unhook()
-            except Exception:
-                pass
-
-    def _open_backup_file_picker(self, fragment):
-        if self._file_picker_hook_unhooks is not None:
-            return
-
-        self_outer = self
-
-        class ActivityResultHook(MethodHook):
-            def after_hooked_method(self, param):
-                request_code = int(param.args[0])
-                if request_code != self_outer._BACKUP_FILE_PICKER_REQUEST_CODE:
-                    return
-
-                self_outer._cleanup_file_picker_hooks()
-
-                result_code = int(param.args[1])
-                if result_code != -1:  # Activity.RESULT_OK
-                    return
-
-                data_intent = param.args[2]
-                if data_intent is None:
-                    return
-
-                uri = data_intent.getData()
-                if uri is None:
-                    return
-
-                self_outer._restore_from_uri(uri)
-
-        try:
-            from hook_utils import find_class
-
-            base_fragment_class = find_class("org.telegram.ui.ActionBar.BaseFragment")
-            if base_fragment_class is None:
-                raise RuntimeError("BaseFragment class not found")
-
-            self._file_picker_hook_unhooks = self.hook_all_methods(
-                base_fragment_class,
-                "onActivityResultFragment",
-                ActivityResultHook(),
-            )
-
-            intent = Intent()
-            intent.setAction(String(Intent.ACTION_GET_CONTENT))
-            intent.setType(String("*/*"))
-            intent.addCategory(String(Intent.CATEGORY_OPENABLE))
-
-            fragment.startActivityForResult(
-                intent, self._BACKUP_FILE_PICKER_REQUEST_CODE
-            )
-        except Exception as e:
-            self._cleanup_file_picker_hooks()
-            self.log_exception("Failed to open backup file picker", e)
-            self._show_error(self._t("status.error.backup.apply_failed", reason=str(e)))
-
-    def _restore_from_uri(self, uri):
-        def worker():
-            try:
-                context = ApplicationLoader.applicationContext
-                cr = context.getContentResolver()
-
-                display_name = "backup"
-                try:
-                    cursor = cr.query(uri, None, None, None, None)  # ty:ignore[invalid-argument-type]
-                    if cursor is not None and cursor.moveToFirst():
-                        col = cursor.getColumnIndex(String("_display_name"))
-                        if col >= 0:
-                            display_name = str(cursor.getString(col))
-                        cursor.close()
-                except Exception:
-                    pass
-
-                temp_path = os.path.join(
-                    str(context.getCacheDir().getAbsolutePath()),
-                    "tg-streaks-restore-import.sqlite3",
-                )
-
-                input_stream = cr.openInputStream(uri)
-                try:
-                    buf = jarray(jbyte)(65536)
-                    with open(temp_path, "wb") as f:
-                        while True:
-                            n = input_stream.read(buf)
-                            if n < 0:
-                                break
-                            f.write(bytes(buf[:n]))
-                finally:
-                    input_stream.close()
-
-                self._schedule_restore_backup_reinitialize(temp_path, display_name)
-            except Exception as e:
-                self.log_exception("Failed to read backup from URI", e)
-                self._show_error(
-                    self._t("status.error.backup.apply_failed", reason=str(e))
-                )
-
-        threading.Thread(
-            target=worker,
-            name="tg-streaks-backup-restore-from-uri",
-            daemon=True,
-        ).start()
-
-    def _schedule_restore_backup_reinitialize(
-        self, backup_path: str, display_name: str | None = None
-    ):
-        name = display_name or os.path.basename(backup_path)
-        reason = f"Backup restore requested from settings: {name}"
-
-        if not self._reinitialize_lock.acquire(blocking=False):
-            self.log(f"Skipped duplicate backup restore request: {reason}")
-            return
-
-        def worker():
-            try:
-                self.log(f"Starting backup restore: {reason}")
-
-                if not os.path.isfile(backup_path):
-                    self._show_error(self._t("status.error.backup.not_found"))
-                    return
-
-                try:
-                    self.on_plugin_unload()
-                except BaseException as e:
-                    self.log_exception(
-                        "Failed during plugin unload before backup restore", e
-                    )
-
-                try:
-                    target_path = self._database_file_paths()[0]
-                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-
-                    for path in self._database_file_paths()[1:]:
-                        if os.path.exists(path):
-                            os.remove(path)
-
-                    if os.path.exists(target_path):
-                        os.remove(target_path)
-
-                    shutil.copy(backup_path, target_path)
-                    self.log(f"Database restored from backup: {backup_path}")
-                except BaseException as e:
-                    self.log_exception("Failed to apply backup file", e)
-                    self._show_error(
-                        self._t("status.error.backup.apply_failed", reason=str(e))
-                    )
-                    return
-
-                try:
-                    load_thread = self.on_plugin_load(allow_update_pause=False)
-                except BaseException as e:
-                    self.log_exception(
-                        "Failed during plugin load after backup restore", e
-                    )
-                    return
-
-                if load_thread is not None:
-                    load_thread.join()
-
-                self._show_success(
-                    self._t(
-                        "status.success.backup.imported",
-                        name=name,
-                    )
-                )
-                self.log("Backup restore and plugin reinitialization completed")
-            finally:
-                self._reinitialize_lock.release()
-
-        threading.Thread(
-            target=worker,
-            name="tg-streaks-backup-restore-reinitialize",
-            daemon=True,
-        ).start()
-
-    def _schedule_database_reset_reinitialize(self):
-        reason = "Database reset requested from settings"
-
-        if not self._reinitialize_lock.acquire(blocking=False):
-            self.log(f"Skipped duplicate database reset request: {reason}")
-            return
-
-        def worker():
-            try:
-                self.log(f"Starting database reset: {reason}")
-
-                try:
-                    self.on_plugin_unload()
-                except BaseException as e:
-                    self.log_exception("Failed during plugin unload before DB reset", e)
-
-                try:
-                    for path in self._database_file_paths():
-                        if os.path.exists(path):
-                            os.remove(path)
-                            self.log(f"Deleted database file: {path}")
-                except BaseException as e:
-                    self.log_exception("Failed to delete plugin database", e)
-                    self._show_error(
-                        self._t("status.error.database.delete_failed", reason=str(e))
-                    )
-                    return
-
-                self._show_success(self._t("status.success.database.reset_started"))
-
-                try:
-                    load_thread = self.on_plugin_load(allow_update_pause=False)
-                except BaseException as e:
-                    self.log_exception("Failed during plugin load after DB reset", e)
-                    return
-
-                if load_thread is not None:
-                    load_thread.join()
-
-                self.log("Database reset and plugin reinitialization completed")
-            finally:
-                self._reinitialize_lock.release()
-
-        threading.Thread(
-            target=worker,
-            name="tg-streaks-db-reset-reinitialize",
-            daemon=True,
-        ).start()
 
     def _run_plugin_load(self):
         with self._full_load_lock:
@@ -2008,21 +885,21 @@ class TgStreaksPlugin(BasePlugin):
 
             if not self._inject_jvm_plugin():
                 return
-
-            self.settings_actions = SettingsActions(self)
-            self.chat_context_menu = ChatContextMenu(self)
-            self.chat_context_menu.register()
-
-            if not self._finalize_jvm_plugin_inject():
-                return
-
-            self.update_checker = PluginUpdateChecker(self)
-            self.update_checker.start()
         except BaseException as e:
             self._handle_load_failure("plugin load", e)
             return
 
         self._stop_load_logging()
+
+    def _reload_plugin(self):
+        self.log("Reload requested by JVM plugin")
+
+        try:
+            self.on_plugin_unload()
+        except BaseException as e:
+            self.log_exception("Failed during plugin unload before reload", e)
+
+        self.on_plugin_load(allow_update_pause=False)
 
     def on_plugin_load(
         self, allow_update_pause: bool = True
@@ -2047,21 +924,10 @@ class TgStreaksPlugin(BasePlugin):
             return None
 
     def on_plugin_unload(self):
-        try:
-            self.update_checker.stop()
-        except Exception:
-            pass
-
         jvm_plugin = getattr(self, "jvm_plugin", None)
 
         if jvm_plugin is None or jvm_plugin.klass is None:
             return
-
-        try:
-            if getattr(self, "chat_context_menu", None) is not None:
-                self.chat_context_menu.unregister()
-        except Exception as e:
-            self.log_exception("Failed to unregister chat context menu", e)
 
         try:
             jvm_plugin.klass.getDeclaredMethod(String("eject")).invoke(None)
@@ -2079,18 +945,6 @@ class TgStreaksPlugin(BasePlugin):
             self._ejected = True
 
         self.log("JVM plugin instance lost: ejected by a concurrent reload")
-
-        try:
-            if getattr(self, "chat_context_menu", None) is not None:
-                self.chat_context_menu.unregister()
-        except Exception as e:
-            self.log_exception("Failed to unregister chat context menu after eject", e)
-
-        try:
-            if getattr(self, "update_checker", None) is not None:
-                self.update_checker.stop()
-        except Exception:
-            pass
 
         jvm_plugin = getattr(self, "jvm_plugin", None)
         if jvm_plugin is not None:

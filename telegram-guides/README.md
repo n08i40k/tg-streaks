@@ -196,7 +196,7 @@ GuideOverlayScene(
 `streaks/guide/presentation` строит панели из настоящих экранов плагина
 (`StreakControlFragment`, `RebuildBottomSheet`, `StreakInfoBottomSheet`, попап
 стрика) с локальным состоянием, `streaks/guide/badge` рисует огоньки сценария.
-Настройка `DEBUG_MODE` передаётся из Python в `Plugin.setGuideDebugMode`.
+Настройка `DEBUG_MODE` передаётся из Python параметром `Plugin.inject`.
 
 ### Совместимость клиента
 

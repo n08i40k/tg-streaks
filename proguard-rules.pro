@@ -4,16 +4,8 @@
     java.lang.String getBuildDate();
     java.lang.String getVersion();
 
-    void inject(java.lang.String, android.webkit.ValueCallback, java.lang.String);
-    void finalizeInject();
+    void inject(java.lang.String, android.webkit.ValueCallback, java.lang.String, boolean, java.lang.Runnable);
     void eject();
-
-    void invokeChatContextMenuCallback(java.lang.String, long);
-    void invokeSettingsActionCallback(java.lang.String);
-
-    void setPetFabSizeDp(int);
-    void setAutoStreakCreationEnabled(boolean);
-    void setGuideDebugMode(boolean);
 
     android.content.SharedPreferences getSharedPrefs();
 }

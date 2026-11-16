@@ -3,18 +3,15 @@ package ru.n08i40k.streaks.hook.impl
 import org.telegram.messenger.GenericProvider
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.LaunchActivity
+import ru.n08i40k.shim.hooks.HooksScope
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
-import ru.n08i40k.streaks.hook.InstallHook
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 
-class AccountSwitchHookBundle : HookBundle() {
+class AccountSwitchHookBundle : HookBundle {
     var currentAccountId: Int = 0
 
-    override fun inject(
-        before: InstallHook,
-        after: InstallHook
-    ) {
+    override fun HooksScope.install() {
         currentAccountId = UserConfig.selectedAccount
 
         after(

@@ -6,7 +6,8 @@ import org.telegram.ui.LaunchActivity
 
 @AnyThread
 fun presentFragment(fragment: BaseFragment) {
-    val parent = LaunchActivity.getSafeLastFragment() ?: return
+    val parent = LaunchActivity.getSafeLastFragment()
+        ?: return
 
     runOnMainThread { parent.presentFragment(fragment) }
 }

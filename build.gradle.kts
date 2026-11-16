@@ -81,6 +81,8 @@ dependencies {
     implementation(libs.reflection)
     ksp(libs.reflection.processor)
 
+    implementation(project(":shim"))
+
     implementation(project(":telegram-guides"))
 
     implementation(project(":badges-sdk:api"))

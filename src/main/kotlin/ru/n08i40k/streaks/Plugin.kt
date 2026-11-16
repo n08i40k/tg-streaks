@@ -12,8 +12,6 @@ import de.comahe.i18n4k.config.I18n4kConfigDefault
 import de.comahe.i18n4k.createLocale
 import de.comahe.i18n4k.i18n4k
 import de.comahe.i18n4k.messages.formatter.MessageFormatterDefault
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +38,7 @@ import ru.n08i40k.badges.api.BadgesSdk
 import ru.n08i40k.guides.api.GuideLogger
 import ru.n08i40k.guides.catalog.GuideProgress
 import ru.n08i40k.guides.ui.GuideUiManager
+import ru.n08i40k.shim.Shim
 import ru.n08i40k.streaks.constants.ServiceMessageCategory
 import ru.n08i40k.streaks.controller.PluginRelationController
 import ru.n08i40k.streaks.controller.ServiceMessageCategoriesController
@@ -50,6 +49,7 @@ import ru.n08i40k.streaks.controller.StreakPopupController
 import ru.n08i40k.streaks.controller.StreaksController
 import ru.n08i40k.streaks.controller.TimeZonesController
 import ru.n08i40k.streaks.database.DatabaseBackupManager
+import ru.n08i40k.streaks.database.DatabaseMaintenance
 import ru.n08i40k.streaks.database.PluginDatabase
 import ru.n08i40k.streaks.emoji.StreakEmojiViewFactory
 import ru.n08i40k.streaks.event.EventBus
@@ -69,38 +69,36 @@ import ru.n08i40k.streaks.extension.toLocalDate
 import ru.n08i40k.streaks.guide.StreakGuideLinks
 import ru.n08i40k.streaks.guide.lessons.StreakBasicsGuides
 import ru.n08i40k.streaks.guide.presentation.StreakGuidePresentation
-import ru.n08i40k.streaks.hook.impl.AccountSwitchHookBundle
-import ru.n08i40k.streaks.hook.impl.ForegroundHookBundle
-import ru.n08i40k.streaks.hook.impl.GuideLinksHookBundle
-import ru.n08i40k.streaks.hook.impl.PetFabHookBundle
-import ru.n08i40k.streaks.hook.impl.ServiceMessagesHookBundle
-import ru.n08i40k.streaks.hook.impl.UpdatesHookBundle
+import ru.n08i40k.streaks.hook.HOOK_BUNDLES
 import ru.n08i40k.streaks.i18n.MessagePluralFormatter
 import ru.n08i40k.streaks.i18n.Strings
+import ru.n08i40k.streaks.menu.ChatActionMenu
 import ru.n08i40k.streaks.override.PluginBadges
-import ru.n08i40k.streaks.registry.LockableActionRegistry
-import ru.n08i40k.streaks.registry.LockableCallbackRegistry
 import ru.n08i40k.streaks.resource.ResourcesProvider
+import ru.n08i40k.streaks.settings.PluginSettingsScreen
 import ru.n08i40k.streaks.ui.StreakPetUiManager
 import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.CheckNotificationHelper
 import ru.n08i40k.streaks.util.DatabaseTransactor
 import ru.n08i40k.streaks.util.Logger
+import ru.n08i40k.streaks.util.PluginUpdateChecker
 import ru.n08i40k.streaks.util.RateLimitContext
 import ru.n08i40k.streaks.util.RefCounter
 import ru.n08i40k.streaks.util.StreakAlertNotificationHelper
 import ru.n08i40k.streaks.util.TaskQueue
 import ru.n08i40k.streaks.util.runOnMainThread
-import java.lang.reflect.Member
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.function.Supplier
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.thread
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 typealias LogReceiver = ValueCallback<String>
 
+@OptIn(ExperimentalAtomicApi::class)
 class Plugin {
     @Suppress("unused")
     companion object {
@@ -116,6 +114,14 @@ class Plugin {
         private var INSTANCE: Plugin? = null
 
         private var VERSION: String? = null
+
+        @Volatile
+        private var DEBUG_MODE = false
+
+        @Volatile
+        private var RELOAD_CALLBACK: Runnable? = null
+
+        private val RELOADING = AtomicBoolean(false)
 
         @Keep
         @JvmStatic
@@ -141,6 +147,8 @@ class Plugin {
             version: String,
             logReceiver: LogReceiver,
             resourcesRootPath: String,
+            debugMode: Boolean,
+            reloadCallback: Runnable,
         ) {
             if (INSTANCE != null)
                 return
@@ -149,6 +157,8 @@ class Plugin {
                 throw IllegalStateException("Cannot inject plugin from same class-loader twice")
 
             VERSION = version
+            DEBUG_MODE = debugMode
+            RELOAD_CALLBACK = reloadCallback
             WAS_INJECTED = true
 
             Logger.setReceiver(logReceiver)
@@ -185,47 +195,27 @@ class Plugin {
             }
         }
 
-        @Keep
-        @JvmStatic
-        fun invokeChatContextMenuCallback(key: String, id: Long) = with(INSTANCE!!) {
-            chatContextMenuCallbackRegistry.get(key).accept(id)
-        }
+        @AnyThread
+        internal fun reload(reason: String, beforeLoad: () -> Unit) {
+            val callback = RELOAD_CALLBACK
+                ?: return
 
-        @Keep
-        @JvmStatic
-        fun invokeSettingsActionCallback(key: String) = with(INSTANCE!!) {
-            settingsActionCallbackRegistry.get(key).run()
-        }
-
-        @Keep
-        @Blocking
-        @Synchronized
-        @JvmStatic
-        fun finalizeInject() {
-            // safely return as eject was called before finalizeInject
-            if (WAS_INJECTED && INSTANCE == null)
+            if (!RELOADING.compareAndSet(false, true)) {
+                Logger.info("Skipped duplicate reload request: $reason")
                 return
+            }
 
-            // NPE is a bug, then it should not be silenced
-            INSTANCE!!.onFinalizeInject()
-        }
+            Logger.info("Reloading plugin: $reason")
 
-        @Keep
-        @JvmStatic
-        fun setGuideDebugMode(enabled: Boolean) {
-            INSTANCE!!.guideDebugMode = enabled
-        }
+            thread(
+                name = "tg-streaks-reload",
+                contextClassLoader = Plugin::class.java.classLoader,
+            ) {
+                ejectSynchronized()
 
-        @Keep
-        @JvmStatic
-        fun setPetFabSizeDp(sizeDp: Int) = with(INSTANCE!!) {
-            petUiManager.setFabSizeDp(sizeDp)
-        }
-
-        @Keep
-        @JvmStatic
-        fun setAutoStreakCreationEnabled(enabled: Boolean) = with(INSTANCE!!) {
-            streaksController.setAutoCreationEnabled(enabled)
+                runCatching(beforeLoad)
+                callback.run()
+            }
         }
 
         @Synchronized
@@ -255,22 +245,34 @@ class Plugin {
         @AnyThread
         @JvmStatic
         fun getSharedPrefs(): SharedPreferences =
-            ApplicationLoader.applicationContext.getSharedPreferences(
-                ID,
-                Context.MODE_PRIVATE
-            )
+            ApplicationLoader.applicationContext
+                .getSharedPreferences(ID, Context.MODE_PRIVATE)
 
         fun coroutineScope(): CoroutineScope =
             INSTANCE!!.backgroundScope
 
         fun childCoroutineScope(): CoroutineScope =
-            INSTANCE!!.backgroundScope.coroutineContext.let { CoroutineScope(it + SupervisorJob(it.job)) }
+            INSTANCE!!.backgroundScope
+                .coroutineContext
+                .let { CoroutineScope(it + SupervisorJob(it.job)) }
     }
+
+    private val settingsScreen = PluginSettingsScreen(this)
+    private val chatActionMenu = ChatActionMenu(this, DEBUG_MODE)
+
+    val shim: Shim = Shim(
+        ID,
+        onError = { message, error -> Logger.fatal(message, error) },
+        settings = { with(settingsScreen) { build() } },
+        menu = { with(chatActionMenu) { build() } },
+    )
 
     val backgroundScope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, exception ->
             Logger.fatal("An unknown error occurred in background coroutine scope", exception)
         })
+
+    internal val updateChecker = PluginUpdateChecker(backgroundScope, ::getVersion)
 
     private val streakEmojiViewFactory = StreakEmojiViewFactory()
 
@@ -278,18 +280,12 @@ class Plugin {
     private val db: PluginDatabase = Room.buildPluginDatabase()
 
     internal val databaseBackupManager: DatabaseBackupManager
+    internal val databaseMaintenance: DatabaseMaintenance
     private val taskQueue: TaskQueue
 
     // helpers
     val resourcesProvider: ResourcesProvider
     val alertNotificationHelper: StreakAlertNotificationHelper
-
-    // callback registries
-    internal val chatContextMenuCallbackRegistry = LockableCallbackRegistry()
-    internal val settingsActionCallbackRegistry = LockableActionRegistry()
-
-    // eject data
-    val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
 
     // view cache holds resolved theme colors
     private val themeObserver =
@@ -307,7 +303,6 @@ class Plugin {
     val pluginRelationController: PluginRelationController
     val serviceMessageCategoriesController: ServiceMessageCategoriesController
     val petUiManager: StreakPetUiManager
-    private var guideDebugMode = false
     internal val guideUiManager = GuideUiManager(
         logger = object : GuideLogger {
             override fun info(message: String) =
@@ -319,7 +314,7 @@ class Plugin {
         catalogFactory = { StreakBasicsGuides.catalog() },
         presentation = StreakGuidePresentation(),
         labels = StreakBasicsGuides::labels,
-        debug = { guideDebugMode },
+        debug = { DEBUG_MODE },
         progressFactory = { GuideProgress(getSharedPrefs(), "guides.basics.completed.v1") },
         link = { StreakGuideLinks.of(it.id) },
     )
@@ -340,6 +335,7 @@ class Plugin {
 
             // database
             this.databaseBackupManager = DatabaseBackupManager(this.db, Logger::info)
+            this.databaseMaintenance = DatabaseMaintenance(this.databaseBackupManager)
 
             // controllers
             this.timeZonesController =
@@ -729,13 +725,6 @@ class Plugin {
 
         taskQueue.startWorker(backgroundScope)
 
-        ChatContextMenuActions(this).register()
-        SettingsMenuActions(this).register()
-
-        Logger.info("Injected!")
-    }
-
-    private fun onFinalizeInject() {
         runBlocking {
             streakLevelPacksController.init()
             streaksController.loadCaches()
@@ -748,10 +737,15 @@ class Plugin {
         badgesSdk = BadgesSdkProvider.create()
             .apply { installViewFactory(streakEmojiViewFactory) }
 
-        Logger.tryOrFatal(
-            "hook methods",
-            ::hookMethods
-        )
+        shim.installHooks {
+            HOOK_BUNDLES.forEach {
+                with(it) {
+                    install()
+                }
+            }
+        }
+
+        settingsScreen.applyStored()
 
         enqueueAccountInitializationTasks(UserConfig.selectedAccount, "plugin inject")
 
@@ -766,24 +760,20 @@ class Plugin {
         }
 
         runOnMainThread { guideUiManager.refresh() }
-        Logger.info("Inject finalized!")
+
+        Logger.info("Injected!")
     }
 
     @Blocking
     private fun onEject() {
         Logger.info("onEject called!")
 
+        // hooks and settings
+        shim.close()
+        shim.sync()
+
         // suppress missing classes, methods and fields
         runCatching { PluginBadges.remove() }
-
-        // hooks
-        hooks.forEach {
-            Logger.tryOrFatal(
-                "unhook method ${it.hookedMethod}",
-                it::unhook
-            )
-        }
-        hooks.clear()
 
         // bg
         taskQueue.stopWorker()
@@ -846,48 +836,5 @@ class Plugin {
             if (onComplete != null)
                 runOnMainThread(onComplete)
         }
-    }
-
-    private fun hookMethods() {
-        fun add(method: Member, hook: XC_MethodHook) {
-            hooks.add(XposedBridge.hookMethod(method, hook))
-        }
-
-        fun before(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
-            val action = "run $method before-call hook"
-
-            add(
-                method,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        Logger.tryOrFatal(action) { callback(param) }
-                    }
-                }
-            )
-        }
-
-        fun after(method: Member, callback: (XC_MethodHook.MethodHookParam) -> Unit) {
-            val action = "run $method after-call hook"
-
-            add(
-                method,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        Logger.tryOrFatal(action) { callback(param) }
-                    }
-                }
-            )
-        }
-
-        val bundles = arrayOf(
-            AccountSwitchHookBundle(),
-            ForegroundHookBundle(),
-            GuideLinksHookBundle(),
-            PetFabHookBundle(),
-            ServiceMessagesHookBundle(),
-            UpdatesHookBundle(),
-        )
-
-        bundles.forEach { it.inject(::before, ::after) }
     }
 }

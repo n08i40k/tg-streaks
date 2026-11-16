@@ -2,17 +2,14 @@ package ru.n08i40k.streaks.hook.impl
 
 import org.telegram.messenger.UserConfig
 import org.telegram.ui.LaunchActivity
+import ru.n08i40k.shim.hooks.HooksScope
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.hook.HookBundle
-import ru.n08i40k.streaks.hook.InstallHook
 
-class ForegroundHookBundle : HookBundle() {
+class ForegroundHookBundle : HookBundle {
     private var isBackground = false
 
-    override fun inject(
-        before: InstallHook,
-        after: InstallHook
-    ) {
+    override fun HooksScope.install() {
         after(LaunchActivity::class.java.getDeclaredMethod("onPause")) {
             isBackground = true
             Plugin.getInstance().guideUiManager.pause()

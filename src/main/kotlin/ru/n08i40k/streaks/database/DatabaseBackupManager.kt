@@ -274,6 +274,12 @@ class DatabaseBackupManager(
         return backup
     }
 
+    fun listBackups(): List<File> =
+        backupsDir().listFiles()
+            ?.filter { it.isFile && it.extension == BACKUP_EXTENSION }
+            ?.sortedByDescending(File::lastModified)
+            .orEmpty()
+
     private fun backupsDir(): File =
         File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
