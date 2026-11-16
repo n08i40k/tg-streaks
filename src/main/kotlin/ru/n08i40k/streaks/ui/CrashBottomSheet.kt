@@ -34,6 +34,8 @@ import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.BackupImageView
 import org.telegram.ui.LaunchActivity
+import ru.n08i40k.reflection.getFieldGetter
+import ru.n08i40k.reflection.retype
 import ru.n08i40k.streaks.Plugin
 import ru.n08i40k.streaks.constants.Emoji
 import ru.n08i40k.streaks.constants.TrustedSources
@@ -47,8 +49,6 @@ import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.getClientName
 import ru.n08i40k.streaks.util.getClientVersionFull
 import ru.n08i40k.streaks.util.getClientVersionName
-import ru.n08i40k.streaks.util.getFieldGetter
-import ru.n08i40k.streaks.util.retype
 
 class CrashBottomSheet(
     context: Context,

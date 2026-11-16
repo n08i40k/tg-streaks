@@ -1,3 +1,4 @@
+import com.google.devtools.ksp.gradle.KspExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 private val minSdkMajorProperty: Provider<Int> =
@@ -75,21 +76,13 @@ kotlin {
     }
 }
 
-// no sun.misc.Unsafe
-val compileUnsafeStub = tasks.register<JavaCompile>("compileUnsafeStub") {
-    description = "Compiles an sun.misc.Unsafe stub"
-    source = fileTree("java-stubs")
-    classpath = files()
-    destinationDirectory = layout.buildDirectory.dir("java-stubs/classes")
-    sourceCompatibility = "11"
-    targetCompatibility = "11"
-    options.compilerArgs.addAll(listOf("--limit-modules", "java.base"))
-}
 
 dependencies {
+    implementation(libs.reflection)
+    ksp(libs.reflection.processor)
+
     implementation(project(":telegram-guides"))
 
-    compileOnly(files(compileUnsafeStub))
     implementation(project(":badges-sdk:api"))
     implementation(project(":badges-sdk"))
 
@@ -106,6 +99,24 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+}
+
+// mirrors of reflection-processor are checked against the client jar
+class ReflectionClasspathArgument(
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    val files: FileCollection,
+) : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> =
+        listOf("reflection.classpath=${files.asPath}")
+}
+
+allprojects {
+    pluginManager.withPlugin("com.google.devtools.ksp") {
+        extensions.configure<KspExtension> {
+            arg(ReflectionClasspathArgument(rootProject.files("libs/Telegram.jar")))
+        }
+    }
 }
 
 extera {

@@ -31,7 +31,6 @@ import ru.n08i40k.streaks.util.`ChatActionCell$setStarsPaused`
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.StreakLevelPackCodec
 import ru.n08i40k.streaks.util.`TLRPC$Message$$fields`
-import ru.n08i40k.streaks.util.cloneFields
 import ru.n08i40k.streaks.util.isClientVersionBelow
 import ru.n08i40k.streaks.util.runOnMainThread
 import java.io.File
@@ -336,7 +335,7 @@ class ServiceMessagesHookBundle : HookBundle() {
 
             param.args[1] = TLRPC.TL_messageService()
                 .apply {
-                    cloneFields(message, this, `TLRPC$Message$$fields`)
+                    `TLRPC$Message$$fields`.clone(message, this)
 
                     this.action = action
                     this.message = null

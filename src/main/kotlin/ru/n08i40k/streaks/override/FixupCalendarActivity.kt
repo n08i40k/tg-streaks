@@ -39,7 +39,8 @@ import ru.n08i40k.streaks.util.`CalendarActivity$messagesByYearMounth`
 import ru.n08i40k.streaks.util.`CalendarActivity$messagesByYearMounth$$setter`
 import ru.n08i40k.streaks.util.`CalendarActivity$removeDaysButton`
 import ru.n08i40k.streaks.util.`CalendarActivity$selectDaysButton`
-import ru.n08i40k.streaks.util.GestureDetectorCompat
+import ru.n08i40k.streaks.util.`GestureDetectorCompat$$init`
+import ru.n08i40k.streaks.util.`GestureDetectorCompat$setIsLongpressEnabled`
 import ru.n08i40k.streaks.util.dp
 import ru.n08i40k.streaks.util.postSafe
 import ru.n08i40k.streaks.util.runOnMainThread
@@ -255,29 +256,22 @@ class FixupCalendarActivity : CalendarActivity {
         }
 
         val gestureDetector =
-            GestureDetectorCompat
-                .getConstructor(
-                    Context::class.java,
-                    GestureDetector.OnGestureListener::class.java
-                )
-                .newInstance(
-                    view.context,
-                    object : GestureDetector.SimpleOnGestureListener() {
-                        override fun onDown(e: MotionEvent): Boolean = true
+            `GestureDetectorCompat$$init`.invoke(
+                view.context,
+                object : GestureDetector.SimpleOnGestureListener() {
+                    override fun onDown(e: MotionEvent): Boolean = true
 
-                        override fun onLongPress(e: MotionEvent) = Unit
+                    override fun onLongPress(e: MotionEvent) = Unit
 
-                        override fun onSingleTapUp(e: MotionEvent): Boolean {
-                            val day = findDayAtCoord(view, e.x, e.y) ?: return true
-                            handleDayTap(day)
-                            return true
-                        }
+                    override fun onSingleTapUp(e: MotionEvent): Boolean {
+                        val day = findDayAtCoord(view, e.x, e.y) ?: return true
+                        handleDayTap(day)
+                        return true
                     }
-                )
+                }
+            )
 
-        GestureDetectorCompat
-            .getMethod("setIsLongpressEnabled", Boolean::class.javaPrimitiveType)
-            .invoke(gestureDetector, false)
+        `GestureDetectorCompat$setIsLongpressEnabled`.invoke(gestureDetector, false)
 
         `CalendarActivity$MonthView$gestureDetector$$setter`.invokeExact(view, gestureDetector)
     }

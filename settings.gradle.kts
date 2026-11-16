@@ -44,4 +44,5 @@ private val badgesSdkDir =
     providers.gradleProperty("badgesSdk.dir").orNull
         ?: localProperties.getProperty("badgesSdk.dir")
 
+includeBuild("reflection")
 includeBuild(badgesSdkDir)

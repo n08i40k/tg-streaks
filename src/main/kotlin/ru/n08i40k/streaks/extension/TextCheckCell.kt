@@ -1,6 +1,8 @@
 package ru.n08i40k.streaks.extension
 
 import org.telegram.ui.Cells.TextCheckCell
+import ru.n08i40k.streaks.util.`TextCheckCell$setTextAndValueAndCheck$$12_1_1`
+import ru.n08i40k.streaks.util.`TextCheckCell$setTextAndValueAndCheck$$12_5_1`
 
 fun TextCheckCell.setTextAndValueAndCheckCompat(
     text: String,
@@ -9,32 +11,6 @@ fun TextCheckCell.setTextAndValueAndCheckCompat(
     multiline: Boolean,
     divider: Boolean,
 ) {
-    try {
-        this.javaClass
-            .getDeclaredMethod(
-                "setTextAndValueAndCheck",
-                CharSequence::class.java,
-                String::class.java,
-                Boolean::class.java,
-                Boolean::class.java,
-                Boolean::class.java,
-            )
-            .invoke(this, text, value, checked, multiline, divider)
-        return
-    } catch (_: NoSuchMethodException) {
-    }
-
-    try {
-        this.javaClass
-            .getDeclaredMethod(
-                "setTextAndValueAndCheck",
-                String::class.java,
-                String::class.java,
-                Boolean::class.java,
-                Boolean::class.java,
-                Boolean::class.java,
-            )
-            .invoke(this, text, value, checked, multiline, divider)
-    } catch (_: NoSuchMethodException) {
-    }
+    (`TextCheckCell$setTextAndValueAndCheck$$12_5_1` ?: `TextCheckCell$setTextAndValueAndCheck$$12_1_1`)
+        ?.invoke(this, text, value, checked, multiline, divider)
 }

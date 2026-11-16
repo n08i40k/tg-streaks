@@ -5,20 +5,22 @@ import ru.n08i40k.streaks.constants.TrustedSources
 import ru.n08i40k.streaks.i18n.Strings
 import ru.n08i40k.streaks.util.`ApiBadgeSource$cache`
 import ru.n08i40k.streaks.util.`BadgeDTO$$init`
-import ru.n08i40k.streaks.util.`BadgeInfo$$init`
+import ru.n08i40k.streaks.util.`BadgeInfo$$init$$12_1_1`
+import ru.n08i40k.streaks.util.`BadgeInfo$$init$$12_2_10`
 import ru.n08i40k.streaks.util.`BadgesController$apiBadgeSource`
 import ru.n08i40k.streaks.util.ProfileStatus
-import ru.n08i40k.streaks.util.isClientVersionBelow
 
 @Suppress("LocalVariableName")
 object PluginBadges {
-    // все классы принадлежат клиенту и могут отсутствовать, поэтому резолв ленивый
-    private fun resolveCache(): Any? {
+    // все классы принадлежат клиенту и могут отсутствовать, поэтому резолв ленивый;
+    // кэш — j$.util.concurrent.ConcurrentHashMap или java.util.concurrent.ConcurrentHashMap, оба реализуют Map
+    @Suppress("UNCHECKED_CAST")
+    private fun resolveCache(): MutableMap<Any?, Any?>? {
         val apiBadgeSource = `BadgesController$apiBadgeSource`
             ?.invokeExact()
             ?: return null
 
-        return `ApiBadgeSource$cache`?.invokeExact(apiBadgeSource)
+        return `ApiBadgeSource$cache`?.invokeExact(apiBadgeSource) as MutableMap<Any?, Any?>?
     }
 
     val TRUSTED_IDS = mapOf(
@@ -38,25 +40,19 @@ object PluginBadges {
 
         // ensure
         `BadgeDTO$$init` ?: return
-        `BadgeInfo$$init` ?: return
+        if (`BadgeInfo$$init$$12_2_10` == null && `BadgeInfo$$init$$12_1_1` == null) return
         ProfileStatus ?: return
-
-        // на версии 12.1.1 ConcurrentHashMap почему-то в неймспейсе $j, вместо java
-        val `ConcurrentHashMap$put` = badgesCache::class.java
-            .getDeclaredMethod("put", Any::class.java, Any::class.java)
 
         // Используется DEVELOPER, ибо у дефолтного есть кнопка "Подробнее", которая может ввести в заблуждение
         val `ProfileStatus$DEVELOPER` = ProfileStatus.enumConstants!![1]
 
         TRUSTED_IDS.forEach { (id, text) ->
-            val badge = `BadgeDTO$$init`.newInstance(Emoji.DEFAULT_BADGE, text())
+            val badge = `BadgeDTO$$init`.invoke(Emoji.DEFAULT_BADGE, text())
 
-            val badgeInfo = if (isClientVersionBelow("12.2.10"))
-                `BadgeInfo$$init`.newInstance(badge, `ProfileStatus$DEVELOPER`)
-            else
-                `BadgeInfo$$init`.newInstance(badge, `ProfileStatus$DEVELOPER`, false)
+            val badgeInfo = `BadgeInfo$$init$$12_2_10`?.invoke(badge, `ProfileStatus$DEVELOPER`, false)
+                ?: `BadgeInfo$$init$$12_1_1`!!.invoke(badge, `ProfileStatus$DEVELOPER`)
 
-            `ConcurrentHashMap$put`.invoke(badgesCache, id, badgeInfo)
+            badgesCache[id] = badgeInfo
         }
     }
 
@@ -68,9 +64,6 @@ object PluginBadges {
     fun remove() {
         val badgesCache = resolveCache() ?: return
 
-        val `ConcurrentHashMap$remove` = badgesCache::class.java
-            .getDeclaredMethod("remove", Any::class.java)
-
-        TRUSTED_IDS.forEach { (id, _) -> `ConcurrentHashMap$remove`.invoke(badgesCache, id) }
+        TRUSTED_IDS.forEach { (id, _) -> badgesCache.remove(id) }
     }
 }
