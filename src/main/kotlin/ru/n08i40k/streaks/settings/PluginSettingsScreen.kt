@@ -1,5 +1,6 @@
 package ru.n08i40k.streaks.settings
 
+import org.telegram.messenger.R
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.telegram.messenger.UserConfig
@@ -162,7 +163,7 @@ class PluginSettingsScreen(private val plugin: Plugin) {
         val accountId = UserConfig.selectedAccount
 
         if (streaksController.isRebuildRunning()) {
-            BulletinHelper.show(Strings.status_info_rebuild_already_running())
+            BulletinHelper.info(Strings.status_info_rebuild_already_running())
             return
         }
 
@@ -175,10 +176,7 @@ class PluginSettingsScreen(private val plugin: Plugin) {
         enqueueTask("export database backup") {
             val backup = databaseBackupManager.exportNow()
 
-            BulletinHelper.show(
-                Strings.status_success_backup_exported(backup.name),
-                "msg_download"
-            )
+            BulletinHelper.show(R.raw.ic_download, Strings.status_success_backup_exported(backup.name))
         }
     }
 
@@ -236,10 +234,7 @@ class PluginSettingsScreen(private val plugin: Plugin) {
                         levelPack
                     )
 
-                    BulletinHelper.show(
-                        Strings.status_success_level_pack_shared(),
-                        "msg_share"
-                    )
+                    BulletinHelper.show(R.raw.forward, Strings.status_success_level_pack_shared())
                 }
             }
 

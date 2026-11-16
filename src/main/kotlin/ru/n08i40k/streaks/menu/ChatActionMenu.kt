@@ -66,10 +66,7 @@ class ChatActionMenu(
             debugTask(target, "create debug streak") { accountId, peerUserId ->
                 plugin.streaksController.debugSetThreeDayStreak(accountId, peerUserId)
 
-                BulletinHelper.show(
-                    Strings.status_success_debug_streak_set_to_3_days(),
-                    "msg_reactions"
-                )
+                BulletinHelper.success(Strings.status_success_debug_streak_set_to_3_days())
             }
         }
 
@@ -83,10 +80,7 @@ class ChatActionMenu(
                 val newLength = plugin.streaksController.debugUpgradeStreak(accountId, peerUserId)
                     ?: return@debugTask
 
-                BulletinHelper.show(
-                    Strings.status_success_debug_streak_upgraded(newLength),
-                    "msg_reactions"
-                )
+                BulletinHelper.success(Strings.status_success_debug_streak_upgraded(newLength))
             }
         }
 
@@ -99,10 +93,7 @@ class ChatActionMenu(
             debugTask(target, "freeze debug streak") { accountId, peerUserId ->
                 plugin.streaksController.debugFreezeStreak(accountId, peerUserId)
 
-                BulletinHelper.show(
-                    Strings.status_success_debug_streak_frozen(),
-                    "msg_reactions"
-                )
+                BulletinHelper.success(Strings.status_success_debug_streak_frozen())
             }
         }
 
@@ -115,10 +106,7 @@ class ChatActionMenu(
             debugTask(target, "kill debug streak") { accountId, peerUserId ->
                 plugin.streaksController.debugMarkDead(accountId, peerUserId)
 
-                BulletinHelper.show(
-                    Strings.status_success_debug_streak_marked_dead(),
-                    "msg_reactions"
-                )
+                BulletinHelper.success(Strings.status_success_debug_streak_marked_dead())
             }
         }
 
@@ -130,14 +118,11 @@ class ChatActionMenu(
         ) { target ->
             debugTask(target, "delete debug streak") { accountId, peerUserId ->
                 if (!plugin.streaksController.delete(accountId, peerUserId)) {
-                    BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
+                    BulletinHelper.info(Strings.status_info_streak_not_found_for_chat())
                     return@debugTask
                 }
 
-                BulletinHelper.show(
-                    Strings.status_success_debug_streak_deleted(),
-                    "msg_reactions"
-                )
+                BulletinHelper.success(Strings.status_success_debug_streak_deleted())
             }
         }
 
@@ -149,11 +134,11 @@ class ChatActionMenu(
         ) { target ->
             debugTask(target, "delete debug pet") { accountId, peerUserId ->
                 if (!plugin.streakPetsController.delete(accountId, peerUserId)) {
-                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
+                    BulletinHelper.info(Strings.status_info_pet_not_created_for_chat())
                     return@debugTask
                 }
 
-                BulletinHelper.show(Strings.status_success_debug_pet_deleted(), "msg_reactions")
+                BulletinHelper.success(Strings.status_success_debug_pet_deleted())
             }
         }
 
@@ -186,7 +171,7 @@ class ChatActionMenu(
 
                 if (target == null) {
                     Logger.info("[Chat menu] No dialog in click context of $id: $context")
-                    BulletinHelper.show(Strings.status_error_chat_open_context_failed())
+                    BulletinHelper.error(Strings.status_error_chat_open_context_failed())
 
                     return@tryOrFatal
                 }
@@ -221,7 +206,7 @@ class ChatActionMenu(
         block: suspend (accountId: Int, peerUserId: Long) -> Unit,
     ) = with(target) {
         if (!isPeerValid(accountId, peerUserId)) {
-            BulletinHelper.show(Strings.status_info_debug_private_users_only())
+            BulletinHelper.info(Strings.status_info_debug_private_users_only())
             return@with
         }
 
@@ -240,7 +225,7 @@ class ChatActionMenu(
             .clientUserId
 
         if (!isPeerValid(accountId, peerUserId)) {
-            BulletinHelper.show(Strings.status_info_chat_private_users_only())
+            BulletinHelper.info(Strings.status_info_chat_private_users_only())
             return
         }
 
@@ -376,7 +361,7 @@ class ChatActionMenu(
 
             override fun rebuildPet() {
                 if (streakPetsController.isRebuildRunning()) {
-                    BulletinHelper.show(Strings.status_info_rebuild_already_running())
+                    BulletinHelper.info(Strings.status_info_rebuild_already_running())
                     return
                 }
 
@@ -401,29 +386,26 @@ class ChatActionMenu(
                     val streak = streaksController.get(accountId, peerUserId)
 
                     if (streak == null) {
-                        BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
+                        BulletinHelper.info(Strings.status_info_streak_not_found_for_chat())
                         return@enqueue
                     }
 
                     if (!streak.ended) {
-                        BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
+                        BulletinHelper.info(Strings.status_info_streak_not_ended_yet())
                         return@enqueue
                     }
 
                     if (!streak.canRestore) {
-                        BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
+                        BulletinHelper.info(Strings.status_info_streak_restore_unavailable())
                         return@enqueue
                     }
 
                     if (!streaksController.restore(accountId, peerUserId, Clock.System.now())) {
-                        BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
+                        BulletinHelper.info(Strings.status_info_streak_restore_unavailable())
                         return@enqueue
                     }
 
-                    BulletinHelper.show(
-                        Strings.status_success_streak_restored(),
-                        "msg_reactions"
-                    )
+                    BulletinHelper.success(Strings.status_success_streak_restored())
 
                     refreshState()
                 }
@@ -440,24 +422,24 @@ class ChatActionMenu(
                     if (pluginRelationController.hasPlugin(ownerUserId, peerUserId)) {
                         serviceMessagesController.sendPetInvite(accountId, peerUserId)
 
-                        BulletinHelper.show(Strings.status_success_pet_invite_sent())
+                        BulletinHelper.success(Strings.status_success_pet_invite_sent())
 
                         return@enqueue
                     }
 
                     if (!streakPetsController.create(accountId, peerUserId)) {
-                        BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
+                        BulletinHelper.info(Strings.status_info_pet_already_exists_for_chat())
                         return@enqueue
                     }
 
-                    BulletinHelper.show(Strings.status_success_pet_created(), "msg_reactions")
+                    BulletinHelper.success(Strings.status_success_pet_created())
 
                     refreshState()
                 }
             }
 
             override fun goToStreakStart() {
-                BulletinHelper.show(Strings.status_info_streak_searching_start_message())
+                BulletinHelper.info(Strings.status_info_streak_searching_start_message())
 
                 AccountTaskExecutor.enqueue(
                     accountId,
@@ -466,7 +448,7 @@ class ChatActionMenu(
                     val streak = streaksController.get(accountId, peerUserId)
 
                     if (streak == null) {
-                        BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
+                        BulletinHelper.info(Strings.status_info_streak_not_found_for_chat())
                         return@enqueue
                     }
 
@@ -481,12 +463,12 @@ class ChatActionMenu(
                                 ?.takeIf { it.dialogId == peerUserId }
 
                         if (chatActivity == null) {
-                            BulletinHelper.show(Strings.status_error_chat_open_context_failed())
+                            BulletinHelper.error(Strings.status_error_chat_open_context_failed())
                             return@runOnMainThread
                         }
 
                         chatActivity.jumpToDate(jumpTs)
-                        BulletinHelper.show(Strings.status_success_streak_jump_to_start_completed())
+                        BulletinHelper.success(Strings.status_success_streak_jump_to_start_completed())
                     }
                 }
             }
@@ -523,7 +505,7 @@ class ChatActionMenu(
     private fun openRestoreCalendar(target: Target): Unit = with(plugin) {
         val chatActivity = target.chatActivity
             ?: run {
-                BulletinHelper.show(Strings.status_error_chat_open_context_failed())
+                BulletinHelper.error(Strings.status_error_chat_open_context_failed())
                 return
             }
 

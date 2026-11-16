@@ -91,7 +91,7 @@ class StreakPetUiManager {
         backgroundScope.launch {
             val uiState = streakPetsController.getViewStateSnapshot(accountId, peerUserId)
                 ?: run {
-                    BulletinHelper.show(Strings.status_info_pet_not_created_for_chat())
+                    BulletinHelper.info(Strings.status_info_pet_not_created_for_chat())
                     return@launch
                 }
 
@@ -99,7 +99,7 @@ class StreakPetUiManager {
                 val fragment = LaunchActivity.getSafeLastFragment()
                 if (destroyed || UserConfig.selectedAccount != accountId) return@runOnMainThread
                 if (fragment == null) {
-                    BulletinHelper.show(Strings.status_error_chat_open_context_failed())
+                    BulletinHelper.error(Strings.status_error_chat_open_context_failed())
                     return@runOnMainThread
                 }
 

@@ -829,7 +829,7 @@ class Plugin {
         val peerUser = MessagesController.getInstance(accountId).getUser(peerUserId)
 
         if (peerUser == null || !isPeerValid(peerUser)) {
-            BulletinHelper.show(Strings.status_info_chat_private_users_only())
+            BulletinHelper.info(Strings.status_info_chat_private_users_only())
             return
         }
 

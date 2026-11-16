@@ -397,7 +397,7 @@ class ServiceMessagesHookBundle : HookBundle {
                 val pack = StreakLevelPackCodec.decode(prizeStars.transaction_id)
 
                 if (pack == null) {
-                    BulletinHelper.show(Strings.status_error_level_pack_invalid())
+                    BulletinHelper.error(Strings.status_error_level_pack_invalid())
 
                     param.result = null
                     return@before
@@ -411,12 +411,11 @@ class ServiceMessagesHookBundle : HookBundle {
                             plugin.enqueueTask("import streak level pack ${pack.id}") {
                                 streakLevelPacksController.import(pack)
 
-                                BulletinHelper.show(
+                                BulletinHelper.success(
                                     if (replace)
                                         Strings.status_success_level_pack_replaced()
                                     else
-                                        Strings.status_success_level_pack_imported(),
-                                    "msg_reactions"
+                                        Strings.status_success_level_pack_imported()
                                 )
                             }
                         }.show()
@@ -435,20 +434,20 @@ class ServiceMessagesHookBundle : HookBundle {
                     ) {
                         when (val streak = streaksController.get(accountId, peerUserId)) {
                             null ->
-                                BulletinHelper.show(Strings.status_info_streak_not_found_for_chat())
+                                BulletinHelper.info(Strings.status_info_streak_not_found_for_chat())
 
                             else if !streak.ended ->
-                                BulletinHelper.show(Strings.status_info_streak_not_ended_yet())
+                                BulletinHelper.info(Strings.status_info_streak_not_ended_yet())
 
                             else if !streak.canRestore ->
-                                BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
+                                BulletinHelper.info(Strings.status_info_streak_restore_unavailable())
 
                             else if !streaksController.restore(
                                 accountId,
                                 peerUserId,
                                 Clock.System.now()
                             ) ->
-                                BulletinHelper.show(Strings.status_info_streak_restore_unavailable())
+                                BulletinHelper.info(Strings.status_info_streak_restore_unavailable())
                         }
                     }
                 }
@@ -466,11 +465,11 @@ class ServiceMessagesHookBundle : HookBundle {
                         serviceMessagesController.sendPetInviteAccepted(accountId, peerUserId)
 
                         if (!streakPetsController.create(accountId, peerUserId, byInvite = true)) {
-                            BulletinHelper.show(Strings.status_info_pet_already_exists_for_chat())
+                            BulletinHelper.info(Strings.status_info_pet_already_exists_for_chat())
                             return@enqueue
                         }
 
-                        BulletinHelper.show(Strings.status_success_pet_created(), "msg_reactions")
+                        BulletinHelper.success(Strings.status_success_pet_created())
                     }
                 }
 
@@ -481,14 +480,14 @@ class ServiceMessagesHookBundle : HookBundle {
                             .getMessage(peerUserId, messageObject.id.toLong())
                             ?: run {
                                 Logger.info("Failed to get cached message for $accountId:$peerUserId:${messageObject.id}")
-                                BulletinHelper.show(Strings.status_error_sync_message_not_found())
+                                BulletinHelper.error(Strings.status_error_sync_message_not_found())
                                 return null
                             }
 
                         val document = MessageObject.getDocument(message)
                             ?: run {
                                 Logger.info("Cached message $accountId:$peerUserId:${messageObject.id} doesn't contains any document!")
-                                BulletinHelper.show(Strings.status_error_sync_file_missing())
+                                BulletinHelper.error(Strings.status_error_sync_file_missing())
                                 return null
                             }
 
@@ -520,7 +519,7 @@ class ServiceMessagesHookBundle : HookBundle {
 
                                     NotificationCenter.fileLoadFailed -> {
                                         Logger.info("Failed to download db snapshot for $accountId:$peerUserId:${messageObject.id}")
-                                        BulletinHelper.show(Strings.status_error_sync_download_failed())
+                                        BulletinHelper.error(Strings.status_error_sync_download_failed())
                                     }
 
                                     else ->
@@ -576,7 +575,7 @@ class ServiceMessagesHookBundle : HookBundle {
                         )
 
                         serviceMessagesController.sendSyncApplied(accountId, peerUserId)
-                        BulletinHelper.show(Strings.status_success_sync_applied())
+                        BulletinHelper.success(Strings.status_success_sync_applied())
                     }
                 }
 

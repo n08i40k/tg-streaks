@@ -74,7 +74,7 @@ class DatabaseMaintenance(private val backupManager: DatabaseBackupManager) {
         } catch (e: Exception) {
             pickerPending.set(false)
             Logger.info("Failed to open backup file picker: ${e.message}")
-            BulletinHelper.show(Strings.status_error_backup_apply_failed(e.message.orEmpty()))
+            BulletinHelper.error(Strings.status_error_backup_apply_failed(e.message.orEmpty()))
         }
     }
 
@@ -94,7 +94,7 @@ class DatabaseMaintenance(private val backupManager: DatabaseBackupManager) {
                 restore(file, name)
             } catch (e: Exception) {
                 Logger.info("Failed to read backup from uri: ${e.message}")
-                BulletinHelper.show(Strings.status_error_backup_apply_failed(e.message.orEmpty()))
+                BulletinHelper.error(Strings.status_error_backup_apply_failed(e.message.orEmpty()))
             }
         }
     }
@@ -126,7 +126,7 @@ class DatabaseMaintenance(private val backupManager: DatabaseBackupManager) {
     private fun restore(backup: File, name: String) {
         Plugin.reload("restore database backup $name") {
             if (!backup.isFile) {
-                BulletinHelper.show(Strings.status_error_backup_not_found())
+                BulletinHelper.error(Strings.status_error_backup_not_found())
                 return@reload
             }
 
@@ -137,9 +137,9 @@ class DatabaseMaintenance(private val backupManager: DatabaseBackupManager) {
                 files.first().parentFile?.mkdirs()
                 backup.copyTo(files.first(), overwrite = true)
 
-                BulletinHelper.show(Strings.status_success_backup_imported(name))
+                BulletinHelper.success(Strings.status_success_backup_imported(name))
             } catch (e: Exception) {
-                BulletinHelper.show(Strings.status_error_backup_apply_failed(e.message.orEmpty()))
+                BulletinHelper.error(Strings.status_error_backup_apply_failed(e.message.orEmpty()))
             }
         }
     }
@@ -149,9 +149,9 @@ class DatabaseMaintenance(private val backupManager: DatabaseBackupManager) {
         Plugin.reload("reset database") {
             try {
                 databaseFiles().forEach { it.delete() }
-                BulletinHelper.show(Strings.status_success_database_reset_started())
+                BulletinHelper.success(Strings.status_success_database_reset_started())
             } catch (e: Exception) {
-                BulletinHelper.show(Strings.status_error_database_delete_failed(e.message.orEmpty()))
+                BulletinHelper.error(Strings.status_error_database_delete_failed(e.message.orEmpty()))
             }
         }
     }

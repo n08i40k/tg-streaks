@@ -222,7 +222,7 @@ class StreakLevelPackEditFragment(private val viewModel: ViewModel) : BaseFragme
 
                             if (name.isEmpty()) {
                                 AndroidUtilities.shakeViewSpring(nameField)
-                                BulletinHelper.show(Strings.status_info_streak_level_pack_name_empty())
+                                BulletinHelper.info(Strings.status_info_streak_level_pack_name_empty())
                                 return
                             }
 
