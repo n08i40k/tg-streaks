@@ -4,7 +4,7 @@
     java.lang.String getBuildDate();
     java.lang.String getVersion();
 
-    void inject(java.lang.String, android.webkit.ValueCallback, java.lang.String, boolean, java.lang.Runnable);
+    boolean inject(java.lang.String, android.webkit.ValueCallback, java.lang.String, boolean, java.lang.Runnable);
     void eject();
 
     android.content.SharedPreferences getSharedPrefs();

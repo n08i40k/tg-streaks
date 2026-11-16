@@ -92,61 +92,22 @@ def _is_version_older(version: str, required: str) -> bool:
 
 
 I18N_STATUS: dict[str, dict[str, str]] = {
-    "status.error.assets.unpack_failed": {
-        "en": "Failed to unpack plugin resources",
-        "ru": "Не удалось распаковать ресурсы плагина",
-    },
-    "status.error.update.open_link_failed": {
-        "en": "Couldn't open update link",
-        "ru": "Не удалось открыть ссылку обновления",
-    },
-    "status.error.update.restart_failed": {
-        "en": "Couldn't restart client",
-        "ru": "Не удалось перезапустить клиент",
-    },
+    'status.error.assets.unpack_failed': {'en': 'Failed to unpack plugin resources', 'ru': 'Не удалось распаковать ресурсы плагина'},
+    'status.error.update.open_link_failed': {'en': "Couldn't open update link", 'ru': 'Не удалось открыть ссылку обновления'},
+    'status.error.update.restart_failed': {'en': "Couldn't restart client", 'ru': 'Не удалось перезапустить клиент'},
 }
 
 I18N_DIALOGS: dict[str, dict[str, str]] = {
-    "dialog.assets_damaged.message": {
-        "en": "{filename} is missing from the plugin file or is damaged. Reinstall the plugin.",
-        "ru": "{filename} отсутствует в файле плагина или повреждён. Переустановите плагин.",
-    },
-    "dialog.assets_damaged.ok": {"en": "OK", "ru": "Ок"},
-    "dialog.assets_damaged.title": {
-        "en": "Plugin file is damaged",
-        "ru": "Файл плагина повреждён",
-    },
-    "dialog.downgrade.channel": {
-        "en": "Updates channel",
-        "ru": "Канал с обновлениями",
-    },
-    "dialog.downgrade.message": {
-        "en": "Streaks was downgraded from {previous} to {current}. Old versions cannot work with data written by a newer one, so the plugin will not load and can crash the client. Install {previous} or newer from the updates channel.",
-        "ru": "Streaks понижен с {previous} до {current}. Старая версия не умеет работать с данными новой, поэтому плагин не будет загружен и может крашить клиент. Установите {previous} или новее из канала с обновлениями.",
-    },
-    "dialog.downgrade.title": {
-        "en": "Plugin version downgraded",
-        "ru": "Версия плагина понижена",
-    },
-    "dialog.load_crash.message": {
-        "en": "tg-streaks failed to load at stage '{stage}'.\n\nA crash report has been copied to the clipboard — you can send it to the plugin's chat.",
-        "ru": "Не удалось загрузить tg-streaks на этапе «{stage}».\n\nОтчёт скопирован в буфер обмена — вы можете отправить его в чат плагина.",
-    },
-    "dialog.load_crash.ok": {"en": "OK", "ru": "Ок"},
-    "dialog.load_crash.open_chat": {"en": "Open chat", "ru": "Открыть чат"},
-    "dialog.load_crash.title": {
-        "en": "Plugin load failed",
-        "ru": "Не удалось загрузить плагин",
-    },
-    "dialog.update_restart.message": {
-        "en": "Streaks was updated from {previous} to {current}. Restart the client to finish the update.",
-        "ru": "Streaks обновлён с {previous} до {current}. Перезапустите клиент, чтобы завершить обновление.",
-    },
-    "dialog.update_restart.restart": {"en": "Restart", "ru": "Перезапустить"},
-    "dialog.update_restart.title": {
-        "en": "Client restart required",
-        "ru": "Требуется перезапуск клиента",
-    },
+    'dialog.assets_damaged.message': {'en': '{filename} is missing from the plugin file or is damaged. Reinstall the plugin.', 'ru': '{filename} отсутствует в файле плагина или повреждён. Переустановите плагин.'},
+    'dialog.assets_damaged.ok': {'en': 'OK', 'ru': 'Ок'},
+    'dialog.assets_damaged.title': {'en': 'Plugin file is damaged', 'ru': 'Файл плагина повреждён'},
+    'dialog.load_crash.message': {'en': "tg-streaks failed to load at stage '{stage}'.\n\nA crash report has been copied to the clipboard — you can send it to the plugin's chat.", 'ru': 'Не удалось загрузить tg-streaks на этапе «{stage}».\n\nОтчёт скопирован в буфер обмена — вы можете отправить его в чат плагина.'},
+    'dialog.load_crash.ok': {'en': 'OK', 'ru': 'Ок'},
+    'dialog.load_crash.open_chat': {'en': 'Open chat', 'ru': 'Открыть чат'},
+    'dialog.load_crash.title': {'en': 'Plugin load failed', 'ru': 'Не удалось загрузить плагин'},
+    'dialog.update_restart.message': {'en': 'Streaks was updated from {previous} to {current}. Restart the client to finish the update.', 'ru': 'Streaks обновлён с {previous} до {current}. Перезапустите клиент, чтобы завершить обновление.'},
+    'dialog.update_restart.restart': {'en': 'Restart', 'ru': 'Перезапустить'},
+    'dialog.update_restart.title': {'en': 'Client restart required', 'ru': 'Требуется перезапуск клиента'},
 }
 
 I18N_STRINGS: dict[str, dict[str, str]] = {
@@ -445,86 +406,14 @@ class TgStreaksPlugin(BasePlugin):
         except Exception as e:
             self.log_exception("Failed to persist last loaded plugin version", e)
 
-    def _should_block_load_for_downgrade(self) -> bool:
-        if DEBUG_MODE:
-            return False
-
-        previous_version = self._get_last_loaded_version()
-
-        if len(previous_version) == 0 or not _is_version_older(
-            __version__, previous_version
-        ):
-            return False
-
-        self.log(
-            f"Plugin was downgraded from {previous_version} to {__version__}: "
-            "load aborted"
-        )
-        self._show_downgrade_dialog(previous_version)
-
-        return True
-
-    def _show_downgrade_dialog(self, previous_version: str):
-        def show():
-            try:
-                fragment = get_last_fragment()
-            except Exception:
-                fragment = None
-
-            if fragment is None:
-                self.log("Downgrade dialog deferred: UI context is unavailable")
-                self._schedule_downgrade_dialog_retry(previous_version)
-                return
-
-            self_outer = self
-
-            class ChannelClickListener(
-                dynamic_proxy(AlertDialog.OnButtonClickListener)
-            ):
-                def onClick(self, _dialog: AlertDialog, _which: int) -> None:  # ty: ignore[invalid-method-override]
-                    self_outer._open_telegram_url(PLUGIN_UPDATE_TG_URL)
-
-            message = self._t(
-                "dialog.downgrade.message",
-                previous=previous_version,
-                current=__version__,
-            )
-
-            try:
-                dialog = (
-                    AlertDialog.Builder(fragment.getContext())
-                    .setTitle(String(self._t("dialog.downgrade.title")))
-                    .setMessage(String(message))
-                    .setPositiveButton(
-                        String(self._t("dialog.downgrade.channel")),
-                        ChannelClickListener(),
-                    )
-                    .create()
-                )
-                dialog.setCancelable(False)
-                dialog.setCanceledOnTouchOutside(False)
-
-                fragment.showDialog(dialog)
-            except Exception as e:
-                self.log_exception("Failed to show downgrade dialog", e)
-                self._show_error(message)
-                self._schedule_downgrade_dialog_retry(previous_version)
-
-        run_on_ui_thread(show)
-
-    def _schedule_downgrade_dialog_retry(self, previous_version: str):
-        timer = threading.Timer(
-            1.0,
-            lambda: self._show_downgrade_dialog(previous_version),
-        )
-        timer.daemon = True
-        timer.start()
-
     def _should_pause_full_load_for_update(self) -> bool:
         previous_version = self._get_last_loaded_version()
 
         if len(previous_version) == 0 or previous_version == __version__:
             self._persist_current_loaded_version()
+            return False
+
+        if not DEBUG_MODE and _is_version_older(__version__, previous_version):
             return False
 
         self._show_update_restart_dialog(previous_version)
@@ -847,7 +736,7 @@ class TgStreaksPlugin(BasePlugin):
                 def run(self):
                     ref._reload_plugin()
 
-            self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
+            injected = self.jvm_plugin.klass.getDeclaredMethod(  # ty:ignore[possibly-missing-attribute]
                 String("inject"),
                 String.getClass(),
                 ValueCallback.getClass(),
@@ -862,6 +751,10 @@ class TgStreaksPlugin(BasePlugin):
                 Boolean(DEBUG_MODE),
                 ReloadRequest(),
             )
+
+            if not injected:
+                self.log("JVM plugin refused to inject")
+                return False
 
             self.log("JVM plugin injected successfully")
         except Exception as e:
@@ -911,9 +804,6 @@ class TgStreaksPlugin(BasePlugin):
             self.assets = EmbeddedAssets(self)
             self.resources_bridge = ZipResourcesBridge(self)
             self._full_load_started = False
-
-            if self._should_block_load_for_downgrade():
-                return None
 
             if allow_update_pause and self._should_pause_full_load_for_update():
                 return None

@@ -81,6 +81,7 @@ import ru.n08i40k.streaks.util.AccountTaskExecutor
 import ru.n08i40k.streaks.util.BulletinHelper
 import ru.n08i40k.streaks.util.CheckNotificationHelper
 import ru.n08i40k.streaks.util.DatabaseTransactor
+import ru.n08i40k.streaks.util.DowngradeGuard
 import ru.n08i40k.streaks.util.Logger
 import ru.n08i40k.streaks.util.PluginUpdateChecker
 import ru.n08i40k.streaks.util.RateLimitContext
@@ -149,9 +150,9 @@ class Plugin {
             resourcesRootPath: String,
             debugMode: Boolean,
             reloadCallback: Runnable,
-        ) {
+        ): Boolean {
             if (INSTANCE != null)
-                return
+                return true
 
             if (WAS_INJECTED)
                 throw IllegalStateException("Cannot inject plugin from same class-loader twice")
@@ -186,6 +187,9 @@ class Plugin {
                 }
                 MessageFormatterDefault.registerMessageValueFormatters(MessagePluralFormatter)
 
+                if (!debugMode && DowngradeGuard.check(version))
+                    return false
+
                 Logger.tryOrFatal("create and inject plugin") {
                     val plugin = Plugin(ResourcesProvider(resourcesRootPath))
                         .also { INSTANCE = it }
@@ -193,6 +197,8 @@ class Plugin {
                     plugin.onInject()
                 }
             }
+
+            return true
         }
 
         @AnyThread
