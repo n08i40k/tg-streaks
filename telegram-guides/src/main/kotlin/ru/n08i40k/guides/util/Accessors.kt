@@ -7,6 +7,7 @@ import androidx.recyclerview.widget.RecyclerView
 import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.ActionBar.ActionBarMenuItem
 import org.telegram.ui.ActionBar.BottomSheet
+import org.telegram.ui.ActionBar.SimpleTextView
 import org.telegram.ui.Cells.ChatActionCell
 import org.telegram.ui.Cells.DialogCell
 import org.telegram.ui.ChatActivity
@@ -126,6 +127,16 @@ internal val `ChatActionCell$giftButtonRect` =
 @JvmField
 internal val `ProfileActivity$nameTextView` =
     getFieldGetter(ProfileActivity::class.java, "nameTextView")
+        .retype(Any::class.java, ProfileActivity::class.java)
+
+internal fun profileNameTextView(profile: ProfileActivity): SimpleTextView? {
+    val nameField: Any? = `ProfileActivity$nameTextView`.invokeExact(profile)
+    return when (nameField) {
+        is SimpleTextView -> nameField
+        is Array<*> -> nameField.getOrNull(1) as? SimpleTextView
+        else -> null
+    }
+}
 
 @JvmField
 internal val `DialogsActivity$viewPages` =

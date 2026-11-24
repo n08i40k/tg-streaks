@@ -152,7 +152,17 @@ interface ProfileStatusMirror
 @RuntimeMirror("com.exteragram.messenger.badges.source.BadgeInfo")
 interface BadgeInfoMirror {
     @Constructor
+    @Since("13.1.1")
+    fun create(
+        @Type("com.exteragram.messenger.api.dto.BadgeDTO") badge: Any?,
+        @Type("com.exteragram.messenger.api.model.ProfileStatus") status: Any?,
+        flag: Boolean,
+        number: Int?,
+    )
+
+    @Constructor
     @Since("12.2.10")
+    @Before("13.1.1")
     fun create(
         @Type("com.exteragram.messenger.api.dto.BadgeDTO") badge: Any?,
         @Type("com.exteragram.messenger.api.model.ProfileStatus") status: Any?,
