@@ -74,7 +74,11 @@ class CrashBottomSheet(
         }
 
         val plugins: Collection<com.exteragram.messenger.plugins.Plugin>
-            get() = PluginsControllerCompat.plugins
+            get() = try {
+                PluginsControllerCompat.plugins
+            } catch (_: LinkageError) {
+                emptyList()
+            }
     }
 
     class PluginsListAdapter(
