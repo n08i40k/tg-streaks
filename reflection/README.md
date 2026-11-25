@@ -2,14 +2,12 @@
 
 Доступ к скрытым и версионно-зависимым членам классов клиента через `MethodHandle`.
 
-Отдельная сборка (`includeBuild("reflection")`) из двух частей:
+Два подпроекта Gradle.
 
-- корневой проект — библиотека `ru.n08i40k:reflection`: `getFieldGetter`, `getMethodHandle`,
-  `getConstructorHandle`, их `IfExists`-варианты, `retype`, `getAccessibleFields`, аннотации
-  `@RequiresClient*` и аннотации описаний (пакет `ru.n08i40k.reflection.mirror`);
-- `processor/` — KSP-процессор `ru.n08i40k:reflection-processor`: по интерфейсам-описаниям
-  генерирует
-  `Accessors.kt` и сверяет описания с jar клиента.
+- `:reflection` — Android-библиотека с функциями `getFieldGetter`, `getMethodHandle`,
+  `getConstructorHandle`, их `IfExists`-вариантами, `retype`, `getAccessibleFields` и аннотациями.
+- `:reflection:processor` — JVM-модуль с KSP-процессором. По интерфейсам-описаниям он
+  генерирует `Accessors.kt` и сверяет описания с jar клиента.
 
 ## Подключение
 
@@ -19,8 +17,8 @@ plugins {
 }
 
 dependencies {
-    implementation(libs.reflection)
-    ksp(libs.reflection.processor)
+    implementation(project(":reflection"))
+    ksp(project(":reflection:processor"))
 }
 ```
 

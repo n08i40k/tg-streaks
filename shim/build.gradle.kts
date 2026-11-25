@@ -33,8 +33,8 @@ kotlin {
 }
 
 dependencies {
-    implementation(libs.reflection)
-    ksp(libs.reflection.processor)
+    implementation(project(":reflection"))
+    ksp(project(":reflection:processor"))
 
     compileOnly(files(rootProject.tasks.named("processTelegramJar")))
 

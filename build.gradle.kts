@@ -76,10 +76,9 @@ kotlin {
     }
 }
 
-
 dependencies {
-    implementation(libs.reflection)
-    ksp(libs.reflection.processor)
+    implementation(project(":reflection"))
+    ksp(project(":reflection:processor"))
 
     implementation(project(":shim"))
 

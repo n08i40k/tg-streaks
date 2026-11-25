@@ -35,6 +35,7 @@ rootProject.name = "Streaks Plugin"
 
 include(":shim")
 include(":telegram-guides")
+include(":reflection", ":reflection:processor")
 
 private val localProperties = Properties().apply {
     file("local.properties")
@@ -46,5 +47,4 @@ private val badgesSdkDir =
     providers.gradleProperty("badgesSdk.dir").orNull
         ?: localProperties.getProperty("badgesSdk.dir")
 
-includeBuild("reflection")
 includeBuild(badgesSdkDir)

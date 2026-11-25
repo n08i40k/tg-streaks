@@ -1,18 +1,32 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    id("java-library")
-    alias(libs.plugins.kotlin.jvm)
+    // TODO: fix EGP instead of using AGP for library that doesn't requires it
+    alias(libs.plugins.android.library)
 }
 
-group = "ru.n08i40k"
+android {
+    namespace = "ru.n08i40k.reflection"
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+    compileSdk {
+        version = release(providers.gradleProperty("targetSdkMajor").get().toInt()) {
+            minorApiLevel = providers.gradleProperty("targetSdkMinor").get().toInt()
+        }
+    }
+
+    defaultConfig {
+        minSdk = providers.gradleProperty("minSdkMajor").get().toInt()
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
 }
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+        jvmTarget.set(JvmTarget.JVM_11)
     }
 
     explicitApi()
