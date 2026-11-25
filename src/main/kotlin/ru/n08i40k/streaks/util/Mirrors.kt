@@ -133,7 +133,7 @@ interface BadgesControllerMirror {
 @Optional
 @RuntimeMirror("com.exteragram.messenger.badges.source.ApiBadgeSource")
 interface ApiBadgeSourceMirror {
-    @Getter(retype = [Any::class, Any::class])
+    @Getter(retype = [Map::class, Any::class])
     val cache: Any?
 }
 
